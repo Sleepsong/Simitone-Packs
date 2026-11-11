@@ -56,6 +56,9 @@ jobs:
     - name: Build Foundations
       run: dotnet build Foundations/Foundations.csproj -c Release
 
+    - name: Build Diagonal Doors, Stairs and Pools
+      run: dotnet build DiagonalDoors/DiagonalDoors.csproj -c Release
+
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
 
@@ -100,6 +103,13 @@ jobs:
       with:
         name: Foundations
         path: Foundations/pack/
+        if-no-files-found: error
+
+    - name: Upload Diagonal Doors, Stairs and Pools
+      uses: actions/upload-artifact@v4
+      with:
+        name: DiagonalDoors
+        path: DiagonalDoors/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube
