@@ -1,0 +1,9 @@
+{
+  "id": "sample.tryforbaby",
+  "name": "Try for Baby",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Try for Baby, as in The Sims 2: WooHoo in the Vibromatic Heart Bed with a 50% chance of a baby, and 1 in 10 of those twins. Needs Livin' Large and the game in English. Experimental.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "TryForBaby.dll"
+}

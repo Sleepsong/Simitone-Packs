@@ -17,6 +17,7 @@ These packs need a build of Simitone with add-on pack support, which at the mome
 | [Half Walls](HalfWalls) | Code, patches the engine | Adds The Sims 2's half wall to build mode: a low wall you can wallpaper, which Sims cannot cross but which does not divide a room. Experimental. |
 | [Terrain Paint](TerrainPaint) | Code, patches the engine | Paint the ground with the game's terrain types (grass, dark and autumn grass, sand, rock, snow, cloud), as in The Sims 2. In build mode under Terrain. Painted ground is saved with each lot, in the pack's own file. Experimental. |
 | [Roof Tool](RoofTool) | Code, patches the engine | Draw your own roofs, as in The Sims 2: hip, gable and shed roofs with a pitch each, in place of the automatic roof. In build mode under Roofs. Drawn roofs are saved with each lot, in the pack's own file. Experimental. |
+| [Try for Baby](TryForBaby) | Code, patches the engine | Try for Baby, as in The Sims 2: WooHoo in the Vibromatic Heart Bed with a 50% chance of a baby, 1 in 10 of them twins. Needs Livin' Large and the game in English. Experimental. |
 | [Test Cube](TestCube) | Content | One object, a plain grey cube with no behaviour, under Decorative > Other. For checking that content packs load. |
 
 ## Installing a pack
@@ -42,6 +43,7 @@ dotnet build BuildCheats/BuildCheats.csproj -c Release
 dotnet build HalfWalls/HalfWalls.csproj -c Release
 dotnet build TerrainPaint/TerrainPaint.csproj -c Release
 dotnet build RoofTool/RoofTool.csproj -c Release
+dotnet build TryForBaby/TryForBaby.csproj -c Release
 ```
 
 Each build leaves the finished pack in the project's `pack/` folder, for example

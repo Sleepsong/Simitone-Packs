@@ -50,6 +50,9 @@ jobs:
     - name: Build Roof Tool
       run: dotnet build RoofTool/RoofTool.csproj -c Release
 
+    - name: Build Try for Baby
+      run: dotnet build TryForBaby/TryForBaby.csproj -c Release
+
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
 
@@ -80,6 +83,13 @@ jobs:
       with:
         name: RoofTool
         path: RoofTool/pack/
+        if-no-files-found: error
+
+    - name: Upload Try for Baby
+      uses: actions/upload-artifact@v4
+      with:
+        name: TryForBaby
+        path: TryForBaby/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube
