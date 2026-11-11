@@ -1,0 +1,9 @@
+{
+  "id": "sample.openforbusiness",
+  "name": "Open for Business",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "A home business, after The Sims 2: Open for Business. Put objects in your house up for sale at a price you choose, and visiting Sims buy them. Stage 1 of several. Experimental.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "OpenForBusiness.dll"
+}
