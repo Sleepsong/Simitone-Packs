@@ -10,6 +10,7 @@ using FSO.Client.UI.Framework;
 using FSO.Client.UI.Model;
 using FSO.Common;
 using FSO.Common.Utils;
+using FSO.Content;
 using FSO.Common.Rendering.Framework.Model;
 using FSO.HIT;
 using FSO.SimAntics;
@@ -32,6 +33,7 @@ namespace OpenForBusiness
     ///            Sims buy them.
     ///   Stage 2: what sells can be restocked, and an object can be made the till, where customers pay one of the
     ///            family instead of leaving the money.
+    ///   Stage 3: the family can buy a lot it is visiting and run the same business there.
     ///
     /// The business itself is in Shop.cs and touches nothing in the engine. This file is where it meets the game:
     ///
@@ -41,7 +43,8 @@ namespace OpenForBusiness
     ///  4. The lot screen updates: hovering over something for sale, or the till, says so.
     ///  5. Saving: the business's book is this pack's own data for the lot.
     ///
-    /// Also the "business" console command, which shows the book, restocks, and forgets the empty shelves.
+    /// Also the "business" console command, which shows the book, restocks, forgets the empty shelves, and buys and
+    /// sells a business lot.
     /// </summary>
     public class OpenForBusinessPack : ISimitonePack
     {
@@ -71,6 +74,8 @@ namespace OpenForBusiness
             }
             Shop.OnSale = Sold;
             Shop.OnLost = Lost;
+            Shop.VisitingFamily = VisitingFamily;
+            Shop.SaveVisitedBook = SaveVisitedBook;
             PackManager.RegisterCommand("business", ShowBusiness);
         }
 
@@ -101,11 +106,25 @@ namespace OpenForBusiness
 
         private static string Money(long amount) => "§" + amount.ToString("##,#0");
 
+        /// <summary>The game screen knows a lot is being visited, and by whom. While it is, the engine has no family for the lot.</summary>
+        private static FSO.Files.Formats.IFF.Chunks.FAMI VisitingFamily(VM vm)
+        {
+            var screen = GameFacade.Screens?.CurrentUIScreen as TS1GameScreen;
+            return (screen != null && screen.vm == vm && screen.Downtown) ? screen.ActiveFamily : null;
+        }
+
+        /// <summary>The same file OnLotLoaded reads the book from when the lot is next visited.</summary>
+        private static void SaveVisitedBook(VM vm, byte[] data)
+        {
+            var path = Content.Get().Neighborhood?.GetHousePath(vm.GetGlobalValue(10));
+            if (!string.IsNullOrEmpty(path)) LotPackData.Write(PackId, path, data);
+        }
+
         // ---- 1. the menu ----
 
         public static void AfterPieMenu(VMEntity __instance, VM vm, VMEntity caller, List<VMPieMenuInteraction> __result)
         {
-            if (__result == null || !(__instance is VMGameObject) || !Shop.IsHomeLot(vm) || !Shop.InFamily(vm, caller)) return;
+            if (__result == null || !(__instance is VMGameObject) || !Shop.IsShop(vm) || !Shop.InFamily(vm, caller)) return;
             void Add(string name, short param) => __result.Add(new VMPieMenuInteraction() { Name = name, ID = MenuID, Param0 = param, Callee = __instance });
 
             if (Shop.IsTill(vm, __instance))
@@ -140,7 +159,7 @@ namespace OpenForBusiness
         public static bool BeforeVerify(VMNetInteractionCmd __instance, VM vm, ref bool __result)
         {
             if (!IsMine(__instance)) return true;
-            __result = !__instance.FromNet && Shop.IsHomeLot(vm); //the player's own choice only
+            __result = !__instance.FromNet && Shop.IsShop(vm); //the player's own choice only
             return false;
         }
 
@@ -149,7 +168,7 @@ namespace OpenForBusiness
             if (!IsMine(__instance)) return true;
             __result = false;
             var obj = vm.GetObjectById(__instance.CalleeID);
-            if (obj == null || !Shop.IsHomeLot(vm)) return false;
+            if (obj == null || !Shop.IsShop(vm)) return false;
             var isTill = Shop.IsTill(vm, obj);
             switch (__instance.Param0)
             {
@@ -279,7 +298,7 @@ namespace OpenForBusiness
             if (state?.UIState == null || vm == null || !vm.Ready || __instance.ObjectHover <= 0) return;
             if (PieMenuOf(__instance) != null || state.UIState.TooltipProperties.Show) return;
             var obj = vm.GetObjectById(__instance.ObjectHover);
-            if (obj == null || !Shop.IsHomeLot(vm)) return;
+            if (obj == null || !Shop.IsShop(vm)) return;
 
             string text;
             if (Shop.IsForSale(obj))
@@ -307,7 +326,9 @@ namespace OpenForBusiness
 
         public void OnLotSaved(VM vm, string lotPath)
         {
-            if (lotPath == null || !Shop.IsHomeLot(vm)) return; //a lot being visited has no business, and nothing of this pack's to lose
+            //only a home's book is written with its save. a business lot's is written as it changes, and is left alone here:
+            //this is also called when a lot is saved from the neighbourhood's lot editor, with no family in it.
+            if (lotPath == null || !Shop.IsHomeLot(vm)) return;
             LotPackData.Write(PackId, lotPath, Shop.ToSave(vm));
         }
 
@@ -325,9 +346,36 @@ namespace OpenForBusiness
             if (vm == null || args.Length > 1) return false;
             var word = (args.Length == 0) ? "" : args[0].ToLowerInvariant();
 
-            if (!Shop.IsHomeLot(vm))
+            if (word == "buy")
             {
-                GameThread.NextUpdate(x => Tell("A business can only be run from the family's own home."));
+                var price = Shop.LotPrice(vm);
+                var problem = Shop.BuyLot(vm);
+                GameThread.NextUpdate(x =>
+                {
+                    HITVM.Get().PlaySoundEvent((problem == null) ? UISounds.BuyPlace : UISounds.Error);
+                    Tell(problem ?? ("The family bought this lot for " + Money(price) + ".\n\n"
+                        + "Whenever one of them is here they can put what is on the lot up for sale, as at home. "
+                        + "To change what is on it, edit the lot from the neighbourhood."));
+                });
+                return true;
+            }
+            if (word == "sell")
+            {
+                var problem = Shop.SellLot(vm, out var refund);
+                GameThread.NextUpdate(x =>
+                {
+                    HITVM.Get().PlaySoundEvent((problem == null) ? UISounds.MoneyBack : UISounds.Error);
+                    Tell(problem ?? ("The family sold this lot for " + Money(refund) + ". It will be as it was built the next time anyone visits."));
+                });
+                return true;
+            }
+            if (!Shop.IsShop(vm))
+            {
+                string why;
+                if (!Shop.IsVisiting(vm)) why = Shop.NotAShop;
+                else if (Shop.BookOf(vm).Owner != 0) why = "This lot belongs to another family's business.";
+                else why = "This lot can be bought as a business for " + Money(Shop.LotPrice(vm)) + ".\nType: business buy";
+                GameThread.NextUpdate(x => Tell(why));
                 return true;
             }
             if (word == "restock")
@@ -337,7 +385,7 @@ namespace OpenForBusiness
             }
             if (word == "forget")
             {
-                Shop.ForgetShelves(vm);
+                if (!Shop.ForgetShelves(vm)) GameThread.NextUpdate(x => Tell("On a business lot what has sold stays sold until it is restocked. Selling the lot puts everything back."));
                 return true;
             }
             if (word != "") return false;
@@ -346,6 +394,7 @@ namespace OpenForBusiness
             var book = Shop.BookOf(vm);
             var till = Shop.Till(vm);
             var lines = new List<string>();
+            if (Shop.IsBusinessLot(vm)) lines.Add($"The family's business lot, bought for {Money(book.PricePaid)}.");
             lines.Add($"Sold so far: {book.Sold} for {Money(book.Takings)}");
             if (book.Lost > 0) lines.Add($"Customers who gave up waiting: {book.Lost}");
             if (till == null) lines.Add("No till: customers leave the money.");

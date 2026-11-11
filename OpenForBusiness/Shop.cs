@@ -6,6 +6,7 @@ http://mozilla.org/MPL/2.0/.
 
 using FSO.Content;
 using FSO.Content.Interfaces;
+using FSO.Files.Formats.IFF.Chunks;
 using FSO.SimAntics.Entities;
 using FSO.LotView.Model;
 using FSO.SimAntics;
@@ -25,6 +26,19 @@ namespace OpenForBusiness
         public LotTilePos Position;
         public Direction Direction;
         public int Price;
+        /// <summary>
+        /// On a business lot: the number, in the lot's file, of the object that stood here. 0 at home.
+        /// A lot being visited is never saved, so the object is still in the file and is taken out again on each visit.
+        /// </summary>
+        public short SourceID;
+    }
+
+    /// <summary>On a business lot: the price of an object in the lot's file, put on it again on each visit.</summary>
+    public class PriceTag
+    {
+        public short ObjectID;
+        public uint GUID;
+        public int Price;
     }
 
     /// <summary>
@@ -42,15 +56,21 @@ namespace OpenForBusiness
         /// <summary>The object that is the till, or 0 for none. Objects keep their numbers in a lot's save.</summary>
         public short TillID;
         public List<Shelf> Shelves = new List<Shelf>();
+        /// <summary>The family that owns this lot as a business (its number in the neighbourhood), or 0. Never set for a home.</summary>
+        public ushort Owner;
+        /// <summary>What the family paid for the lot, which is what selling it gives back.</summary>
+        public int PricePaid;
+        /// <summary>On a business lot: what is for sale. At home the prices are in the lot's own save.</summary>
+        public List<PriceTag> Prices = new List<PriceTag>();
 
-        public bool Empty => Sold == 0 && Takings == 0 && Lost == 0 && TillID == 0 && Shelves.Count == 0;
+        public bool Empty => Sold == 0 && Takings == 0 && Lost == 0 && TillID == 0 && Shelves.Count == 0 && Owner == 0 && Prices.Count == 0;
 
         public byte[] Save()
         {
             using (var mem = new MemoryStream())
             using (var writer = new BinaryWriter(mem))
             {
-                writer.Write((byte)2); //version
+                writer.Write((byte)3); //version
                 writer.Write(Sold);
                 writer.Write(Takings);
                 writer.Write(Lost);
@@ -64,6 +84,16 @@ namespace OpenForBusiness
                     writer.Write(shelf.Position.Level);
                     writer.Write((byte)shelf.Direction);
                     writer.Write(shelf.Price);
+                    writer.Write(shelf.SourceID);
+                }
+                writer.Write(Owner);
+                writer.Write(PricePaid);
+                writer.Write(Prices.Count);
+                foreach (var tag in Prices)
+                {
+                    writer.Write(tag.ObjectID);
+                    writer.Write(tag.GUID);
+                    writer.Write(tag.Price);
                 }
                 return mem.ToArray();
             }
@@ -72,7 +102,7 @@ namespace OpenForBusiness
         public static ShopBook Load(byte[] data)
         {
             var result = new ShopBook();
-            if (data == null || data.Length < 13 || (data[0] != 1 && data[0] != 2)) return result;
+            if (data == null || data.Length < 13 || data[0] < 1 || data[0] > 3) return result;
             try
             {
                 using (var reader = new BinaryReader(new MemoryStream(data)))
@@ -93,7 +123,20 @@ namespace OpenForBusiness
                         shelf.Position = new LotTilePos(x, y, reader.ReadSByte());
                         shelf.Direction = (Direction)reader.ReadByte();
                         shelf.Price = reader.ReadInt32();
+                        if (version >= 3) shelf.SourceID = reader.ReadInt16();
                         if (shelf.Price > 0) result.Shelves.Add(shelf);
+                    }
+                    if (version < 3) return result; //stage 2 had no business lots
+                    result.Owner = reader.ReadUInt16();
+                    result.PricePaid = Math.Max(0, reader.ReadInt32());
+                    var tags = Math.Min(4096, reader.ReadInt32());
+                    for (int i = 0; i < tags; i++)
+                    {
+                        var tag = new PriceTag();
+                        tag.ObjectID = reader.ReadInt16();
+                        tag.GUID = reader.ReadUInt32();
+                        tag.Price = reader.ReadInt32();
+                        if (tag.Price > 0) result.Prices.Add(tag);
                     }
                 }
             }
@@ -127,6 +170,10 @@ namespace OpenForBusiness
         public int Checks;
         /// <summary>The house this lot was last seen to be, once known (0 before).</summary>
         public short House;
+        /// <summary>The lot has just come from its file: on a business lot, the book has yet to be put onto it.</summary>
+        public bool Fresh;
+        /// <summary>On a business lot: objects restocked during this visit, and the object in the lot's file each stands in for.</summary>
+        public Dictionary<short, short> StandsInFor = new Dictionary<short, short>();
     }
 
     /// <summary>
@@ -176,11 +223,24 @@ namespace OpenForBusiness
         /// <summary>Called when a customer leaves the till without being served, on the game thread.</summary>
         public static Action<VM, string> OnLost;
 
+        /// <summary>
+        /// The family whose Sim is visiting this lot, or null if the lot is not being visited (it is a home being played,
+        /// or a lot being built with nobody on it). The game screen knows; the engine does not.
+        /// </summary>
+        public static Func<VM, FAMI> VisitingFamily;
+        /// <summary>
+        /// Writes a visited lot's book to this pack's file for it (null: no file). The game never saves a lot that is
+        /// being visited, so a business lot's book is written whenever it changes.
+        /// </summary>
+        public static Action<VM, byte[]> SaveVisitedBook;
+
+        public const string NotAShop = "A business can only be run from the family's home, or from a lot the family owns.";
+
         public static LotShop For(VM vm) => Shops.GetValue(vm, x => new LotShop());
 
         // ---- which lots, Sims and objects ----
 
-        /// <summary>A business can run where the family being played lives, not on a lot they are visiting.</summary>
+        /// <summary>The lot is the home of the family being played.</summary>
         public static bool IsHomeLot(VM vm)
         {
             if (vm == null || !vm.TS1) return false;
@@ -188,11 +248,38 @@ namespace OpenForBusiness
             return family != null && family.HouseNumber > 0 && family.HouseNumber == vm.GetGlobalValue(10);
         }
 
+        /// <summary>One of the family's Sims is visiting this lot, which is not their home.</summary>
+        public static bool IsVisiting(VM vm)
+        {
+            return vm != null && vm.TS1 && !IsHomeLot(vm) && VisitingFamily?.Invoke(vm) != null;
+        }
+
+        /// <summary>The lot is being visited by the family that owns it as a business.</summary>
+        public static bool IsBusinessLot(VM vm)
+        {
+            if (!IsVisiting(vm)) return false;
+            var owner = BookOf(vm).Owner;
+            return owner != 0 && owner == VisitingFamily(vm).ChunkID;
+        }
+
+        /// <summary>A business can run where the family being played lives, and on a lot it owns while one of them is there.</summary>
+        public static bool IsShop(VM vm)
+        {
+            return IsHomeLot(vm) || IsBusinessLot(vm);
+        }
+
+        /// <summary>The family being played: the one that lives here, or the one whose Sim is visiting.</summary>
+        public static FAMI Family(VM vm)
+        {
+            if (vm == null || !vm.TS1) return null;
+            return vm.TS1State?.CurrentFamily ?? VisitingFamily?.Invoke(vm);
+        }
+
         public static bool InFamily(VM vm, VMEntity sim)
         {
-            var family = vm.TS1State?.CurrentFamily;
-            return family != null && sim is VMAvatar avatar && !avatar.IsPet
-                && avatar.GetPersonData(VMPersonDataVariable.TS1FamilyNumber) == family.ChunkID;
+            var family = Family(vm);
+            return family?.FamilyGUIDs != null && sim is VMAvatar avatar && !avatar.IsPet
+                && family.FamilyGUIDs.Contains(avatar.Object.OBJ.GUID);
         }
 
         /// <summary>A customer is a visiting neighbour: not one of the family, not a pet, and not a maid, burglar or other NPC.</summary>
@@ -238,11 +325,12 @@ namespace OpenForBusiness
         /// <summary>Puts an object up for sale. Returns null, or why not.</summary>
         public static string SetPrice(VM vm, VMEntity obj, int price)
         {
-            if (!IsHomeLot(vm)) return "A business can only be run from the family's own home.";
+            if (!IsShop(vm)) return NotAShop;
             if (CatalogItem(obj) == null) return "Only objects from the buy catalog can be sold.";
             if (price < 1 || price > MaxPrice) return "The price must be between 1 and " + MaxPrice + ".";
             if (IsTill(vm, obj)) return "The till is not for sale.";
             obj.MultitileGroup.SalePrice = price;
+            Tag(vm, obj.MultitileGroup, price);
             return null;
         }
 
@@ -250,6 +338,7 @@ namespace OpenForBusiness
         {
             if (obj?.MultitileGroup == null) return;
             obj.MultitileGroup.SalePrice = -1;
+            Tag(vm, obj.MultitileGroup, -1);
             var shop = For(vm);
             foreach (var gone in shop.Shoppers.Values.Where(x => x.Item == obj.MultitileGroup).ToList()) shop.Shoppers.Remove(gone.AvatarID);
         }
@@ -280,7 +369,7 @@ namespace OpenForBusiness
         /// <summary>The lot's till, if it has one that is still there.</summary>
         public static VMEntity Till(VM vm)
         {
-            if (!IsHomeLot(vm)) return null;
+            if (!IsShop(vm)) return null;
             var book = BookOf(vm);
             if (book.TillID == 0) return null;
             var till = vm.GetObjectById(book.TillID);
@@ -291,7 +380,7 @@ namespace OpenForBusiness
 
         public static bool IsTill(VM vm, VMEntity obj)
         {
-            if (obj?.MultitileGroup == null || !IsHomeLot(vm)) return false;
+            if (obj?.MultitileGroup == null || !IsShop(vm)) return false;
             var id = BookOf(vm).TillID;
             return id != 0 && obj.MultitileGroup.Objects.Any(x => x.ObjectID == id);
         }
@@ -299,16 +388,19 @@ namespace OpenForBusiness
         /// <summary>Makes an object the lot's till, in place of any other. Returns null, or why not.</summary>
         public static string SetTill(VM vm, VMEntity obj)
         {
-            if (!IsHomeLot(vm)) return "A business can only be run from the family's own home.";
+            if (!IsShop(vm)) return NotAShop;
             if (!(obj is VMGameObject) || obj.MultitileGroup?.BaseObject == null) return "That cannot be a till.";
             TakeOffSale(vm, obj);
             BookOf(vm).TillID = obj.MultitileGroup.BaseObject.ObjectID;
+            Changed(vm);
             return null;
         }
 
         public static void RemoveTill(VM vm)
         {
-            if (IsHomeLot(vm)) BookOf(vm).TillID = 0;
+            if (!IsShop(vm)) return;
+            BookOf(vm).TillID = 0;
+            Changed(vm);
         }
 
         /// <summary>Someone tends the till while one of the family stands by it.</summary>
@@ -336,7 +428,7 @@ namespace OpenForBusiness
 
         public static long RestockCost(VM vm)
         {
-            return IsHomeLot(vm) ? BookOf(vm).Shelves.Sum(x => (long)RestockCost(x)) : 0;
+            return IsShop(vm) ? BookOf(vm).Shelves.Sum(x => (long)RestockCost(x)) : 0;
         }
 
         public struct RestockResult
@@ -353,8 +445,9 @@ namespace OpenForBusiness
         public static RestockResult Restock(VM vm)
         {
             var result = new RestockResult();
-            if (!IsHomeLot(vm)) return result;
-            var family = vm.TS1State.CurrentFamily;
+            if (!IsShop(vm)) return result;
+            var family = Family(vm);
+            var shop = For(vm);
             var book = BookOf(vm);
             foreach (var shelf in book.Shelves.ToList())
             {
@@ -369,7 +462,7 @@ namespace OpenForBusiness
                     result.CannotAfford++;
                     continue;
                 }
-                if (!Place(vm, shelf, cost))
+                if (!Place(vm, shop, book, shelf, cost))
                 {
                     result.Blocked++;
                     continue;
@@ -379,11 +472,12 @@ namespace OpenForBusiness
                 result.Restocked++;
                 result.Spent += cost;
             }
+            Changed(vm);
             return result;
         }
 
         /// <summary>Puts a new object on a shelf, the way buying one from the catalog does (VMNetBuyObjectCmd).</summary>
-        private static bool Place(VM vm, Shelf shelf, int cost)
+        private static bool Place(VM vm, LotShop shop, ShopBook book, Shelf shelf, int cost)
         {
             VMMultitileGroup group = null;
             try
@@ -401,6 +495,13 @@ namespace OpenForBusiness
                 group.InitialPrice = cost;
                 group.SalePrice = shelf.Price;
                 var placed = group.BaseObject;
+                if (shelf.SourceID != 0)
+                {
+                    //on a business lot the new object lasts only for this visit: next time, the one in the file is back in its place
+                    shop.StandsInFor[placed.ObjectID] = shelf.SourceID;
+                    book.Prices.RemoveAll(x => x.ObjectID == shelf.SourceID);
+                    book.Prices.Add(new PriceTag() { ObjectID = shelf.SourceID, GUID = shelf.GUID, Price = shelf.Price });
+                }
                 vm.GlobalLink?.RegisterNewObject(vm, placed, (short objID, uint pid) =>
                 {
                     var obj = vm.GetObjectById(objID);
@@ -416,9 +517,142 @@ namespace OpenForBusiness
             }
         }
 
-        public static void ForgetShelves(VM vm)
+        /// <summary>
+        /// Forgets the empty shelves. Not on a business lot: there the sold objects are still in the lot's file, and
+        /// forgetting them would bring them back for nothing on the next visit.
+        /// </summary>
+        public static bool ForgetShelves(VM vm)
         {
-            if (IsHomeLot(vm)) BookOf(vm).Shelves.Clear();
+            if (!IsHomeLot(vm)) return false;
+            BookOf(vm).Shelves.Clear();
+            return true;
+        }
+
+        // ---- a business lot ----
+
+        /// <summary>The object in the lot's file that this one is, or stands in for.</summary>
+        private static short SourceOf(LotShop shop, VMMultitileGroup item)
+        {
+            var id = item.BaseObject.ObjectID;
+            return shop.StandsInFor.TryGetValue(id, out var source) ? source : id;
+        }
+
+        /// <summary>On a business lot, notes an object's price in the book (or takes it out, below 1). At home the lot's save holds it.</summary>
+        private static void Tag(VM vm, VMMultitileGroup item, int price)
+        {
+            if (!IsBusinessLot(vm) || item?.BaseObject == null) return;
+            var book = BookOf(vm);
+            var source = SourceOf(For(vm), item);
+            book.Prices.RemoveAll(x => x.ObjectID == source);
+            if (price > 0) book.Prices.Add(new PriceTag() { ObjectID = source, GUID = GuidOf(item.BaseObject), Price = price });
+            Changed(vm);
+        }
+
+        /// <summary>A business lot's book has changed: write it now, since the lot itself will not be saved.</summary>
+        private static void Changed(VM vm)
+        {
+            if (!IsVisiting(vm)) return;
+            var book = BookOf(vm);
+            SaveVisitedBook?.Invoke(vm, book.Empty ? null : book.Save());
+        }
+
+        /// <summary>
+        /// A business lot has just come from its file, as it was built. Put the book onto it: take out what has sold
+        /// and not been restocked, and price what is for sale. An entry whose object is no longer in the file (the lot
+        /// has been rebuilt since) is dropped.
+        /// </summary>
+        private static void PutBookOnLot(VM vm, LotShop shop)
+        {
+            var book = BookOf(vm);
+            var dropped = 0;
+            VMEntity Find(short id, uint guid)
+            {
+                var obj = vm.GetObjectById(id);
+                if (!(obj is VMGameObject) || obj.Dead || obj.MultitileGroup?.BaseObject == null) return null;
+                return (GuidOf(obj.MultitileGroup.BaseObject) == guid) ? obj : null;
+            }
+            foreach (var shelf in book.Shelves.ToList())
+            {
+                var obj = (shelf.SourceID == 0) ? null : Find(shelf.SourceID, shelf.GUID);
+                if (obj == null)
+                {
+                    book.Shelves.Remove(shelf);
+                    dropped++;
+                    continue;
+                }
+                shelf.Position = obj.MultitileGroup.BaseObject.Position;
+                shelf.Direction = obj.MultitileGroup.BaseObject.Direction;
+                obj.MultitileGroup.Delete(vm.Context);
+            }
+            foreach (var tag in book.Prices.ToList())
+            {
+                var obj = Find(tag.ObjectID, tag.GUID);
+                if (obj == null || CatalogItem(obj) == null)
+                {
+                    book.Prices.Remove(tag);
+                    dropped++;
+                    continue;
+                }
+                obj.MultitileGroup.SalePrice = tag.Price;
+            }
+            Console.WriteLine($"[business] business lot {shop.House}: {book.Prices.Count} for sale, {book.Shelves.Count} sold out" + ((dropped > 0) ? $", {dropped} no longer there" : ""));
+            if (dropped > 0) Changed(vm);
+        }
+
+        /// <summary>What a lot costs to buy as a business: its value as the neighbourhood has it, and never less than this.</summary>
+        public const int LeastLotPrice = 5000;
+
+        public static int LotPrice(VM vm)
+        {
+            var info = vm?.TS1State?.SimulationInfo;
+            if (info == null) return LeastLotPrice;
+            long built = (long)info.LotValue + info.ObjectsValue + info.ArchitectureValue;
+            return (int)Math.Min(MaxPrice * 10L, Math.Max(LeastLotPrice, Math.Max(info.PurchaseValue, built)));
+        }
+
+        /// <summary>The visiting family buys the lot as a business. Returns null, or why not.</summary>
+        public static string BuyLot(VM vm)
+        {
+            if (IsHomeLot(vm)) return "This is the family's home. It can already run a business.";
+            if (!IsVisiting(vm)) return "Visit a lot with one of the family to buy it as a business.";
+            var family = Family(vm);
+            var book = BookOf(vm);
+            if (book.Owner == family.ChunkID) return "The family already owns this lot.";
+            if (book.Owner != 0) return "This lot belongs to another family's business.";
+            var price = LotPrice(vm);
+            if (family.Budget < price) return $"This lot costs §{price:##,#0}. The family has §{family.Budget:##,#0}.";
+            family.Budget -= price;
+            book.Owner = family.ChunkID;
+            book.PricePaid = price;
+            Changed(vm);
+            Console.WriteLine($"[business] family {family.ChunkID} bought lot {For(vm).House} for {price}");
+            return null;
+        }
+
+        /// <summary>
+        /// The family sells its business lot for what it paid. The lot goes back to how it was built: next visit,
+        /// everything that sold is back and nothing has a price. The totals are kept.
+        /// </summary>
+        public static string SellLot(VM vm, out int refund)
+        {
+            refund = 0;
+            if (!IsBusinessLot(vm)) return "The family does not own this lot.";
+            var family = Family(vm);
+            var book = BookOf(vm);
+            var shop = For(vm);
+            foreach (var item in ForSale(vm)) item.SalePrice = -1;
+            shop.Shoppers.Clear();
+            shop.StandsInFor.Clear();
+            refund = book.PricePaid;
+            family.Budget += refund;
+            book.Owner = 0;
+            book.PricePaid = 0;
+            book.TillID = 0;
+            book.Prices.Clear();
+            book.Shelves.Clear();
+            SaveVisitedBook?.Invoke(vm, book.Empty ? null : book.Save()); //(not Changed: the lot is still being visited, but is no longer a shop)
+            Console.WriteLine($"[business] family {family.ChunkID} sold lot {shop.House} for {refund}");
+            return null;
         }
 
         // ---- the lot's tick ----
@@ -426,9 +660,14 @@ namespace OpenForBusiness
         public static void Tick(VM vm)
         {
             var shop = For(vm);
+            if (shop.Fresh)
+            {
+                shop.Fresh = false;
+                if (IsBusinessLot(vm)) PutBookOnLot(vm, shop);
+            }
             if (++shop.Ticks < TicksPerCheck) return;
             shop.Ticks = 0;
-            if (!IsHomeLot(vm)) return;
+            if (!IsShop(vm)) return;
             NoteHouse(vm, shop);
             shop.Checks++;
 
@@ -552,7 +791,8 @@ namespace OpenForBusiness
 
         private static void Sell(VM vm, LotShop shop, VMMultitileGroup item, VMAvatar buyer)
         {
-            var family = vm.TS1State.CurrentFamily;
+            var family = Family(vm);
+            var business = IsBusinessLot(vm);
             var price = item.SalePrice;
             var name = NameOf(item.BaseObject);
             var buyerName = buyer.Name;
@@ -563,8 +803,14 @@ namespace OpenForBusiness
                 GUID = GuidOf(item.BaseObject),
                 Position = item.BaseObject.Position,
                 Direction = item.BaseObject.Direction,
-                Price = price
+                Price = price,
+                SourceID = business ? SourceOf(shop, item) : (short)0
             };
+            if (business)
+            {
+                book.Prices.RemoveAll(x => x.ObjectID == shelf.SourceID);
+                shop.StandsInFor.Remove(item.BaseObject.ObjectID);
+            }
 
             item.SalePrice = -1;
             item.Delete(vm.Context);
@@ -574,6 +820,7 @@ namespace OpenForBusiness
             book.Sold++;
             book.Takings += price;
             Note(shop, $"{name} to {buyerName} for §{price:##,#0}");
+            Changed(vm);
             Console.WriteLine($"[business] sold {name} to {buyerName} for {price}");
             OnSale?.Invoke(vm, name, buyerName, price);
         }
@@ -582,6 +829,7 @@ namespace OpenForBusiness
         {
             var name = customer.Name;
             BookFor(shop.House).Lost++;
+            Changed(vm);
             Note(shop, $"{name} gave up waiting at the till ({NameOf(item.BaseObject)})");
             Console.WriteLine($"[business] {name} left the till without being served");
             OnLost?.Invoke(vm, name);
@@ -605,7 +853,6 @@ namespace OpenForBusiness
         private static void NoteHouse(VM vm, LotShop shop)
         {
             var house = vm.GetGlobalValue(10);
-            if (shop.House == house) return;
             shop.House = house;
             if (LoadedBooks.TryGetValue(vm, out var loaded))
             {
@@ -626,6 +873,7 @@ namespace OpenForBusiness
         {
             LoadedBooks.Remove(vm);
             LoadedBooks.Add(vm, ShopBook.Load(data));
+            For(vm).Fresh = true;
         }
 
         /// <summary>The book to write beside a lot's save, or null if it has no business to speak of.</summary>
