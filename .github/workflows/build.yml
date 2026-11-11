@@ -60,6 +60,8 @@ jobs:
       run: dotnet build CreateAStyle/CreateAStyle.csproj -c Release
     - name: Build Cut Content
       run: dotnet build CutContent/CutContent.csproj -c Release
+    - name: Build Diagonal Doors, Stairs and Pools
+      run: dotnet build DiagonalDoors/DiagonalDoors.csproj -c Release
 
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
@@ -117,6 +119,11 @@ jobs:
       with:
         name: CutContent
         path: CutContent/pack/
+    - name: Upload Diagonal Doors, Stairs and Pools
+      uses: actions/upload-artifact@v4
+      with:
+        name: DiagonalDoors
+        path: DiagonalDoors/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube

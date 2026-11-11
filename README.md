@@ -21,6 +21,7 @@ These packs need a build of Simitone with add-on pack support, which at the mome
 | [Foundations](Foundations) | Code, patches the engine | Foundations and decks, as in The Sims 2: raise a house's ground floor a few steps, with everything on it. In build mode under Terrain. The largest port here: an engine change of about 2,300 lines in 24 files, with nothing in the engine changed. |
 | [Create a Style](CreateAStyle) | Code, patches the engine | Recolour any object, one part at a time, as in The Sims 3. In build mode, the Style Brush under Wall Coverings. Styles are saved with each lot, in the pack's own file. Experimental, and not yet played. |
 | [Cut Content](CutContent) | Code, patches the engine | Restores features Maxis left unfinished in The Sims and its expansions: switched off interactions (hug a tree, children kiss toads, lock doors and others), the unused ghost sting and Superstar's Information Kiosk. A first stage, not yet run against a game. Needs the game in English. |
+| [Diagonal Doors, Stairs and Pools](DiagonalDoors) | Code, patches the engine | Build on the diagonal, as in The Sims 2: doors and windows in diagonal walls, stairs that turn 45 degrees, and pools with diagonal edges (the pool tool with Shift). Doors and stairs in full 3D only. Experimental. |
 | [Test Cube](TestCube) | Content | One object, a plain grey cube with no behaviour, under Decorative > Other. For checking that content packs load. |
 
 ## Installing a pack
@@ -50,6 +51,7 @@ dotnet build TryForBaby/TryForBaby.csproj -c Release
 dotnet build Foundations/Foundations.csproj -c Release
 dotnet build CreateAStyle/CreateAStyle.csproj -c Release
 dotnet build CutContent/CutContent.csproj -c Release
+dotnet build DiagonalDoors/DiagonalDoors.csproj -c Release
 ```
 
 Each build leaves the finished pack in the project's `pack/` folder, for example
