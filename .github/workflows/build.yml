@@ -47,6 +47,9 @@ jobs:
     - name: Build Terrain Paint
       run: dotnet build TerrainPaint/TerrainPaint.csproj -c Release
 
+    - name: Build Roof Tool
+      run: dotnet build RoofTool/RoofTool.csproj -c Release
+
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
 
@@ -70,6 +73,13 @@ jobs:
       with:
         name: TerrainPaint
         path: TerrainPaint/pack/
+        if-no-files-found: error
+
+    - name: Upload Roof Tool
+      uses: actions/upload-artifact@v4
+      with:
+        name: RoofTool
+        path: RoofTool/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube

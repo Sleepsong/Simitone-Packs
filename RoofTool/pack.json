@@ -1,0 +1,9 @@
+{
+  "id": "sample.rooftool",
+  "name": "Roof Tool",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Draw your own roofs, as in The Sims 2: hip, gable and shed roofs with a pitch each, instead of the automatic roof. In build mode, under Roofs. Experimental.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "RoofTool.dll"
+}
