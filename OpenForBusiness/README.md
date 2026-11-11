@@ -3,7 +3,7 @@
 A home business for The Sims 1, after **The Sims 2: Open for Business**. Nothing from The Sims 2 is
 used: this is the idea, built again on The Sims 1's engine.
 
-**These are stages 1 to 3 of several**, and they have not been played yet: see [State](#state).
+**All four stages are here**, and none has been played yet: see [State](#state).
 
 ## Stage 1: selling from home
 
@@ -72,25 +72,64 @@ Pointing at the till shows how many customers have something in mind.
 
 Another family visiting an owned lot sees it as it was built, and cannot buy it.
 
+## Stage 4: employees, rank and perks
+
+- **Hire.** Click a visiting neighbour and choose **Business > Hire (§20 an hour)**. An employee
+  tends the till: they are sent to it, sent back if they wander, and customers are rung up while
+  they stand by it, as with one of the family. A business can have three. **Business > Dismiss**
+  lets one go.
+- **Wages.** Each hour of the game's clock, every employee on the lot is paid §20, as long as the
+  business has a till. One the family cannot pay leaves the business.
+- **An employee works when they are there.** This pack cannot call a Sim to the lot. An employee is
+  a neighbour who, whenever they are on the lot, tends the till and does not shop.
+- **Customers remember.** Each customer has between -5 and 5 stars for the business:
+
+  | What happens | Stars |
+  |---|---|
+  | They buy at three quarters of the catalog's price or less | +2 |
+  | They buy at up to the catalog's price | +1 |
+  | They buy above the catalog's price | 0 |
+  | They look at something at one and a half times the catalog's price or more, and do not buy | -1 |
+  | They give up waiting at the till | -2 |
+
+  Each star makes that customer 4 points more likely to buy, or less for a star below none.
+- **Rank.** All the customers' stars together are the business's standing. Standing of 4, 10, 18, 28
+  and 40 stars makes ranks 1 to 5. A rank, once reached, is kept. You are told when it rises.
+- **Perks.** Each rank brings one perk to choose. `business perks` lists them, and
+  `business perk <word>` takes one:
+
+  | Perk | Word | What it does |
+  |---|---|---|
+  | Wholesale | `wholesale` | Restocking costs 20% less |
+  | Salesmanship | `salesmanship` | Customers are 10 points more likely to buy |
+  | Word of Mouth | `wordofmouth` | Visitors look at what is for sale one and a half times as often |
+  | Patient Customers | `patience` | Customers wait twice as long at the till |
+  | Quick Hands | `quickhands` | Ringing a customer up takes a third of the time |
+
+A chance to buy is never above 95%, and what nobody would buy (twice the catalog's price) still
+does not sell, whatever the stars and perks. Each home and each business lot has its own customers'
+stars, rank, perks and employees.
+
 ## The books
 
 The `business` console command (Ctrl+Shift+C) shows what is for sale, what has sold out and what
-restocking would cost, the till and whether anyone is at it, the latest sales and lost customers, and
-the house's totals.
+restocking would cost, the till and whether anyone is at it, the latest sales and lost customers, the
+rank and the stars behind it, the employees and their wages, and the house's totals.
 
-## What is still to come
+## The stages
 
 | Stage | What | State |
 |---|---|---|
 | 1 | Home business: prices, visitors who buy, the takings | This pack |
 | 2 | Restocking sold objects, a till and someone to tend it | This pack |
 | 3 | A business lot the family owns apart from its home | This pack |
-| 4 | Employees, then business rank, customer loyalty and perks | Not started |
+| 4 | Employees, then business rank, customer loyalty and perks | This pack |
 
 ## State
 
 It builds, and its patches apply to the `addon-packs` build of Simitone (all five target methods are
-found and patched). The price table and the saved book are checked by a small test. **It has not
+found and patched). The price table, the stars, ranks and perks, and the saved book (with the files
+of every earlier stage) are checked by a small test. **It has not
 been run with the game**, because that needs a copy of The Sims. The parts that only playing can show:
 
 - That visiting neighbours are the Sims with person type 1, as the engine's code suggests.
@@ -100,6 +139,9 @@ been run with the game**, because that needs a copy of The Sims. The parts that 
 - That a restocked object goes back exactly as it was, above all one that stood on a table or shelf.
   It is placed the way buying from the catalog places it.
 - How the menu entries and the price question look.
+- That the business's entries appear on a visiting Sim's menu, for hiring.
+- That the Sim's own number, which customers and employees are remembered by, is the same on every
+  visit, as it is for the neighbours the game keeps.
 - On a business lot: that the game keeps the family's money as it is when the Sim goes home, that the
   Sims the game brings to a community lot count as customers, and that taking out the sold objects
   as the lot loads leaves it sound.
@@ -125,8 +167,12 @@ pack leaves that alone, so the family can use what is on show and reprice it fro
 3. The lot ticks: visitors look, walk over and buy. The walk uses the engine's own "go here" marker.
 4. The lot screen updates: if the engine showed no tooltip over a priced object, show its price.
 
+`Reputation.cs` is stage 4's rules as plain sums, with nothing of the game in them: what a sale or a
+wait is worth in stars, the ranks, and the perks.
+
 The business's book is this pack's own data for each lot, kept with `LotPackData`: the totals, which
-object is the till (objects keep their numbers in a lot's save) and the shelves that have sold out.
+object is the till (objects keep their numbers in a lot's save), the shelves that have sold out, the
+customers' stars, the rank and perks, and the employees.
 With the pack off, prices stay in the save and do nothing.
 
 A business lot is different, because the game never saves a lot that is being visited: it is loaded

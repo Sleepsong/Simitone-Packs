@@ -1,9 +1,9 @@
 {
   "id": "sample.openforbusiness",
   "name": "Open for Business",
-  "version": "0.3",
+  "version": "0.4",
   "author": "Simitone",
-  "description": "A home business, after The Sims 2: Open for Business. Put objects in your house up for sale at a price you choose, and visiting Sims buy them. Restock what sells, make an object the till for one of the family to tend, and buy a community lot to run as a shop. Stages 1 to 3 of several. Experimental.",
+  "description": "A home business, after The Sims 2: Open for Business. Put objects in your house up for sale at a price you choose, and visiting Sims buy them. Restock what sells, make an object the till, hire visitors to tend it, buy a community lot to run as a shop, and earn rank and perks from happy customers. Experimental.",
   "minSimitoneVersion": "0.8.22",
   "assembly": "OpenForBusiness.dll"
 }
