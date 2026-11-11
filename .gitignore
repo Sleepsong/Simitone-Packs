@@ -6,3 +6,4 @@ dist/
 # built code packs: download them from the Actions page or build them yourself
 /BuildCheats/pack/
 /HalfWalls/pack/
+/TerrainPaint/pack/

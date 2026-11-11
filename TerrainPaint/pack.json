@@ -1,0 +1,9 @@
+{
+  "id": "sample.terrainpaint",
+  "name": "Terrain Paint",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Paint the ground with the game's terrain types (grass, sand, rock, snow and more), as in The Sims 2. In build mode, under Terrain. Experimental.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "TerrainPaint.dll"
+}
