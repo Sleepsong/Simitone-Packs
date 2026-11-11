@@ -1,0 +1,9 @@
+{
+  "id": "sample.createastyle",
+  "name": "Create a Style",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Recolour any object, one part at a time, as in The Sims 3. In build mode, the Style Brush under Wall Coverings. Experimental.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "CreateAStyle.dll"
+}
