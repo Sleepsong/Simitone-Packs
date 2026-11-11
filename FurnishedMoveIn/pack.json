@@ -1,0 +1,9 @@
+{
+  "id": "sample.furnishedmovein",
+  "name": "Furnished or Unfurnished",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Move in furnished or unfurnished, as in The Sims 3: an unfurnished house costs less and comes without its furniture. Experimental.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "FurnishedMoveIn.dll"
+}

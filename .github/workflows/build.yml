@@ -62,6 +62,8 @@ jobs:
       run: dotnet build CutContent/CutContent.csproj -c Release
     - name: Build Diagonal Doors, Stairs and Pools
       run: dotnet build DiagonalDoors/DiagonalDoors.csproj -c Release
+    - name: Build Furnished or Unfurnished
+      run: dotnet build FurnishedMoveIn/FurnishedMoveIn.csproj -c Release
 
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
@@ -124,6 +126,11 @@ jobs:
       with:
         name: DiagonalDoors
         path: DiagonalDoors/pack/
+    - name: Upload Furnished or Unfurnished
+      uses: actions/upload-artifact@v4
+      with:
+        name: FurnishedMoveIn
+        path: FurnishedMoveIn/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube
