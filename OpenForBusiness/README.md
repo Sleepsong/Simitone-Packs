@@ -3,7 +3,7 @@
 A home business for The Sims 1, after **The Sims 2: Open for Business**. Nothing from The Sims 2 is
 used: this is the idea, built again on The Sims 1's engine.
 
-**These are stages 1 and 2 of several**, and they have not been played yet: see [State](#state).
+**These are stages 1 to 3 of several**, and they have not been played yet: see [State](#state).
 
 ## Stage 1: selling from home
 
@@ -29,7 +29,7 @@ used: this is the idea, built again on The Sims 1's engine.
 
 Objects for sale stay usable. Something in use, or with something on it, is not taken until it is free.
 
-Only the family's own home can be a business, only objects that are in the buy catalog can be sold,
+A business runs in the family's own home, or on a lot the family owns (stage 3). Only objects that are in the buy catalog can be sold,
 and only visiting neighbours buy: not the family, pets, or the maid, the burglar and other NPCs.
 
 ## Stage 2: restocking, and a till
@@ -55,6 +55,23 @@ and only visiting neighbours buy: not the family, pets, or the maid, the burglar
 
 Pointing at the till shows how many customers have something in mind.
 
+## Stage 3: a business lot
+
+- **Buy a lot.** Send one of the family to a community lot (downtown, or anywhere else Sims visit).
+  The `business` console command says what the lot costs, and `business buy` buys it. The price is
+  the lot's value as the neighbourhood has it, and at least §5,000. A lot can belong to one family.
+- **Run it like home.** Whenever one of the family is on a lot they own, everything in stages 1 and 2
+  works there: price what is on the lot, make something the till, tend it, restock. The other Sims
+  on the lot are the customers.
+- **Stock it from the neighbourhood.** There is no buy mode on a lot you are visiting. To change what
+  the shop holds, edit the lot from the neighbourhood, then visit and price the new things.
+- **It stays as you left it.** What sold is still gone on your next visit, and prices, the till and
+  the takings are kept.
+- **Sell it.** `business sell`, on the lot, gives back what the family paid. The lot goes back to how
+  it was built: on the next visit everything that sold is there again and nothing has a price.
+
+Another family visiting an owned lot sees it as it was built, and cannot buy it.
+
 ## The books
 
 The `business` console command (Ctrl+Shift+C) shows what is for sale, what has sold out and what
@@ -67,7 +84,7 @@ the house's totals.
 |---|---|---|
 | 1 | Home business: prices, visitors who buy, the takings | This pack |
 | 2 | Restocking sold objects, a till and someone to tend it | This pack |
-| 3 | A business lot the family owns apart from its home | Not started |
+| 3 | A business lot the family owns apart from its home | This pack |
 | 4 | Employees, then business rank, customer loyalty and perks | Not started |
 
 ## State
@@ -83,6 +100,9 @@ been run with the game**, because that needs a copy of The Sims. The parts that 
 - That a restocked object goes back exactly as it was, above all one that stood on a table or shelf.
   It is placed the way buying from the catalog places it.
 - How the menu entries and the price question look.
+- On a business lot: that the game keeps the family's money as it is when the Sim goes home, that the
+  Sims the game brings to a community lot count as customers, and that taking out the sold objects
+  as the lot loads leaves it sound.
 
 There is nothing in the world to mark an empty shelf: that would need a new object, and this pack has
 only code. The `business` command and the till's menu say how many there are.
@@ -105,9 +125,14 @@ pack leaves that alone, so the family can use what is on show and reprice it fro
 3. The lot ticks: visitors look, walk over and buy. The walk uses the engine's own "go here" marker.
 4. The lot screen updates: if the engine showed no tooltip over a priced object, show its price.
 
-The totals (objects sold, money taken) are this pack's own data for each lot, kept with
-`LotPackData`. With the pack off, prices stay in the save and do nothing.
-
 The business's book is this pack's own data for each lot, kept with `LotPackData`: the totals, which
 object is the till (objects keep their numbers in a lot's save) and the shelves that have sold out.
 With the pack off, prices stay in the save and do nothing.
+
+A business lot is different, because the game never saves a lot that is being visited: it is loaded
+from its file each time, as it was built. So the lot's file is left alone, and the book also holds who
+owns the lot, what is priced and what has sold, each by the object's number in the file. The book is
+written whenever it changes, and put back onto the lot each time the owners visit: sold objects are
+taken out and prices put on. An object restocked during a visit lasts for that visit; next time the
+one in the file is simply left in place. If the lot has been rebuilt and an object is no longer where
+the book says, that entry is dropped.
