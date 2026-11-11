@@ -58,6 +58,8 @@ jobs:
 
     - name: Build Create a Style
       run: dotnet build CreateAStyle/CreateAStyle.csproj -c Release
+    - name: Build Cut Content
+      run: dotnet build CutContent/CutContent.csproj -c Release
 
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
@@ -110,6 +112,11 @@ jobs:
       with:
         name: CreateAStyle
         path: CreateAStyle/pack/
+    - name: Upload Cut Content
+      uses: actions/upload-artifact@v4
+      with:
+        name: CutContent
+        path: CutContent/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube
