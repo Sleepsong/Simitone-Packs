@@ -23,6 +23,7 @@ These packs need a build of Simitone with add-on pack support, which at the mome
 | [Cut Content](CutContent) | Code, patches the engine | Restores features Maxis left unfinished in The Sims and its expansions: switched off interactions (hug a tree, children kiss toads, lock doors and others), the unused ghost sting and Superstar's Information Kiosk. A first stage, not yet run against a game. Needs the game in English. |
 | [Diagonal Doors, Stairs and Pools](DiagonalDoors) | Code, patches the engine | Build on the diagonal, as in The Sims 2: doors and windows in diagonal walls, stairs that turn 45 degrees, and pools with diagonal edges (the pool tool with Shift). Doors and stairs in full 3D only. Experimental. |
 | [Furnished or Unfurnished](FurnishedMoveIn) | Code, patches the engine | Move in furnished or unfurnished, as in The Sims 3: an unfurnished house costs less and comes without its furniture. What is built in stays: counters, the stove and fridge, plumbing, and wall and ceiling lights. Experimental. |
+| [Open for Business](OpenForBusiness) | Code, patches the engine | A home business, after The Sims 2: Open for Business. Put objects in your house up for sale at a price you choose, and visiting Sims buy them. Restock what sells, make an object the till, hire visitors to tend it, buy a community lot to run as a shop, and earn rank and perks from happy customers. Experimental, and not yet played. |
 | [Test Cube](TestCube) | Content | One object, a plain grey cube with no behaviour, under Decorative > Other. For checking that content packs load. |
 
 ## Installing a pack
@@ -54,6 +55,7 @@ dotnet build CreateAStyle/CreateAStyle.csproj -c Release
 dotnet build CutContent/CutContent.csproj -c Release
 dotnet build DiagonalDoors/DiagonalDoors.csproj -c Release
 dotnet build FurnishedMoveIn/FurnishedMoveIn.csproj -c Release
+dotnet build OpenForBusiness/OpenForBusiness.csproj -c Release
 ```
 
 Each build leaves the finished pack in the project's `pack/` folder, for example

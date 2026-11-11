@@ -64,6 +64,8 @@ jobs:
       run: dotnet build DiagonalDoors/DiagonalDoors.csproj -c Release
     - name: Build Furnished or Unfurnished
       run: dotnet build FurnishedMoveIn/FurnishedMoveIn.csproj -c Release
+    - name: Build Open for Business
+      run: dotnet build OpenForBusiness/OpenForBusiness.csproj -c Release
 
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
@@ -131,6 +133,11 @@ jobs:
       with:
         name: FurnishedMoveIn
         path: FurnishedMoveIn/pack/
+    - name: Upload Open for Business
+      uses: actions/upload-artifact@v4
+      with:
+        name: OpenForBusiness
+        path: OpenForBusiness/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube
