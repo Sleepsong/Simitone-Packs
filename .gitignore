@@ -15,3 +15,6 @@ dist/
 /DiagonalDoors/pack/
 /FurnishedMoveIn/pack/
 /OpenForBusiness/pack/
+# (Driveways keeps its object file in its pack folder: only what the build adds is ignored)
+/Driveways/pack/driveways/Driveways.dll
+/Driveways/pack/driveways/pack.json

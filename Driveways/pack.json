@@ -1,0 +1,9 @@
+{
+  "id": "sample.driveways",
+  "name": "Driveways",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "A driveway piece and a car your Sims can take for a drive, as in The Sims 2 Nightlife. Both are in buy mode under Decorative > Other. Experimental.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "Driveways.dll"
+}

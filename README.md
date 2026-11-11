@@ -24,6 +24,7 @@ These packs need a build of Simitone with add-on pack support, which at the mome
 | [Diagonal Doors, Stairs and Pools](DiagonalDoors) | Code, patches the engine | Build on the diagonal, as in The Sims 2: doors and windows in diagonal walls, stairs that turn 45 degrees, and pools with diagonal edges (the pool tool with Shift). Doors and stairs in full 3D only. Experimental. |
 | [Furnished or Unfurnished](FurnishedMoveIn) | Code, patches the engine | Move in furnished or unfurnished, as in The Sims 3: an unfurnished house costs less and comes without its furniture. What is built in stays: counters, the stove and fridge, plumbing, and wall and ceiling lights. Experimental. |
 | [Open for Business](OpenForBusiness) | Code, patches the engine | A home business, after The Sims 2: Open for Business. Put objects in your house up for sale at a price you choose, and visiting Sims buy them. Restock what sells, make an object the till, hire visitors to tend it, buy a community lot to run as a shop, and earn rank and perks from happy customers. Experimental, and not yet played. |
+| [Driveways](Driveways) | Content and code, patches the engine | A driveway piece and a car your Sims can take for a drive, as in The Sims 2 Nightlife. In buy mode under Decorative > Other. A first stage, not yet run in the game. |
 | [Test Cube](TestCube) | Content | One object, a plain grey cube with no behaviour, under Decorative > Other. For checking that content packs load. |
 
 ## Installing a pack
@@ -56,6 +57,7 @@ dotnet build CutContent/CutContent.csproj -c Release
 dotnet build DiagonalDoors/DiagonalDoors.csproj -c Release
 dotnet build FurnishedMoveIn/FurnishedMoveIn.csproj -c Release
 dotnet build OpenForBusiness/OpenForBusiness.csproj -c Release
+dotnet build Driveways/Driveways.csproj -c Release
 ```
 
 Each build leaves the finished pack in the project's `pack/` folder, for example
@@ -69,13 +71,21 @@ Test Cube's object file is committed, since it is data rather than code. It was 
 dotnet run --project TestCube/generator -- TestCube/pack/testcube/content/Downloads
 ```
 
+Driveways' object file is committed in the same way, and its build puts the pack's `.dll` beside it.
+`Driveways/generator` writes it again:
+
+```bash
+dotnet run --project Driveways/generator -- Driveways/pack/driveways/content/Downloads
+```
+
 ## Writing your own
 
 `PACKS.md` in the Simitone repository describes the pack format and what a pack's code can do. The
 packs here are meant to be copied from: Test Cube for content, Build Cheats for code that uses
 Simitone's own hooks, Half Walls for code that patches the engine with Harmony, Terrain Paint for
-a larger feature with its own build tool, drawing and saved data, and Roof Tool for one that takes
-over part of what the engine does.
+a larger feature with its own build tool, drawing and saved data, Roof Tool for one that takes
+over part of what the engine does, and Driveways for objects whose scripts call a primitive the pack
+adds.
 
 ## License
 

@@ -67,6 +67,15 @@ jobs:
     - name: Build Open for Business
       run: dotnet build OpenForBusiness/OpenForBusiness.csproj -c Release
 
+    - name: Build Driveways
+      run: dotnet build Driveways/Driveways.csproj -c Release
+
+    - name: Test Driveways' route planning
+      run: dotnet run --project Driveways/tests -c Release
+
+    - name: Check the Driveways objects can be regenerated
+      run: dotnet run --project Driveways/generator -c Release -- "$RUNNER_TEMP/driveways"
+
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
 
@@ -138,6 +147,13 @@ jobs:
       with:
         name: OpenForBusiness
         path: OpenForBusiness/pack/
+        if-no-files-found: error
+
+    - name: Upload Driveways
+      uses: actions/upload-artifact@v4
+      with:
+        name: Driveways
+        path: Driveways/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube
