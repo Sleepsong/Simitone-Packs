@@ -19,6 +19,7 @@ These packs need a build of Simitone with add-on pack support, which at the mome
 | [Roof Tool](RoofTool) | Code, patches the engine | Draw your own roofs, as in The Sims 2: hip, gable and shed roofs with a pitch each, in place of the automatic roof. In build mode under Roofs. Drawn roofs are saved with each lot, in the pack's own file. Experimental. |
 | [Try for Baby](TryForBaby) | Code, patches the engine | Try for Baby, as in The Sims 2: WooHoo in the Vibromatic Heart Bed with a 50% chance of a baby, 1 in 10 of them twins. Needs Livin' Large and the game in English. Experimental. |
 | [Foundations](Foundations) | Code, patches the engine | Foundations and decks, as in The Sims 2: raise a house's ground floor a few steps, with everything on it. In build mode under Terrain. The largest port here: an engine change of about 2,300 lines in 24 files, with nothing in the engine changed. |
+| [Create a Style](CreateAStyle) | Code, patches the engine | Recolour any object, one part at a time, as in The Sims 3. In build mode, the Style Brush under Wall Coverings. Styles are saved with each lot, in the pack's own file. Experimental, and not yet played. |
 | [Test Cube](TestCube) | Content | One object, a plain grey cube with no behaviour, under Decorative > Other. For checking that content packs load. |
 
 ## Installing a pack
@@ -46,6 +47,7 @@ dotnet build TerrainPaint/TerrainPaint.csproj -c Release
 dotnet build RoofTool/RoofTool.csproj -c Release
 dotnet build TryForBaby/TryForBaby.csproj -c Release
 dotnet build Foundations/Foundations.csproj -c Release
+dotnet build CreateAStyle/CreateAStyle.csproj -c Release
 ```
 
 Each build leaves the finished pack in the project's `pack/` folder, for example
