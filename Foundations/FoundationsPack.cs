@@ -42,10 +42,9 @@ namespace FoundationsPack
     ///   8. Walls and roofs stand on the foundation.
     ///   9. The build catalog.
     ///
-    /// Not done yet (stage 2: what a foundation looks like): its sides, bare tops, decks and steps models, the ground
-    /// under column decks, painting its sides, and wall-hung objects on its edge.
+    /// What a foundation looks like (stage 2, parts 10 to 14) is in FoundationsDrawing.cs.
     /// </summary>
-    public class FoundationsPack : ISimitonePack
+    public partial class FoundationsPack : ISimitonePack
     {
         private static string PackId;
 
@@ -110,6 +109,8 @@ namespace FoundationsPack
             harmony.Patch(Find(typeof(RoofComponent), "ToWorldPos"), postfix: Mine(nameof(RaiseRoof)));
             // 9
             harmony.Patch(Find(typeof(UIBuyBrowsePanel), "AddTerrainTools"), postfix: Mine(nameof(AddFoundationTools)));
+            // 10 to 14: what a foundation looks like (FoundationsDrawing.cs)
+            ApplyDrawing(harmony);
         }
 
         // ---- 1. previews: keep the preview copy in step with the engine's ----
@@ -211,6 +212,7 @@ namespace FoundationsPack
                 if (bp != null)
                 {
                     Lots.Shown(bp).Foundations = lot.Foundations;
+                    SyncSteps(bp);
                     if (bp.Terrain != null) bp.Terrain.TerrainDirty = true;
                     //everything standing on the changed tiles goes up or down with them
                     if (vm != null) foreach (var ent in vm.Entities) RefreshAltitude(ent.WorldUI);
@@ -219,6 +221,7 @@ namespace FoundationsPack
             else if (bp != null && !lot.ShowingVis && Lots.Shown(bp).Foundations != lot.Foundations)
             {
                 Lots.Shown(bp).Foundations = lot.Foundations;
+                SyncSteps(bp);
             }
             if (__state) lot.VisChanged = false; //(the tick is about to run the build tool's preview)
         }
@@ -232,6 +235,7 @@ namespace FoundationsPack
             var bp = FoundationsCode.WorldOf(__instance);
             if (bp == null) return;
             Lots.Shown(bp).Foundations = lot.VisChanged ? lot.VisFoundations : lot.Foundations;
+            SyncSteps(bp);
             if (bp.Terrain != null) bp.Terrain.TerrainDirty = true;
             lot.ShowingVis = lot.VisChanged;
         }
@@ -403,6 +407,7 @@ namespace FoundationsPack
             var map = Lots.Of(__instance);
             if (map == null || !map.Any) return;
             __result += map.RaiseAt(Position.X, Position.Y) * __instance.TerrainFactor;
+            if (Positioning != null) __result += WallHungRaise(__instance, map, Position); //(14)
         }
 
         private static AccessTools.FieldRef<TerrainComponent, Rectangle> TerrainSize;
@@ -423,11 +428,22 @@ namespace FoundationsPack
             var bp = TerrainBlueprint(__instance);
             var map = Lots.Of(bp);
             var vb = __instance.VertexBuffer;
+            var shown = Lots.Shown(bp);
+            shown.Ground?.Dispose();
+            shown.Ground = null;
             if (map == null || !map.Any || vb == null || vb.IsDisposed) return;
             var quads = TerrainSize(__instance).Width;
             if (vb.VertexCount != quads * quads * 4) return; //not the ground this was written for
             var geom = new TerrainParallaxVertex[vb.VertexCount];
             vb.GetData(geom);
+            // 11: the same ground, unraised, to draw under column decks
+            for (int i = 0; i < map.Raise.Length; i++)
+            {
+                if (!UnderOpenDeck(map, i)) continue;
+                shown.Ground = new VertexBuffer(vb.GraphicsDevice, typeof(TerrainParallaxVertex), geom.Length, BufferUsage.None);
+                shown.Ground.SetData(geom);
+                break;
+            }
             bool any = false;
             for (var y = 0; y < quads; y++)
             {
@@ -447,6 +463,7 @@ namespace FoundationsPack
 
         public static void RememberPosition(EntityComponent __instance, Vector3 value)
         {
+            Positioning = __instance; //(14: until the position has been set)
             Unraised.GetOrCreateValue(__instance).Value = value;
         }
 

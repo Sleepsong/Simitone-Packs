@@ -18,7 +18,7 @@ These packs need a build of Simitone with add-on pack support, which at the mome
 | [Terrain Paint](TerrainPaint) | Code, patches the engine | Paint the ground with the game's terrain types (grass, dark and autumn grass, sand, rock, snow, cloud), as in The Sims 2. In build mode under Terrain. Painted ground is saved with each lot, in the pack's own file. Experimental. |
 | [Roof Tool](RoofTool) | Code, patches the engine | Draw your own roofs, as in The Sims 2: hip, gable and shed roofs with a pitch each, in place of the automatic roof. In build mode under Roofs. Drawn roofs are saved with each lot, in the pack's own file. Experimental. |
 | [Try for Baby](TryForBaby) | Code, patches the engine | Try for Baby, as in The Sims 2: WooHoo in the Vibromatic Heart Bed with a 50% chance of a baby, 1 in 10 of them twins. Needs Livin' Large and the game in English. Experimental. |
-| [Foundations](Foundations) | Code, patches the engine | Foundations and decks, as in The Sims 2: raise a house's ground floor a few steps, with everything on it. In build mode under Terrain. **Work in progress:** everything stands on a foundation, but its own sides and steps are not drawn yet. |
+| [Foundations](Foundations) | Code, patches the engine | Foundations and decks, as in The Sims 2: raise a house's ground floor a few steps, with everything on it. In build mode under Terrain. The largest port here: an engine change of about 2,300 lines in 24 files, with nothing in the engine changed. |
 | [Test Cube](TestCube) | Content | One object, a plain grey cube with no behaviour, under Decorative > Other. For checking that content packs load. |
 
 ## Installing a pack

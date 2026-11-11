@@ -92,6 +92,14 @@ namespace FoundationsPack
         public class ShownFoundations
         {
             public FoundationMap Foundations;
+            /// <summary>
+            /// The ground without foundations raising it, where something open stands over it (a column deck): the lot's
+            /// own ground is drawn there from these. Null when there's nothing like that.
+            /// </summary>
+            public Microsoft.Xna.Framework.Graphics.VertexBuffer Ground;
+            /// <summary>The ground tiles under column decks, as indices into <see cref="Ground"/>.</summary>
+            public Microsoft.Xna.Framework.Graphics.IndexBuffer UnderDecks;
+            public int UnderDeckTiles;
         }
         private static ConditionalWeakTable<Blueprint, ShownFoundations> ByBlueprint = new ConditionalWeakTable<Blueprint, ShownFoundations>();
         public static ShownFoundations Shown(Blueprint bp) => ByBlueprint.GetOrCreateValue(bp);

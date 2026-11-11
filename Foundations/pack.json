@@ -1,9 +1,9 @@
 {
   "id": "sample.foundations",
   "name": "Foundations",
-  "version": "0.1",
+  "version": "0.2",
   "author": "Simitone",
-  "description": "Foundations and decks, as in The Sims 2: raise a house's ground floor a few steps, with everything on it. In build mode, under Terrain. Work in progress: the foundation's own sides and steps are not drawn yet.",
+  "description": "Foundations and decks, as in The Sims 2: raise a house's ground floor a few steps, with everything on it. In build mode, under Terrain.",
   "minSimitoneVersion": "0.8.22",
   "assembly": "Foundations.dll"
 }
