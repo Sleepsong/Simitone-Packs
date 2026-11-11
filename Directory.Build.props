@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <!-- Where Simitone's source is. Code packs are compiled against it.
+         By default: a "Simitone" folder inside this repository, or else one next to it.
+         Override with: dotnet build -p:SimitonePath=/path/to/Simitone -->
+    <SimitonePath Condition="'$(SimitonePath)' == '' And Exists('$(MSBuildThisFileDirectory)Simitone')">$(MSBuildThisFileDirectory)Simitone</SimitonePath>
+    <SimitonePath Condition="'$(SimitonePath)' == ''">$(MSBuildThisFileDirectory)..\Simitone</SimitonePath>
+  </PropertyGroup>
+</Project>

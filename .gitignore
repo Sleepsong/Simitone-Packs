@@ -1,0 +1,8 @@
+bin/
+obj/
+dist/
+# a checkout of Simitone to build against (see README)
+/Simitone/
+# built code packs: download them from the Actions page or build them yourself
+/BuildCheats/pack/
+/HalfWalls/pack/

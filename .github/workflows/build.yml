@@ -1,0 +1,70 @@
+name: Build packs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      simitone_ref:
+        description: 'Simitone branch, tag or commit to build the packs against'
+        required: false
+        default: 'addon-packs'
+
+env:
+  # Code packs are compiled against Simitone, and only work with a build of Simitone from the same code.
+  SIMITONE_REPOSITORY: Sleepsong/Simitone
+  SIMITONE_REF: ${{ inputs.simitone_ref || 'addon-packs' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build packs
+
+    steps:
+    - name: Checkout packs
+      uses: actions/checkout@v4
+
+    - name: Checkout Simitone
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ env.SIMITONE_REPOSITORY }}
+        ref: ${{ env.SIMITONE_REF }}
+        path: Simitone
+        submodules: recursive
+
+    - name: Setup .NET 9
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+
+    - name: Build Build Cheats
+      run: dotnet build BuildCheats/BuildCheats.csproj -c Release
+
+    - name: Build Half Walls
+      run: dotnet build HalfWalls/HalfWalls.csproj -c Release
+
+    - name: Check the Test Cube object can be regenerated
+      run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
+
+    # Each artifact unzips to the pack's folder, ready to drop into Simitone's Packs directory
+    - name: Upload Build Cheats
+      uses: actions/upload-artifact@v4
+      with:
+        name: BuildCheats
+        path: BuildCheats/pack/
+        if-no-files-found: error
+
+    - name: Upload Half Walls
+      uses: actions/upload-artifact@v4
+      with:
+        name: HalfWalls
+        path: HalfWalls/pack/
+        if-no-files-found: error
+
+    - name: Upload Test Cube
+      uses: actions/upload-artifact@v4
+      with:
+        name: TestCube
+        path: TestCube/pack/
+        if-no-files-found: error
