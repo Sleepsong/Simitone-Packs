@@ -11,24 +11,55 @@ being played? Everything it sees is written to a log, and the next stages are bu
 shows.
 
 **Back up your `UserData` folder before trying it.** It has been compiled and its patches checked
-against the engine, but it has not been run in the game.
+against the engine, but it has not been run in the game, and its window has not been seen on a
+screen. If the window does not come up or looks wrong, everything still works from the console.
 
 ## Using it
 
-Everything is done from the cheat console (Ctrl+Shift+C), while playing a household in its own house.
+Open the **Apartments** window while playing a household in its own house. There are three ways in:
+
+- **Options > Apartments** (the button after Packs),
+- the **F9** key,
+- `apt` in the cheat console (Ctrl+Shift+C).
+
+The window has three pages, chosen with the buttons across its top.
+
+**Households** lists everyone who lives on the lot.
+
+| Button | What it does |
+|---|---|
+| **Add this room** (on your own household) | The room your Sim is standing in joins your apartment |
+| **Options** (on a neighbouring household) | Asks what to do with them: **Play** (save, then play that household; yours become neighbours), **Give this room** (the room your Sim is in joins their apartment) or **Move out** (back to the family bin; their things stay) |
+| **Make shared** (on "The room your Sim is in") | That room is nobody's apartment again |
+| **-** and **+** (on "Rent") | The rent on this lot, in simoleons for each tile each day |
+
+**Move in** lists the households with no house. **Move in** puts one on the lot beside yours; its
+Sims appear by the mailbox.
+
+**Testing** has the switches for trying things out: bring neighbours back when the game sends them
+away, hold their needs up, what the game is told they are (visitors or family), and whether to write
+down what they do. It also says where the log is.
+
+What you did, and how it went, is shown along the bottom of the window. If the window is taller than
+the screen, **<** and **>** turn its pages.
+
+### The console
+
+Everything the window does can also be typed, as `apt` followed by a command.
 
 | Command | What it does |
 |---|---|
+| `apt` | Opens the window |
 | `apt help` | Lists the commands |
 | `apt who` | The households in this house, and which one is played |
 | `apt families` | Households with no house, which can move in |
-| `apt movein <number or name>` | Moves a household in beside yours. Its Sims appear by the mailbox |
-| `apt moveout <number or name>` | Moves a neighbouring household out, back to the family bin. Their things stay |
-| `apt switch <number or name>` | Saves the lot, then plays that household. Yours become neighbours |
+| `apt movein <number or name>` | Moves a household in beside yours |
+| `apt moveout <number or name>` | Moves a neighbouring household out |
+| `apt switch <number or name>` | Saves the lot, then plays that household |
 | `apt claim [number or name]` | The room your Sim is standing in joins your apartment (or the named household's) |
 | `apt unclaim` | The room your Sim is standing in is shared again |
 | `apt units` | Each household's apartment, its rent, and anything owed |
-| `apt rent <number>\|off` | The rent on this lot, in simoleons for each tile each day (1) |
+| `apt rent <number>\|off` | The rent on this lot (1) |
 | `apt keep on\|off` | Bring neighbours back when the game sends them off the lot (on) |
 | `apt needs <-100 to 100>\|off` | Neighbours' needs never fall below this (50) |
 | `apt treat visitor\|family` | What the game's scripts are told the neighbours are (visitor) |
@@ -36,13 +67,13 @@ Everything is done from the cheat console (Ctrl+Shift+C), while playing a househ
 | `apt log` | Where the log is |
 
 Moving in and out, apartments and the rent are kept when you save the lot, like anything else you do
-on it. The settings (`keep`, `needs`, `treat`, `watch`) last until the game closes.
+on it. The switches on the Testing page last until the game closes.
 
 ## Apartments and rent
 
-An apartment is a set of rooms. Stand a Sim in a room and use `apt claim` to make it part of your
-household's apartment, or `apt claim <household>` to give it to a neighbour's. Every room that is
-nobody's is shared, and so is everywhere outdoors.
+An apartment is a set of rooms. Stand a Sim in a room and press **Add this room** to make it part of
+your household's apartment, or **Options > Give this room** on a neighbouring household to make it
+part of theirs. Every room that is nobody's is shared, and so is everywhere outdoors.
 
 - A room has walls all the way round. Knock a wall through into the garden and it stops being a room;
   it counts as shared until it is closed again, and the log says so.
@@ -57,12 +88,14 @@ household with no apartment pays no rent.
 ## What to try, and what to look for
 
 1. Make two families. Move one into a house the usual way, and leave the other in the family bin.
-2. Play the house, and move the second family in: `apt families`, then `apt movein <number>`.
-3. Play for a few game days at normal speed. Then quit and look at `Apartments.log` (`apt log` says
-   where it is).
-4. Try `apt switch <number>` and play the other household for a while.
-5. Try the same with `apt treat family`.
-6. Give each household an apartment (`apt claim`), and play a few more days.
+2. Play the house, open the Apartments window (F9), and move the second family in from the
+   **Move in** page.
+3. Play for a few game days at normal speed. Then quit and look at `Apartments.log` (the **Testing**
+   page says where it is).
+4. On the **Households** page, press **Options** on the other household, then **Play**. Play them
+   for a while.
+5. Try the same with neighbours treated as **Family** (on the **Testing** page).
+6. Give each household an apartment (**Add this room**, **Give this room**), and play a few more days.
 
 The log answers these, and the answers decide how the next stage is built:
 
@@ -88,7 +121,8 @@ The log answers these, and the answers decide how the next stage is built:
   If the log shows neighbours spending yours, that is to be fixed, not intended.
 - **Unplayed households do not progress.** They are held as they are: no jobs, no bills, needs kept
   up. Relationships are the exception. The game keeps those for each Sim, so they change as usual.
-- A neighbour who dies would be brought back by `apt keep`. Switch it off if that matters to you.
+- A neighbour who dies would be brought back by **Bring neighbours back**. Switch it off if that
+  matters to you.
 - Away from home (downtown, on holiday) nothing here applies. The other households stay on the lot.
 
 ## How it works
@@ -122,4 +156,7 @@ The rest is five Harmony patches:
 - `Residency.cs` is who lives where.
 - `Units.cs` is the apartments, the rent, and the pack's file for a lot.
 - `Neighbours.cs` is the unplayed households on the lot.
-- `ApartmentsPack.cs` is the patches and the console.
+- `Actions.cs` is everything the player can do, shared by the window and the console.
+- `UIApartmentsDialog.cs` is the window. It is made the way Simitone's own Packs window is, from the
+  same dialog, labels and buttons, so it has no artwork of its own.
+- `ApartmentsPack.cs` is the patches, the ways into the window, and the console.

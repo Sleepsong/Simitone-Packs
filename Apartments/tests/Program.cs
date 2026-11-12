@@ -20,6 +20,10 @@ foreach (var m in h.GetPatchedMethods()) {
     var info = Harmony.GetPatchInfo(m);
     Console.WriteLine($"patched {m.DeclaringType.Name}.{m.Name}: prefixes={info.Prefixes.Count} postfixes={info.Postfixes.Count}");
 }
+// the two ways into the Apartments window are optional to the pack, but should fit the Simitone this is built against
+foreach (var needed in new[] { "UILotControl.Update", "UIMainPanel.AddPacksButton" }) {
+    if (!h.GetPatchedMethods().Any(m => m.DeclaringType.Name + "." + m.Name == needed)) { Console.WriteLine("FAILED: the patch on " + needed + " did not attach"); return 1; }
+}
 // the per-tick hook must be harmless on a VM it knows nothing about
 Console.WriteLine("IsShared(null) = " + Neighbours.IsShared(null) + ", HomeHouse(null) = " + Neighbours.HomeHouse(null));
 
