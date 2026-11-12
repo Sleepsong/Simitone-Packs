@@ -86,6 +86,12 @@ jobs:
     - name: Check the Driveways objects can be regenerated
       run: dotnet run --project Driveways/generator -c Release -- "$RUNNER_TEMP/driveways"
 
+    - name: Build Life Stages
+      run: dotnet build LifeStages/LifeStages.csproj -c Release
+
+    - name: Test Life Stages' patches and rules
+      run: dotnet run --project LifeStages/tests -c Release
+
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
 
@@ -178,6 +184,13 @@ jobs:
       with:
         name: FamilyTree
         path: FamilyTree/pack/
+        if-no-files-found: error
+
+    - name: Upload Life Stages
+      uses: actions/upload-artifact@v4
+      with:
+        name: LifeStages
+        path: LifeStages/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube

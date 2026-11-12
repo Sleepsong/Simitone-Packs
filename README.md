@@ -27,6 +27,7 @@ These packs need a build of Simitone with add-on pack support, which at the mome
 | [Apartments](Apartments) | Code, patches the engine | Several households on one lot: you play one, the others live there as neighbours, and you can switch between them. Each household can be given rooms as its apartment, and the played one pays rent. A prototype, with its own window (Options > Apartments, or F9), that also records how the game treats the unplayed households. Apartments are not enforced yet. Not yet run in the game: back up your saves first. |
 | [Family Tree](FamilyTree) | Code, patches the engine | Family ties, as in The Sims 2. In Create a Family, choose who is married to whom and whose child is whose, and the family starts out getting on as family does. In a lot, a Sim's family tree (Options > Family Tree, or F8) and what each Sim is to yours in the relationship panel. Ties are kept for each neighbourhood, in the pack's own file. A first stage, not yet run in the game. |
 | [Driveways](Driveways) | Content and code, patches the engine | A driveway that joins your garden to the road, and a car your Sims can take for a drive, as in The Sims 2 Nightlife. In buy mode under Decorative > Other. A first stage. |
+| [Life Stages](LifeStages) | Code, patches the engine | Ageing, after The Sims 2: the Sims you play grow from child to teen to adult to elder as the days pass, a day at each midnight on their own lot. A teen is a large child and an elder an adult with grey hair, and nobody dies of old age yet. A first stage, not yet run in the game: back up your saves first. |
 | [Test Cube](TestCube) | Content | One object, a plain grey cube with no behaviour, under Decorative > Other. For checking that content packs load. |
 
 ## Installing a pack
@@ -62,6 +63,7 @@ dotnet build OpenForBusiness/OpenForBusiness.csproj -c Release
 dotnet build Apartments/Apartments.csproj -c Release
 dotnet build Driveways/Driveways.csproj -c Release
 dotnet build FamilyTree/FamilyTree.csproj -c Release
+dotnet build LifeStages/LifeStages.csproj -c Release
 ```
 
 Each build leaves the finished pack in the project's `pack/` folder, for example

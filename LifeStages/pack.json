@@ -1,0 +1,9 @@
+{
+  "id": "sample.lifestages",
+  "name": "Life Stages",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Ageing, after The Sims 2: the Sims you play grow from child to teen to adult to elder as the days pass. A first stage, not yet run against a game: back up your saves first. Type age in the console to see your household.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "LifeStages.dll"
+}

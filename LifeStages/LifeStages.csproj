@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>LifeStages</AssemblyName>
+    <RootNamespace>LifeStages</RootNamespace>
+    <DebugType>none</DebugType>
+    <!-- the tests are a project of their own, in a folder under this one -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;pack/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- compile against Simitone. the pack must not ship Simitone's files: the game shares its own with it -->
+    <ProjectReference Include="$(SimitonePath)\Client\Simitone\Simitone.Client\Simitone.Client.csproj" Private="false" />
+  </ItemGroup>
+
+  <!-- after building, put just the pack's own files in pack/lifestages/, ready to copy into Simitone's Packs folder -->
+  <Target Name="MakePackFolder" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath);pack.json" DestinationFolder="$(MSBuildProjectDirectory)\pack\lifestages" />
+  </Target>
+
+</Project>
