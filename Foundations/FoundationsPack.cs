@@ -55,6 +55,7 @@ namespace FoundationsPack
             try
             {
                 Apply(harmony);
+                PackManager.RegisterCommand("foundations", Report.Write); //writes foundations-report.txt in the user directory
             }
             catch
             {
@@ -167,6 +168,7 @@ namespace FoundationsPack
 
         public void OnLotLoaded(VM vm, string lotPath)
         {
+            Report.Lot = new WeakReference<VM>(vm);
             Loaded.Remove(vm);
             if (lotPath == null) return; //not from a file: the lot is the one that was handed over, with its foundations
             var saved = LotPackData.Read(PackId, lotPath);

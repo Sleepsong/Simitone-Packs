@@ -35,6 +35,9 @@ namespace FoundationsPack
         /// <summary>For <see cref="FoundationMaterial.Covering"/>: the wall covering on this group's sides (0 for the brick).</summary>
         public ushort WallPattern;
         private Texture2D Texture;
+        /// <summary>For the pack's report: the texture in use, and why it is plain white if it is.</summary>
+        public Texture2D TextureInUse => Texture;
+        public string TextureNote;
 
         protected const float StoreyHeight = 2.95f;
         /// <summary>How tall the board round a deck's edge is (tile units).</summary>
@@ -418,12 +421,18 @@ namespace FoundationsPack
                 {
                     Texture = FoundationLook.Texture(gd, state, Material, WallPattern);
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
                     Texture = null;
+                    TextureNote = "failed: " + e.Message;
                 }
             }
-            if (Texture == null) Texture = FSO.Common.Utils.TextureGenerator.GetPxWhite(gd);
+            if (Texture == null)
+            {
+                if (TextureNote == null) TextureNote = (state == null) ? "no world state" : "the game has nothing for it";
+                Texture = FSO.Common.Utils.TextureGenerator.GetPxWhite(gd);
+            }
+            else TextureNote = null;
         }
 
         public override void PrepareGPU(GraphicsDevice gd)

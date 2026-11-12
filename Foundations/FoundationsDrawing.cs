@@ -127,6 +127,7 @@ namespace FoundationsPack
         public static void AddModels(FloorLevel __instance, GraphicsDevice gd)
         {
             if (!IsGroundLevel(__instance, out var bp, out var map)) return;
+            Report.FloorBuilds++;
             var shown = Lots.Shown(bp);
             shown.UnderDecks?.Dispose();
             shown.UnderDecks = null;
@@ -173,6 +174,8 @@ namespace FoundationsPack
         {
             var bp = __instance.Bp;
             if (bp == null || __instance.Floors == null || __instance.Floors.Length == 0) return;
+            Report.FloorDraws++;
+            if (state != null) Report.LastState = state;
             var map = Lots.Of(bp);
             if (map == null || !map.Any) return;
             if (state != null)
@@ -201,6 +204,89 @@ namespace FoundationsPack
             gd.SetVertexBuffer(bp.Terrain.VertexBuffer);
             e.UseTexture = true;
             e.IgnoreColor = true;
+        }
+
+        // ---- the `foundations` console command: what this pack sees, written to a file ----
+
+        public static class Report
+        {
+            public static int FloorBuilds, FloorDraws;
+            public static WorldState LastState;
+            public static WeakReference<VM> Lot;
+
+            public static bool Write(string[] args)
+            {
+                var lines = new List<string>();
+                try
+                {
+                    Fill(lines);
+                }
+                catch (Exception e)
+                {
+                    lines.Add("The report itself failed: " + e);
+                }
+                var path = System.IO.Path.Combine(FSO.Common.FSOEnvironment.UserDir, "foundations-report.txt");
+                System.IO.File.WriteAllLines(path, lines);
+                return true;
+            }
+
+            private static void Fill(List<string> lines)
+            {
+                lines.Add("Foundations pack report, " + DateTime.Now);
+                lines.Add("floor builds seen: " + FloorBuilds + ", floor draws seen: " + FloorDraws);
+                VM vm = null;
+                Lot?.TryGetTarget(out vm);
+                var arch = vm?.Context?.Architecture;
+                var bp = vm?.Context?.Blueprint;
+                if (arch == null || bp == null) { lines.Add("no lot is loaded (vm " + (vm != null) + ", architecture " + (arch != null) + ", blueprint " + (bp != null) + ")"); return; }
+                var lot = Lots.For(arch.Terrain);
+                var real = lot.Foundations;
+                var shown = Lots.Of(bp);
+                lines.Add("lot " + arch.Width + "x" + arch.Height + ", blueprint " + bp.Width + "x" + bp.Height + ", terrain factor " + bp.TerrainFactor + ", base altitude " + bp.BaseAlt);
+                lines.Add("the lot's foundations: " + real.Raise.Count(x => x > 0) + " raised tiles, " + real.Steps.Count(x => x != 0) + " steps tiles, any " + real.Any);
+                lines.Add("shown by the world: " + (shown == null ? "none" : shown.Raise.Count(x => x > 0) + " raised tiles" + (shown == real ? " (the lot's)" : shown == lot.VisFoundations ? " (the preview's)" : " (another map)")));
+                lines.Add("camera: " + (LastState == null ? "never seen" : LastState.CameraMode + ", level " + LastState.Level + ", zoom " + LastState.Zoom + ", rotation " + LastState.Rotation));
+                lines.Add("graphics: mode " + WorldConfig.Current.Mode + ", advanced lighting " + WorldConfig.Current.AdvancedLighting + ", complex " + WorldConfig.Current.Complex);
+                var terrain = bp.Terrain;
+                lines.Add("ground mesh: " + (terrain?.VertexBuffer == null ? "none" : terrain.VertexBuffer.VertexCount + " vertices (expected " + bp.Width * bp.Height * 4 + ")") + ", unraised copy " + (Lots.Shown(bp).Ground != null) + ", tiles under decks " + Lots.Shown(bp).UnderDeckTiles);
+                if (terrain?.VertexBuffer != null && shown != null && terrain.VertexBuffer.VertexCount == bp.Width * bp.Height * 4)
+                {
+                    var geom = new TerrainParallaxVertex[terrain.VertexBuffer.VertexCount];
+                    terrain.VertexBuffer.GetData(geom);
+                    for (int i = 0; i < shown.Raise.Length; i++)
+                    {
+                        if (shown.Raise[i] == 0) continue;
+                        int x = i % shown.Width, y = i / shown.Width;
+                        lines.Add("first raised tile " + x + "," + y + " raise " + shown.Raise[i] + " kind " + shown.Kind[i] + ": its ground vertex is at height " + geom[i * 4].Position.Y + ", the tile before it at " + geom[Math.Max(0, i - 1) * 4].Position.Y
+                            + "; floor pattern " + bp.Floors[0][i].Pattern);
+                        break;
+                    }
+                }
+                var floors = bp.FloorGeom?.Floors;
+                if (floors == null || floors.Length == 0) { lines.Add("no floor geometry"); return; }
+                var groups = floors[0].GroupForTileType;
+                lines.Add("ground floor groups: " + groups.Count + " (" + string.Join(", ", groups.Select(g => g.Key + ":" + (g.Value is Modelled3DFoundation ? "foundation" : g.Value is Modelled3DFloor ? "model" : g.Value.GeomForOffset.Count + " tiles"))) + ")");
+                foreach (var group in groups)
+                {
+                    if (!(group.Value is Modelled3DFoundation model)) continue;
+                    var tex = model.TextureInUse;
+                    var line = "  model " + group.Key + ": " + model.Material + " covering " + model.WallPattern + ", " + model.PrimitiveCount + " triangles, buffers " + (model.GPUData != null && !model.GPUData.IsDisposed) + "/" + (model.VertGPUData != null && !model.VertGPUData.IsDisposed);
+                    if (tex == null) line += ", texture not looked for yet";
+                    else
+                    {
+                        line += ", texture " + tex.Width + "x" + tex.Height + " " + tex.Format + (tex.IsDisposed ? " DISPOSED" : "") + (model.TextureNote != null ? " (plain white: " + model.TextureNote + ")" : "");
+                        if (!tex.IsDisposed && tex.Format == SurfaceFormat.Color)
+                        {
+                            var px = new Color[tex.Width * tex.Height];
+                            tex.GetData(px);
+                            line += ", middle pixel " + px[px.Length / 2 + tex.Width / 2] + ", see-through pixels " + px.Count(c => c.A < 128) + " of " + px.Length;
+                        }
+                    }
+                    lines.Add(line);
+                }
+                lines.Add("looks chosen: brick wall " + FoundationLook.BrickWall() + ", lattice " + FoundationLook.LatticeCovering() + ", plywood " + FoundationLook.PlywoodFloor() + ", trim " + FoundationLook.TrimFloor()
+                    + ", deck " + FoundationLook.DeckFloor() + ", column " + FoundationLook.ColumnFloor());
+            }
         }
 
         // ---- 12. steps that are a staircase's bottom piece ----
