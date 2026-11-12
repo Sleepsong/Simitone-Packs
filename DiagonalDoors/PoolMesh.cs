@@ -52,15 +52,16 @@ namespace DiagonalDoors
 
         /// <summary>
         /// The pieces to draw for a tile: a whole tile of pool (corner null), or the half in a corner.
-        /// poolTowards(dx, dy, 0) says whether the neighbour that way has pool where it meets this tile.
+        /// pool(dx, dy, fx, fy) says whether the neighbour at (dx, dy) has pool along its side facing (fx, fy), or for
+        /// a diagonal facing, at that corner of it.
         /// </summary>
-        public IEnumerable<Modelled3DFloorTile> PiecesFor(Corner? corner, Func<int, int, int, bool> poolTowards)
+        public IEnumerable<Modelled3DFloorTile> PiecesFor(Corner? corner, Func<int, int, int, int, bool> pool)
         {
             if (corner == null)
             {
-                //exactly what Modelled3DPool.GenerateGeometry does
+                //what Modelled3DPool.GenerateGeometry does...
                 int adj = 0;
-                for (int i = 0; i < Around.Length; i++) if (poolTowards(Around[i].X, Around[i].Y, 0)) adj |= 1 << i;
+                for (int i = 0; i < Around.Length; i++) if (pool(Around[i].X, Around[i].Y, -Around[i].X, -Around[i].Y)) adj |= 1 << i;
                 int number = 0;
                 if ((adj & North) != 0) number |= 1;
                 if ((adj & West) != 0) number |= 2;
@@ -68,15 +69,16 @@ namespace DiagonalDoors
                 if ((adj & East) != 0) number |= 8;
                 yield return PoolTiles[15];
                 if (number != 15) yield return PoolTiles[number];
-                if ((adj & (North | West)) == (North | West) && (adj & NorthWest) == 0) yield return CornerTiles[0];
-                if ((adj & (West | South)) == (West | South) && (adj & SouthWest) == 0) yield return CornerTiles[1];
-                if ((adj & (South | East)) == (South | East) && (adj & SouthEast) == 0) yield return CornerTiles[2];
-                if ((adj & (East | North)) == (East | North) && (adj & NorthEast) == 0) yield return CornerTiles[3];
+                //...but for the fillers, below
+                if (InsideCorner(pool, -1, -1)) yield return CornerTiles[0];
+                if (InsideCorner(pool, -1, 1)) yield return CornerTiles[1];
+                if (InsideCorner(pool, 1, 1)) yield return CornerTiles[2];
+                if (InsideCorner(pool, 1, -1)) yield return CornerTiles[3];
                 yield break;
             }
 
             GetCornerWay(corner.Value, out int cx, out int cy);
-            bool rimX = !poolTowards(cx, 0, 0), rimY = !poolTowards(0, cy, 0);
+            bool rimX = !pool(cx, 0, -cx, 0), rimY = !pool(0, cy, 0, -cy);
             int key = (int)corner.Value | (rimX ? 4 : 0) | (rimY ? 8 : 0);
             if (!Halves.TryGetValue(key, out var half))
             {
@@ -84,6 +86,23 @@ namespace DiagonalDoors
                 Halves[key] = half;
             }
             yield return half;
+            //a half tile has one corner of its own, and that can be an inside corner of the pool too
+            if (InsideCorner(pool, cx, cy)) yield return CornerTiles[cx < 0 ? (cy < 0 ? 0 : 1) : (cy < 0 ? 3 : 2)];
+        }
+
+        /// <summary>
+        /// Whether the pool's edge turns an inside corner at the corner of this tile towards (cx, cy), which the engine
+        /// covers with a square filler: the tiles either side are pool, and the one diagonally across is not.
+        /// The engine stops there, since with whole tiles that always means two rims meeting at a right angle. With
+        /// half tiles it need not: where one diagonal edge ends at the corner and the next begins, the edge runs
+        /// straight through it, and a filler would be a stray block in the pool. So the rims are checked as well: each
+        /// of the two tiles must have pool along its side that runs up to the corner from outside.
+        /// </summary>
+        private static bool InsideCorner(Func<int, int, int, int, bool> pool, int cx, int cy)
+        {
+            if (!pool(cx, 0, -cx, 0) || !pool(0, cy, 0, -cy)) return false; //the tiles either side
+            if (pool(cx, cy, -cx, -cy)) return false;                        //diagonally across
+            return pool(cx, 0, 0, cy) && pool(0, cy, cx, 0);                 //their rims that meet here
         }
 
         /// <summary>The way from the middle of a tile to one of its corners.</summary>

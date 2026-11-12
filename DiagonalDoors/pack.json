@@ -1,7 +1,7 @@
 {
   "id": "sample.diagonaldoors",
   "name": "Diagonal Doors, Stairs and Pools",
-  "version": "0.2",
+  "version": "0.3",
   "author": "Simitone",
   "description": "Doors and windows on diagonal walls, stairs that run diagonally, and pools with diagonal edges, as in The Sims 2. Doors and stairs in full 3D only. Experimental.",
   "minSimitoneVersion": "0.8.22",

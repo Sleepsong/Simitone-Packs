@@ -272,7 +272,7 @@ namespace DiagonalDoors
             foreach (var tile in tiles)
             {
                 int x = tile % bp.Width, y = tile / bp.Width;
-                Func<int, int, int, bool> poolTowards = (dx, dy, _) => HasPoolTowards(walls, floors, bp.Width, bp.Height, x + dx, y + dy, -dx, -dy);
+                Func<int, int, int, int, bool> poolTowards = (dx, dy, fx, fy) => HasPoolTowards(walls, floors, bp.Width, bp.Height, x + dx, y + dy, fx, fy);
                 foreach (var piece in Meshes.PiecesFor(TryGetCorner(walls[tile], out var corner, out _) ? corner : (Corner?)null, poolTowards))
                     AppendTile(__instance, inds, verts, piece, (ushort)tile);
             }

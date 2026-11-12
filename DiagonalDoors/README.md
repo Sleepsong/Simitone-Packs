@@ -47,6 +47,13 @@ In 2D the game only has pictures of objects facing four ways, the same limit as 
 pack's `rotate45`. Nothing turns diagonally there. A diagonal door or staircase placed in 3D stays
 where it is if you switch to 2D, but it is drawn facing its nearest straight direction.
 
+## If something will not place
+
+Open the cheat console (Ctrl+Shift+C) and type `diagonallog`. From then on, each time you hold a door,
+window or staircase over a tile, the pack writes what it was asked, what it decided and what the
+game answered to `diagonals.log` in Simitone's user directory, next to `config.ini`. `diagonallog off`
+stops it. The file is what to send with a report.
+
 ## Saving
 
 Nothing extra is saved: the lot's save already keeps where objects are, which way they face, and
@@ -90,9 +97,8 @@ turns one of the rims to run along it. A pool with no diagonals is still built b
 
 Experimental. It builds against the `addon-packs` branch. Its patches, placement rules, wall and
 floor bookkeeping, room and routing changes, and the pool model have been checked against the built
-engine without the game running, and the pool model has been drawn from above and looked at. It
-has not yet been played in the game itself, which needs The Sims' own files. Things to look at
-first when it is:
+engine without the game running, and the pool model has been drawn from above and looked at. In the game so far: windows place on diagonal walls and diagonal pools build, and doors have been
+reported not to place, which is being looked into. Things still to look at:
 
 - Sims walking through a diagonal door, and how each door's cut-out lines up with its frame.
 - Sims walking up and down diagonal stairs, and whether the stairs place at all on a diagonal: the

@@ -46,6 +46,7 @@ namespace DiagonalDoors
         public void OnLoad(Pack pack)
         {
             var harmony = new Harmony("pack." + pack.Id);
+            PackManager.RegisterCommand("diagonallog", DiagonalLog.Command);
             try
             {
                 Apply(harmony);
@@ -67,7 +68,7 @@ namespace DiagonalDoors
         private static void Apply(Harmony harmony)
         {
             // 1. Every placement by the player goes through here, both the preview under the cursor and the real thing.
-            harmony.Patch(Find(typeof(VMMultitileGroup), "ChangePosition"), prefix: Mine(nameof(SnapToDiagonal)));
+            harmony.Patch(Find(typeof(VMMultitileGroup), "ChangePosition"), prefix: Mine(nameof(SnapToDiagonal)), postfix: Mine(nameof(LogPlacement)));
 
             // 2. The engine's question "may this object be on a tile with this wall?". Also asked when a wall changes
             //    under an object, which is what stops the wall being deleted from under the door.
@@ -111,28 +112,33 @@ namespace DiagonalDoors
         /// part (in sixteenths of a tile, facing north), and the way from the object to the wall.
         /// Only for a door or window with one wall, one tile wide: every part that needs a wall must need the same one.
         /// </summary>
-        private static bool TryGetWall(VMMultitileGroup group, out Vector2 middle, out Vector2 toWall)
+        private static bool TryGetWall(VMMultitileGroup group, out Vector2 middle, out Vector2 toWall) => TryGetWall(group, out middle, out toWall, out _);
+
+        private static bool TryGetWall(VMMultitileGroup group, out Vector2 middle, out Vector2 toWall, out string why)
         {
-            middle = toWall = Vector2.Zero;
-            if (group == null || group.Objects.Count == 0 || group.Objects.Count != group.Offsets.Count) return false;
+            middle = toWall = Vector2.Zero; why = null;
+            if (group == null || group.Objects.Count == 0 || group.Objects.Count != group.Offsets.Count) { why = "no parts"; return false; }
             var lead = group.Offsets[Math.Max(0, group.Objects.IndexOf(group.BaseObject))];
-            bool found = false;
+            bool found = false, architectural = false;
             for (int i = 0; i < group.Objects.Count; i++)
             {
                 var part = group.Objects[i];
-                if (!(part is VMGameObject)) return false;
+                if (!(part is VMGameObject)) { why = "a part is not an object"; return false; }
+                //the object is a door or window if any part says so: the game does not always mark every part
+                if (((VMEntityFlags2)part.GetValue(VMStackObjectVariable.FlagField2) & Architectural) != 0) architectural = true;
                 var required = part.GetValue(VMStackObjectVariable.WallPlacementFlags) & WallRequired;
                 if (required == 0) continue;
-                if (((VMEntityFlags2)part.GetValue(VMStackObjectVariable.FlagField2) & Architectural) == 0) return false; //a painting, a wall lamp
-                if (!DiagonalGeometry.TryGetWallSide(required, out var side)) return false; //needs two walls: a corner piece
+                if (!DiagonalGeometry.TryGetWallSide(required, out var side)) { why = "part " + i + " needs two walls"; return false; } //a corner piece
                 var partMiddle = new Vector2(group.Offsets[i].x - lead.x, group.Offsets[i].y - lead.y) + side * 8;
                 if (!found)
                 {
                     middle = partMiddle; toWall = side; found = true;
                 }
-                else if ((partMiddle - middle).LengthSquared() > 1f) return false; //two walls side by side: a double door, a wide window
+                else if ((partMiddle - middle).LengthSquared() > 1f) { why = "its parts need walls in different places (" + middle + " and " + partMiddle + ")"; return false; } //a double door, a wide window
             }
-            return found;
+            if (!architectural) { why = "not a door or window"; return false; } //a painting, a wall lamp
+            if (!found) { why = "no part needs a wall"; return false; }
+            return true;
         }
 
         /// <summary>The one diagonal wall on a tile, if it is a wall (not a fence) and the only diagonal there.</summary>
@@ -160,13 +166,18 @@ namespace DiagonalDoors
         /// so that the middle of its wall is the middle of the tile.
         /// This only depends on what was asked for and the wall, so the preview and the real placement agree.
         /// </summary>
-        public static void SnapToDiagonal(VMMultitileGroup __instance, ref LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags)
+        public static void SnapToDiagonal(VMMultitileGroup __instance, ref LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags, out string __state)
         {
+            __state = null;
             if ((flags & VMPlaceRequestFlags.UserBuildableLimit) == 0 || pos == LotTilePos.OUT_OF_WORLD) return;
             if (pos.Level < 1 || pos.Level > context.Architecture.Stories) return;
-            if (VM.UseWorld && context.World?.State?.CameraMode != CameraRenderMode._3D) return;
-            if (!TryGetDiagonal(context.Architecture.GetWall(pos.TileX, pos.TileY, pos.Level), out var horizontal)) return;
-            if (!TryGetWall(__instance, out var middle, out var toWall)) return;
+            bool log = DiagonalLog.On && DiagonalLog.Interesting(__instance);
+            var wall = context.Architecture.GetWall(pos.TileX, pos.TileY, pos.Level);
+            if (log) __state = DiagonalLog.Describe(__instance) + " asked (" + pos.x + "," + pos.y + "," + pos.Level + ") " + direction + " " + DiagonalLog.Describe(wall) + ": ";
+
+            if (VM.UseWorld && context.World?.State?.CameraMode != CameraRenderMode._3D) { if (log) __state += "not in 3D"; return; }
+            if (!TryGetDiagonal(wall, out var horizontal)) { if (log) __state += "no diagonal wall here"; return; }
+            if (!TryGetWall(__instance, out var middle, out var toWall, out var why)) { if (log) __state += "not fitted, " + why; return; }
 
             var eighths = DiagonalGeometry.ChooseDirection(Eighths(direction), toWall, horizontal);
             var offset = DiagonalGeometry.Rotate(middle, eighths);
@@ -175,6 +186,14 @@ namespace DiagonalDoors
                 (short)(pos.TileY * 16 + 8 - (int)Math.Round(offset.Y)),
                 pos.Level);
             direction = (Direction)(1 << eighths);
+            if (log) __state += "fitted to (" + pos.x + "," + pos.y + ") " + direction;
+        }
+
+        /// <summary>For the "diagonallog" command: what was asked, what the pack did, and what the engine then said.</summary>
+        public static void LogPlacement(VMPlacementResult __result, string __state)
+        {
+            if (__state == null) return;
+            DiagonalLog.Write(__state + " -> " + __result.Status + (__result.Object != null ? " (" + __result.Object + ")" : ""));
         }
 
         // ---- 2 ----
