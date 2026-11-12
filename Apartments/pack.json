@@ -1,0 +1,9 @@
+{
+  "id": "sample.apartments",
+  "name": "Apartments (prototype)",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Several households on one lot: you play one, and the others live there as neighbours you can see. Give each its rooms, and pay rent on yours. A prototype, driven from the cheat console (apt help), that also records how the game treats the unplayed households. Back up your UserData first.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "Apartments.dll"
+}

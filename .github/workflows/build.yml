@@ -66,6 +66,10 @@ jobs:
       run: dotnet build FurnishedMoveIn/FurnishedMoveIn.csproj -c Release
     - name: Build Open for Business
       run: dotnet build OpenForBusiness/OpenForBusiness.csproj -c Release
+    - name: Build Apartments
+      run: dotnet build Apartments/Apartments.csproj -c Release
+    - name: Test Apartments' patches and rules
+      run: dotnet run --project Apartments/tests -c Release
 
     - name: Build Driveways
       run: dotnet build Driveways/Driveways.csproj -c Release
@@ -147,6 +151,13 @@ jobs:
       with:
         name: OpenForBusiness
         path: OpenForBusiness/pack/
+        if-no-files-found: error
+
+    - name: Upload Apartments
+      uses: actions/upload-artifact@v4
+      with:
+        name: Apartments
+        path: Apartments/pack/
         if-no-files-found: error
 
     - name: Upload Driveways
