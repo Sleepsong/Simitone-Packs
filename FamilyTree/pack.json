@@ -1,0 +1,9 @@
+{
+  "id": "sample.familytree",
+  "name": "Family Tree",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Family ties, as in The Sims 2. In Create a Family, choose who is married and whose child is whose: they start out getting on as family, not as strangers. In a lot, see a Sim's family tree (Options > Family Tree, or F8). A first stage, not yet run in the game.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "FamilyTree.dll"
+}

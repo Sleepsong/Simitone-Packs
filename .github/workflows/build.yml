@@ -77,6 +77,12 @@ jobs:
     - name: Test Driveways' route planning
       run: dotnet run --project Driveways/tests -c Release
 
+    - name: Build Family Tree
+      run: dotnet build FamilyTree/FamilyTree.csproj -c Release
+
+    - name: Test Family Tree's patches and rules
+      run: dotnet run --project FamilyTree/tests -c Release
+
     - name: Check the Driveways objects can be regenerated
       run: dotnet run --project Driveways/generator -c Release -- "$RUNNER_TEMP/driveways"
 
@@ -165,6 +171,13 @@ jobs:
       with:
         name: Driveways
         path: Driveways/pack/
+        if-no-files-found: error
+
+    - name: Upload Family Tree
+      uses: actions/upload-artifact@v4
+      with:
+        name: FamilyTree
+        path: FamilyTree/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube
