@@ -162,24 +162,31 @@ namespace Driveways
     public static class DrivewaySnap
     {
         /// <summary>
-        /// The place for a driveway the player is holding over the tile (x, y). The driveway is width tiles wide and
-        /// length long; facing north its lead tile is its north west corner, and facing east (heading 1) it lies on
-        /// its side with the lead tile at its north east corner. It slides along the road with the cursor and nowhere else.
+        /// The place for a driveway the player is holding over the tile (x, y): the lead tile and the heading to give
+        /// it. The driveway is width tiles wide and length long; facing north its lead tile is its north west corner
+        /// and its apron, the far end, is to the south. It is turned so the apron is at the road, laid with the apron
+        /// against the tarmac (so it crosses the pavement and the verge), and centred on the cursor along the road.
+        /// It slides along the road with the cursor and goes nowhere else.
         /// </summary>
         public static (int X, int Y, int Heading) Place(Road road, int x, int y, int width, int length, int lotWidth, int lotHeight)
         {
-            bool roadAtHighEdge = road.StripFirst > 0;
+            int across = road.AlongX ? lotHeight : lotWidth, along = road.AlongX ? lotWidth : lotHeight;
+            bool roadAtHighEdge = (across - 1 - road.Last) <= road.First;
+            //the lowest column (or row) it covers along the road
+            int low = Math.Max(0, Math.Min((road.AlongX ? x : y) - width / 2, along - width));
             if (road.AlongX)
             {
-                //upright: columns x..x+width-1, rows y..y+length-1
-                int leadY = roadAtHighEdge ? road.StripFirst - length : road.StripLast + 1;
-                return (Math.Max(0, Math.Min(x, lotWidth - width)), leadY, 0);
+                //road to the south: facing north, columns low.., rows from the lead tile down to the road
+                if (roadAtHighEdge) return (low, road.First - length, 0);
+                //road to the north: facing south, the lead tile is the south east corner
+                return (low + width - 1, road.Last + length, 2);
             }
             else
             {
-                //on its side: columns x-length+1..x, rows y..y+width-1
-                int leadX = roadAtHighEdge ? road.StripFirst - 1 : road.StripLast + length;
-                return (leadX, Math.Max(0, Math.Min(y, lotHeight - width)), 1);
+                //road to the east: facing west, the lead tile is the south west corner
+                if (roadAtHighEdge) return (road.First - length, low + width - 1, 3);
+                //road to the west: facing east, the lead tile is the north east corner
+                return (road.Last + length, low, 1);
             }
         }
     }

@@ -78,6 +78,8 @@ namespace Driveways
                     return VMPrimitiveExitCode.GOTO_TRUE;
                 case Shared.ModeInitCar:
                     InitObject(context.Caller, false);
+                    //(a new object's picture is set as it is made, before this runs; a loaded one's is caught by the patch)
+                    if (context.Caller is VMGameObject tile) { try { CarLook.Dress(tile); } catch (Exception) { } }
                     return VMPrimitiveExitCode.GOTO_TRUE;
                 case Shared.ModeIsParked:
                     {
@@ -113,7 +115,7 @@ namespace Driveways
 
         private const VMMovementFlags Movable = VMMovementFlags.SimsCanMove | VMMovementFlags.PlayersCanMove | VMMovementFlags.PlayersCanDelete;
 
-        private static bool IsDriveway(VMEntity obj) => GUIDOf(obj) == Shared.DrivewayGUID || GUIDOf(obj) == Shared.DrivewayLargeGUID;
+        private static bool IsDriveway(VMEntity obj) { var guid = GUIDOf(obj); return guid == Shared.DrivewayGUID || guid == Shared.OldDrivewayGUID || guid == Shared.OldTileGUID; }
 
         //the lots whose objects have been looked over since they loaded
         private static ConditionalWeakTable<VM, object> Repaired = new ConditionalWeakTable<VM, object>();
@@ -303,9 +305,14 @@ namespace Driveways
                 how = "the strip that cannot be built on";
                 road = Road.FindByMargin((x, y) => context.IsUserOutOfBounds(LotTilePos.FromBigTile((short)x, (short)y, 1)), arch.Width, arch.Height);
             }
-            Roads.Add(vm, new RoadFound { Road = road, How = how });
+            //(a lot with no road is looked at again next time: it may not have finished loading)
+            if (road != null) Roads.Add(vm, new RoadFound { Road = road, How = how });
             return road;
         }
+
+        //for the "driveways" report: how often a driveway has been snapped since the game started, and the last time
+        private static int Snaps;
+        private static string LastSnap = "never";
 
         /// <summary>
         /// A driveway the player is holding or putting down goes against the strip by the road, pointing at it, as in
@@ -315,13 +322,15 @@ namespace Driveways
         public static void SnapDriveway(VMMultitileGroup group, ref LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags)
         {
             if ((flags & VMPlaceRequestFlags.UserBuildableLimit) == 0 || pos == LotTilePos.OUT_OF_WORLD || group.Objects.Count == 0) return;
-            if (GUIDOf(group.Objects[0]) != Shared.DrivewayLargeGUID) return;
+            if (GUIDOf(group.Objects[0]) != Shared.DrivewayGUID) return;
             var vm = context.VM;
             if (vm == null || !vm.TS1) return;
+            Snaps++;
             var road = FindRoad(vm, out _);
-            if (road == null) return;
+            if (road == null) { LastSnap = "no road was found, so the driveway was left where the cursor was"; return; }
             var arch = context.Architecture;
             var place = DrivewaySnap.Place(road.Value, pos.TileX, pos.TileY, Shared.DrivewayWidth, Shared.DrivewayLength, arch.Width, arch.Height);
+            LastSnap = $"cursor at tile {pos.TileX}, {pos.TileY}; driveway's lead tile put at {place.X}, {place.Y} facing {Directions[place.Heading].ToString().ToLowerInvariant()}";
             pos = LotTilePos.FromBigTile((short)place.X, (short)place.Y, 1);
             direction = Directions[place.Heading];
         }
@@ -355,6 +364,9 @@ namespace Driveways
                 }
             lines.Add("Floor tiles where the player cannot build (tile id x count): " +
                 (floors.Count == 0 ? "none" : string.Join(", ", floors.OrderByDescending(f => f.Value).Take(8).Select(f => f.Key + " x " + f.Value))) + ".");
+
+            lines.Add($"Driveways snapped to the road since the game started: {Snaps} times. The last: {LastSnap}.");
+            lines.Add("The car's look: " + CarLook.Describe());
 
             var cars = vm.Entities.Where(e => e is VMGameObject && GUIDOf(e) == Shared.CarGUID).Select(e => e.MultitileGroup).Distinct().ToList();
             if (cars.Count == 0) lines.Add("No cars on this lot.");
@@ -525,6 +537,136 @@ namespace Driveways
         {
             if (!VM.UseWorld || sim.WorldUI == null) return;
             sim.WorldUI.Visible = visible;
+        }
+    }
+
+    /// <summary>
+    /// The car's look. The pack's own car is a few coloured boxes; The Sims 1 has real cars, the ones that take Sims
+    /// to work. This borrows one's pictures: each tile of the pack's car is drawn with the matching tile of the
+    /// game's car. Only the pictures are borrowed. The game's car object and its scripts are not used, and nothing
+    /// in the game's files is changed.
+    ///
+    /// It can only borrow from a car laid out on the same tiles as the pack's (Shared.CarWidth by Shared.CarLength).
+    /// The "driveways cars" console command lists what the game has, so the pack can be made to fit.
+    /// </summary>
+    public static class CarLook
+    {
+        /// <summary>Words in an object's name, or its file's, that make it a vehicle.</summary>
+        private static readonly System.Text.RegularExpressions.Regex VehicleName = new System.Text.RegularExpressions.Regex(
+            @"(?<![a-z])(car|cars|carpool|car pool|taxi|cab|limo|limousine|bus|sedan|coupe|junker|truck|jeep|van|suv|vehicle|auto)(?![a-z])",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        private static bool Looked;
+        private static string Outcome = "not looked for yet.";
+        //the drawing group for each tile of the pack's car, by its place (x * 256 + y); held so the game keeps them loaded
+        private static Dictionary<int, FSO.Files.Formats.IFF.Chunks.DGRP> Borrowed;
+        private static List<FSO.Content.GameObject> Held = new List<FSO.Content.GameObject>();
+
+        public static string Describe() => Looked ? Outcome : "not looked for yet (no car has been drawn).";
+
+        private class Vehicle
+        {
+            public string File, Name;
+            public uint GUID;
+            public short Group;
+            public List<FSO.Content.GameObjectReference> Tiles = new List<FSO.Content.GameObjectReference>();
+        }
+
+        /// <summary>Every multi-tile object in the game whose name, or whose file's name, says it is a vehicle.</summary>
+        private static List<Vehicle> FindVehicles()
+        {
+            var provider = FSO.Content.Content.Get().WorldObjects;
+            var byGroup = provider.Entries.Values.Where(e => e.Group != 0).GroupBy(e => (e.FileName, e.Group));
+            var result = new List<Vehicle>();
+            foreach (var group in byGroup)
+            {
+                var master = group.FirstOrDefault(e => e.SubIndex == -1);
+                var tiles = group.Where(e => e.SubIndex != -1).ToList();
+                if (master == null || tiles.Count < 2) continue;
+                if ((uint)master.ID == Shared.CarGUID) continue; //(the pack's own)
+                var file = System.IO.Path.GetFileNameWithoutExtension((master.FileName ?? "").Replace('\\', '/'));
+                if (!VehicleName.IsMatch(master.Name ?? "") && !VehicleName.IsMatch(file)) continue;
+                result.Add(new Vehicle { File = file, Name = master.Name, GUID = (uint)master.ID, Group = master.Group, Tiles = tiles });
+            }
+            return result.OrderBy(v => v.File).ThenBy(v => v.Name).ToList();
+        }
+
+        private static (int X, int Y) PlaceOf(short subIndex) => (((ushort)subIndex) >> 8, ((ushort)subIndex) & 0xFF);
+
+        private static void Look()
+        {
+            Looked = true;
+            try
+            {
+                var provider = FSO.Content.Content.Get().WorldObjects;
+                var vehicles = FindVehicles();
+                foreach (var vehicle in vehicles)
+                {
+                    var places = vehicle.Tiles.Select(t => PlaceOf(t.SubIndex)).ToList();
+                    if (places.Count != Shared.CarWidth * Shared.CarLength || places.Max(p => p.X) != Shared.CarWidth - 1 || places.Max(p => p.Y) != Shared.CarLength - 1 || places.Distinct().Count() != places.Count) continue;
+                    var borrowed = new Dictionary<int, FSO.Files.Formats.IFF.Chunks.DGRP>();
+                    var held = new List<FSO.Content.GameObject>();
+                    foreach (var tile in vehicle.Tiles)
+                    {
+                        var obj = provider.Get((uint)tile.ID);
+                        var dgrp = obj?.Resource.Get<FSO.Files.Formats.IFF.Chunks.DGRP>(obj.OBJ.BaseGraphicID);
+                        if (dgrp == null) break;
+                        var place = PlaceOf(tile.SubIndex);
+                        borrowed[place.X * 256 + place.Y] = dgrp;
+                        held.Add(obj);
+                    }
+                    if (borrowed.Count != places.Count) continue;
+                    Borrowed = borrowed; Held = held;
+                    Outcome = $"borrowed from the game's \"{vehicle.Name}\" ({vehicle.File}, {vehicle.GUID:X8}).";
+                    return;
+                }
+                Outcome = $"the pack's own boxes. The game has {vehicles.Count} vehicles the pack can see, none of them on {Shared.CarWidth} by {Shared.CarLength} tiles. Type \"driveways cars\" for the list.";
+            }
+            catch (Exception e)
+            {
+                Borrowed = null;
+                Outcome = "the pack's own boxes: looking for the game's cars failed (" + e.Message + ").";
+            }
+        }
+
+        /// <summary>
+        /// Called whenever the game sets an object's picture. For a tile of the pack's car, set the borrowed one in
+        /// its place.
+        /// </summary>
+        public static void Dress(VMGameObject obj)
+        {
+            if (!VM.UseWorld || obj.MasterDefinition == null || obj.MasterDefinition.GUID != Shared.CarGUID) return;
+            if (!Looked) Look();
+            if (Borrowed == null) return;
+            var place = PlaceOf(obj.Object.OBJ.SubIndex);
+            if (Borrowed.TryGetValue(place.X * 256 + place.Y, out var dgrp) && obj.WorldUI is ObjectComponent picture) picture.DGRP = dgrp;
+        }
+
+        /// <summary>The game's vehicles, for the "driveways cars" console command: each one's name, file and the tiles it stands on.</summary>
+        public static string ListVehicles()
+        {
+            var text = new System.Text.StringBuilder();
+            var provider = FSO.Content.Content.Get().WorldObjects;
+            var vehicles = FindVehicles();
+            text.AppendLine($"{vehicles.Count} multi-tile objects whose name or file says they are vehicles. The car's look now: {Describe()}");
+            foreach (var vehicle in vehicles)
+            {
+                text.AppendLine();
+                text.AppendLine($"\"{vehicle.Name}\" in {vehicle.File}, GUID {vehicle.GUID:X8}, group {vehicle.Group}, {vehicle.Tiles.Count} tiles");
+                foreach (var tile in vehicle.Tiles.OrderBy(t => (ushort)t.SubIndex))
+                {
+                    var place = PlaceOf(tile.SubIndex);
+                    var line = $"  tile {place.X},{place.Y}: \"{tile.Name}\" {(uint)tile.ID:X8}";
+                    try
+                    {
+                        var obj = provider.Get((uint)tile.ID);
+                        if (obj != null) line += $", graphics {obj.OBJ.BaseGraphicID} x {obj.OBJ.NumGraphics}, type {obj.OBJ.ObjectType}, level offset {obj.OBJ.LevelOffset}, tree table {obj.OBJ.TreeTableID}";
+                    }
+                    catch (Exception e) { line += " (could not be loaded: " + e.Message + ")"; }
+                    text.AppendLine(line);
+                }
+            }
+            return text.ToString();
         }
     }
 

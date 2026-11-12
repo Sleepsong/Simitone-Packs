@@ -9,10 +9,11 @@ testing. Expect to find things to fix. The `driveways` console command (below) i
 
 The objects are in buy mode under **Decorative > Other**.
 
-1. Pick up the **Driveway**. It is two tiles wide and four long, the size of the car, and it snaps to
-   the road as in The Sims 2: it lies against the pavement by the road, pointing at the road, and
-   slides along it with the cursor.
-2. Put the **Runabout** on the driveway with its front or its back towards the road.
+1. Pick up the **Driveway**. It is a concrete pad three tiles wide, after The Sims 2's: it joins your
+   garden to the road, across the pavement, with an apron at the kerb. It can only go there, and slides
+   along the road with the cursor.
+2. Put the **Runabout** on the driveway, clear of the pavement, with its front or its back towards the
+   road.
 3. Click the car and choose **Go for a Drive**. Any adult of the household can.
 
 The Sim walks to the car, the car pulls out along the driveway, turns onto the road and drives off the
@@ -37,6 +38,13 @@ lot can be driven right now. It also writes all of that, with two maps of the lo
 `driveways-report.txt` in Simitone's user directory (next to `config.ini`).
 
 ## Changes
+
+- **0.5**: a new Driveway after The Sims 2's: three tiles by eight, cast in panels, crossing the pavement
+  and the verge to an apron at the kerb. It snaps with its apron against the tarmac. The two by four
+  driveway of 0.2 to 0.4 is no longer sold; ones on a lot stay. The car is drawn with a real Sims 1
+  car's pictures when the game has one standing on the same two by four tiles as the pack's; otherwise
+  it stays as boxes, and `driveways cars` lists the game's vehicles so the pack can be fitted to one.
+  The `driveways` report says how often a driveway has been snapped, and what the car is drawn with.
 
 - **0.4**: the road is found on real lots. A report from the game showed the tarmac is floor tile 9,
   with tile 11 only for the dashes of the middle line (which is all 0.1 to 0.3 looked for), the
@@ -71,21 +79,22 @@ lot can be driven right now. It also writes all of that, with two maps of the lo
 - **The road is found by its floor tiles.** Tarmac is tile 9 (and 10 and 11, the line down the
   middle), in a strip along one side of the lot; the pavement, tile 12, marks where the garden starts.
   These were read off one lot in the game. A lot that paves its road differently will not be found.
-- **The driveway stops at the pavement.** It does not cross it to the road as The Sims 2's does: a car
-  parked across the pavement would block the Sims who walk along it.
-- The car is a few coloured boxes. It has no art files: like the Test Cube, its pictures are drawn by
-  the generator.
+- **A car parked across the pavement blocks it.** The driveway crosses the pavement; park the car on
+  the garden part.
+- **The car may still be boxes.** The pack borrows the pictures of one of the game's own cars, but only
+  from one laid out on the same tiles as its own. Which cars the game has, and how they are laid out,
+  is not yet known: `driveways cars` writes the list to `driveways-cars.txt`.
 
 ## How it is made
 
 | | |
 |---|---|
-| `pack/driveways/content/Downloads/Driveways.iff` | The three objects. Written by `generator`, and committed, since it is data |
+| `pack/driveways/content/Downloads/Driveways.iff` | The objects. Written by `generator`, and committed, since it is data |
 | `generator/` | Writes that file, then reads it back and checks it. The car and the driveway are lists of boxes; the generator traces rays against them to draw each sprite and its depth, with the camera maths the engine uses to rebuild a 3D model from a sprite. The car covers eight tiles, and each tile gets its slice |
 | `VMDrive.cs` | A new SimAntics primitive, number 200. The objects' scripts are one or two instructions that call it: to set an object up, to say whether the car is parked, and to drive |
 | `Route.cs` | Where the car goes: finding the road, the way out and back, and how fast. Plain numbers, nothing from the engine |
 | `tests/` | Checks `Route.cs` |
-| `DrivewaysPack.cs` | Adds the primitive and the console command, and one Harmony patch on the game's tick so a car is never left hidden if its drive is cut short |
+| `DrivewaysPack.cs` | Adds the primitive and the console command, and three Harmony patches: one on the game's tick so a car is never left hidden if its drive is cut short, one that snaps a driveway to the road as it is moved, and one that gives the car a real car's pictures |
 | `Shared.cs` | The ids and sizes the object file and the code must agree on. Compiled into both |
 
 To write the object file again, and look at what it drew:

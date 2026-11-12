@@ -41,8 +41,11 @@ namespace Driveways
             //a driveway being put down snaps to the road
             var move = AccessTools.Method(typeof(VMMultitileGroup), "ChangePosition") ?? throw new Exception("VMMultitileGroup.ChangePosition was not found: this pack was made for a different version of Simitone");
             harmony.Patch(move, prefix: new HarmonyMethod(typeof(DrivewaysPack), nameof(BeforeMove)));
+            //the car is drawn with a real Sims 1 car's pictures, when the game has one that fits
+            var graphic = AccessTools.Method(typeof(VMGameObject), "RefreshGraphic") ?? throw new Exception("VMGameObject.RefreshGraphic was not found: this pack was made for a different version of Simitone");
+            harmony.Patch(graphic, postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterGraphic)));
             VMDrive.OnMessage = ShowMessage;
-            PackManager.RegisterCommand("driveways", args => Report());
+            PackManager.RegisterCommand("driveways", args => (args.Length > 0 && args[0].ToLowerInvariant() == "cars") ? ReportCars() : Report());
         }
 
         /// <summary>
@@ -74,6 +77,29 @@ namespace Driveways
                 Name = "driveways_drive",
                 OperandModel = typeof(VMDriveOperand)
             });
+        }
+
+        public static void AfterGraphic(VMGameObject __instance)
+        {
+            try { CarLook.Dress(__instance); } catch (Exception) { } //(never let a picture stop the game)
+        }
+
+        /// <summary>
+        /// "driveways cars": writes the game's vehicles, and the tiles each stands on, to driveways-cars.txt. For
+        /// fitting the pack's car to one of them.
+        /// </summary>
+        private static bool ReportCars()
+        {
+            string message;
+            try
+            {
+                var file = System.IO.Path.Combine(FSOEnvironment.UserDir, "driveways-cars.txt");
+                File.WriteAllText(file, CarLook.ListVehicles());
+                message = "The game's vehicles are listed in " + file + "\n\nThe car's look now: " + CarLook.Describe();
+            }
+            catch (Exception e) { message = "The list could not be written: " + e.Message; }
+            Show("Driveways", message);
+            return true;
         }
 
         public static void BeforeMove(VMMultitileGroup __instance, ref LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags)

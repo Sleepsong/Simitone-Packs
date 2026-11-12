@@ -12,14 +12,24 @@ namespace Driveways
     /// </summary>
     public static class Shared
     {
-        /// <summary>The driveway tile: one flat tile of paving, for filling in round the driveway.</summary>
-        public const uint DrivewayGUID = 0x7D21A001;
-        /// <summary>The driveway as it is bought, big enough for the car, and the first of its tiles. Tile n has DrivewayLargePartGUID + n.</summary>
-        public const uint DrivewayLargeGUID = 0x7D21A020;
-        public const uint DrivewayLargePartGUID = 0x7D21A021;
-        /// <summary>The driveway's size in tiles: the same as the car's.</summary>
-        public const int DrivewayWidth = 2;
-        public const int DrivewayLength = 4;
+        /// <summary>The driveway as it is bought, and the first of its tiles. Tile n has DrivewayPartGUID + n.</summary>
+        public const uint DrivewayGUID = 0x7D21A040;
+        public const uint DrivewayPartGUID = 0x7D21A041;
+        /// <summary>
+        /// The driveway's size in tiles. Facing north its lead tile is the north west one and it runs south, where its
+        /// last DrivewayCrossing rows cross the pavement and the verge to the road: the very last is the apron at the kerb.
+        /// </summary>
+        public const int DrivewayWidth = 3;
+        public const int DrivewayLength = 8;
+        public const int DrivewayCrossing = 2;
+
+        /// <summary>Driveways from earlier versions, no longer sold: one tile (0.1), and two tiles by four (0.2 to 0.4).</summary>
+        public const uint OldTileGUID = 0x7D21A001;
+        public const uint OldDrivewayGUID = 0x7D21A020;
+        public const uint OldDrivewayPartGUID = 0x7D21A021;
+        public const int OldDrivewayWidth = 2;
+        public const int OldDrivewayLength = 4;
+
         /// <summary>The car as it is bought, and the first of its tiles. Tile n has CarPartGUID + n.</summary>
         public const uint CarGUID = 0x7D21A010;
         public const uint CarPartGUID = 0x7D21A011;
