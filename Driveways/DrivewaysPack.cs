@@ -60,6 +60,7 @@ namespace Driveways
 
         public static void AfterTick(VM __instance)
         {
+            VMDrive.RepairOldObjects(__instance);
             VMDrive.EndStaleTrips(__instance);
         }
 

@@ -2,16 +2,16 @@
 
 A **driveway** and a **car your Sims can drive**, in the spirit of The Sims 2 Nightlife, for The Sims 1.
 
-**This is a first stage, and it has not been run in the game yet.** It compiles against Simitone, its object
-file reads back correctly, and its route planning is tested, but nobody has watched a Sim drive. Expect
-to find things to fix. The `driveways` console command (below) is there to help with that.
+**This is a first stage.** The objects have been placed in the game; driving itself has had little
+testing. Expect to find things to fix. The `driveways` console command (below) is there to help with that.
 
 ## Using it
 
-Both objects are in buy mode under **Decorative > Other**.
+The objects are in buy mode under **Decorative > Other**.
 
-1. Lay **Driveway** pieces from where the car will stand to the edge of your lot by the road. The car is
-   two tiles wide and four long, so make the driveway two wide.
+1. Lay **Driveways** end to end from where the car will stand to the edge of your lot by the road. A
+   Driveway is two tiles wide and four long, the size of the car. **Driveway Tile** is a single square,
+   for filling in where a whole Driveway does not fit.
 2. Put the **Runabout** on the driveway with its front or its back towards the road.
 3. Click the car and choose **Go for a Drive**. Any adult of the household can.
 
@@ -24,7 +24,7 @@ If the car cannot be driven, a message says why:
 
 | Message | What to do |
 |---|---|
-| The car needs a driveway under it, all the way to the road | Every tile the car passes over, the ones it is parked on included, needs a Driveway piece, up to where your lot stops and the verge begins |
+| The car needs a driveway under it, all the way to the road | Every tile the car passes over, the ones it is parked on included, needs driveway on it, up to where your lot stops and the verge begins |
 | Something is in the way between the car and the road | Move the object, wall or fence that is on the driveway |
 | The car has to be parked with its front or its back towards the road | Turn it a quarter turn |
 | There is no road on this lot to drive on | The pack did not recognise this lot's road. Run `driveways` and report what it says |
@@ -34,6 +34,12 @@ If the car cannot be driven, a message says why:
 Open the console (Ctrl+Shift+C) and type `driveways`. It shows where the pack thinks the road is on this
 lot, which floor tiles the part of the lot you cannot build on is made of, and whether each car on the
 lot can be driven right now.
+
+## Changes
+
+- **0.2**: the Driveway is now two tiles by four; the single square is still there as Driveway Tile. The
+  car and the driveways can be picked up, moved and sold: in 0.1 they could be put down but never picked
+  up again. Ones placed with 0.1 are put right when their lot is next loaded.
 
 ## Limits
 
@@ -58,7 +64,7 @@ lot can be driven right now.
 
 | | |
 |---|---|
-| `pack/driveways/content/Downloads/Driveways.iff` | The two objects. Written by `generator`, and committed, since it is data |
+| `pack/driveways/content/Downloads/Driveways.iff` | The three objects. Written by `generator`, and committed, since it is data |
 | `generator/` | Writes that file, then reads it back and checks it. The car and the driveway are lists of boxes; the generator traces rays against them to draw each sprite and its depth, with the camera maths the engine uses to rebuild a 3D model from a sprite. The car covers eight tiles, and each tile gets its slice |
 | `VMDrive.cs` | A new SimAntics primitive, number 200. The objects' scripts are one or two instructions that call it: to set an object up, to say whether the car is parked, and to drive |
 | `Route.cs` | Where the car goes: finding the road, the way out and back, and how fast. Plain numbers, nothing from the engine |

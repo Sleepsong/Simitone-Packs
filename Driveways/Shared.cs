@@ -12,8 +12,14 @@ namespace Driveways
     /// </summary>
     public static class Shared
     {
-        /// <summary>The driveway piece: one flat tile of paving.</summary>
+        /// <summary>The driveway tile: one flat tile of paving, for filling in round the driveway.</summary>
         public const uint DrivewayGUID = 0x7D21A001;
+        /// <summary>The driveway as it is bought, big enough for the car, and the first of its tiles. Tile n has DrivewayLargePartGUID + n.</summary>
+        public const uint DrivewayLargeGUID = 0x7D21A020;
+        public const uint DrivewayLargePartGUID = 0x7D21A021;
+        /// <summary>The driveway's size in tiles: the same as the car's.</summary>
+        public const int DrivewayWidth = 2;
+        public const int DrivewayLength = 4;
         /// <summary>The car as it is bought, and the first of its tiles. Tile n has CarPartGUID + n.</summary>
         public const uint CarGUID = 0x7D21A010;
         public const uint CarPartGUID = 0x7D21A011;

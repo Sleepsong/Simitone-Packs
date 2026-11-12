@@ -100,10 +100,34 @@ namespace Driveways
             if (obj == null) return;
             obj.SetValue(VMStackObjectVariable.PlacementFlags, (short)(VMPlacementFlags.OnFloor | VMPlacementFlags.OnTerrain));
             obj.SetValue(VMStackObjectVariable.AllowedHeightFlags, 1); //on the floor
+            obj.SetValue(VMStackObjectVariable.MovementFlags, (short)Movable); //without this the player can put it down but never pick it up again
             if (driveway)
             {
                 obj.SetFlag(VMEntityFlags.AllowPersonIntersection, true);
                 obj.SetFlag(VMEntityFlags.HasZeroExtent, true);
+            }
+        }
+
+        private const VMMovementFlags Movable = VMMovementFlags.SimsCanMove | VMMovementFlags.PlayersCanMove | VMMovementFlags.PlayersCanDelete;
+
+        private static bool IsDriveway(VMEntity obj) => GUIDOf(obj) == Shared.DrivewayGUID || GUIDOf(obj) == Shared.DrivewayLargeGUID;
+
+        //the lots whose objects have been looked over since they loaded
+        private static ConditionalWeakTable<VM, object> Repaired = new ConditionalWeakTable<VM, object>();
+
+        /// <summary>
+        /// Version 0.1 of the pack left its objects impossible to pick up, and they were saved that way. The first time
+        /// a lot ticks, give any of the pack's objects on it the movement flags a new one gets. Called once a tick.
+        /// </summary>
+        public static void RepairOldObjects(VM vm)
+        {
+            if (Repaired.TryGetValue(vm, out _)) return;
+            Repaired.Add(vm, new object());
+            foreach (var obj in vm.Entities)
+            {
+                if (!(obj is VMGameObject) || !(IsDriveway(obj) || GUIDOf(obj) == Shared.CarGUID)) continue;
+                var flags = (VMMovementFlags)obj.GetValue(VMStackObjectVariable.MovementFlags);
+                if ((flags & Movable) != Movable) obj.SetValue(VMStackObjectVariable.MovementFlags, (short)(flags | Movable));
             }
         }
 
@@ -338,7 +362,7 @@ namespace Driveways
                         foreach (var obj in here)
                         {
                             if (obj == null || obj is VMAvatar || obj.MultitileGroup == car) continue;
-                            if (GUIDOf(obj) == Shared.DrivewayGUID) { paved = true; continue; }
+                            if (IsDriveway(obj)) { paved = true; continue; }
                             //the same test the game uses for whether a Sim can walk through something
                             var flags = (VMEntityFlags)obj.GetValue(VMStackObjectVariable.Flags);
                             if ((flags & VMEntityFlags.DisallowPersonIntersection) != 0 || (flags & (VMEntityFlags.AllowPersonIntersection | VMEntityFlags.HasZeroExtent)) == 0)

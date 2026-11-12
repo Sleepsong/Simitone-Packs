@@ -42,6 +42,8 @@ Vector3 Reconstruct(int view, float x, float y, float d) => Vector3.Transform(ne
 
 var concrete = new Color(178, 178, 172);
 var driveway = new[] { new Box(new Vector3(-0.5f, 0, -0.5f), new Vector3(0.5f, 0.02f, 0.5f), concrete) };
+// the whole driveway is one slab over Shared.DrivewayWidth x Shared.DrivewayLength tiles
+var drivewayLarge = new[] { new Box(new Vector3(-0.5f, 0, -0.5f), new Vector3(Shared.DrivewayWidth - 0.5f, 0.02f, Shared.DrivewayLength - 0.5f), concrete) };
 
 // the car faces north: its nose is at low z. it stands on Shared.CarWidth x Shared.CarLength tiles
 var paint = new Color(44, 96, 178);
@@ -234,11 +236,11 @@ AddScript(GoForADrive, "Go for a Drive", 1,
     // ...then drive. this instruction runs every tick until the car is home again
     Call(Shared.ModeDrive));
 
-// --- the driveway piece ---
+// --- the driveway tile: one tile of paving ---
 
 iff.AddChunk(new OBJD()
 {
-    ChunkID = 16807, ChunkLabel = "Driveway", ChunkProcessed = true,
+    ChunkID = 16807, ChunkLabel = "Driveway Tile", ChunkProcessed = true,
     GUID = Shared.DrivewayGUID,
     ObjectType = OBJDType.Normal,
     StackSize = 8,
@@ -250,11 +252,51 @@ iff.AddChunk(new OBJD()
     FunctionSubsort = 128,   //...under "other"
     RoomFlags = 0xFF,        //for every kind of room. without a room the catalog hides it
 });
-var drivewayStrings = new CTSS() { ChunkID = 2000, ChunkLabel = "Catalog - Driveway", ChunkProcessed = true };
-drivewayStrings.InsertString(0, new STRItem("Driveway"));
-drivewayStrings.InsertString(1, new STRItem("A square of concrete for a car to stand on. Lay it from where the car is parked to the edge of your lot by the road, two tiles wide. From the Driveways pack."));
+var drivewayStrings = new CTSS() { ChunkID = 2000, ChunkLabel = "Catalog - Driveway Tile", ChunkProcessed = true };
+drivewayStrings.InsertString(0, new STRItem("Driveway Tile"));
+drivewayStrings.InsertString(1, new STRItem("One square of driveway, for filling in where a whole Driveway does not fit. From the Driveways pack."));
 iff.AddChunk(drivewayStrings);
-AddGraphics("Driveway", 100, 100, driveway, new Point(0, 0), true);
+AddGraphics("Driveway Tile", 100, 100, driveway, new Point(0, 0), true);
+
+// --- the driveway: two tiles by four, the size of the car. like the car, one definition that is bought (the
+// master) and one for each tile it covers ---
+
+const ushort DrivewayGroup = 2;
+iff.AddChunk(new OBJD()
+{
+    ChunkID = 16820, ChunkLabel = "Driveway", ChunkProcessed = true,
+    GUID = Shared.DrivewayLargeGUID,
+    ObjectType = OBJDType.Normal,
+    MasterID = DrivewayGroup, SubIndex = -1,
+    StackSize = 8,
+    CatalogStringsID = 2002,
+    Price = 100,
+    FunctionFlags = 32, FunctionSubsort = 128, RoomFlags = 0xFF,
+});
+var drivewayLargeStrings = new CTSS() { ChunkID = 2002, ChunkLabel = "Catalog - Driveway", ChunkProcessed = true };
+drivewayLargeStrings.InsertString(0, new STRItem("Driveway"));
+drivewayLargeStrings.InsertString(1, new STRItem("Concrete for a car to stand on, two tiles wide and four long: the size of the car. Lay them end to end from where the car is parked to the edge of your lot by the road. From the Driveways pack."));
+iff.AddChunk(drivewayLargeStrings);
+
+int drivewayPart = 0;
+for (int x = 0; x < Shared.DrivewayWidth; x++)
+    for (int y = 0; y < Shared.DrivewayLength; y++)
+    {
+        var graphic = (ushort)(130 + drivewayPart);
+        iff.AddChunk(new OBJD()
+        {
+            ChunkID = (ushort)(16821 + drivewayPart), ChunkLabel = $"Driveway - {x},{y}", ChunkProcessed = true,
+            GUID = Shared.DrivewayLargePartGUID + (uint)drivewayPart,
+            ObjectType = OBJDType.Normal,
+            MasterID = DrivewayGroup, SubIndex = (short)((x << 8) | y),
+            StackSize = 8,
+            BHAV_Init = InitDriveway,
+            BaseGraphicID = graphic, NumGraphics = 1,
+            CatalogStringsID = 2002,
+        });
+        AddGraphics($"Driveway {x},{y}", graphic, (ushort)(300 + drivewayPart * 3), drivewayLarge, new Point(x, y), false);
+        drivewayPart++;
+    }
 
 // --- the car: one definition that is bought (the master), and one for each tile it stands on ---
 
@@ -320,10 +362,18 @@ Console.WriteLine("Wrote " + path + " (" + new FileInfo(path).Length + " bytes)"
 
 var check = new IffFile(path);
 var objects = check.List<OBJD>();
-if (objects.Count != 2 + Shared.CarWidth * Shared.CarLength) throw new Exception("Expected a driveway, a car and its tiles");
+if (objects.Count != 3 + Shared.CarWidth * Shared.CarLength + Shared.DrivewayWidth * Shared.DrivewayLength) throw new Exception("Expected a driveway tile, a driveway and a car, and their tiles");
 
 var slab = objects.Single(o => o.GUID == Shared.DrivewayGUID);
 if (slab.BHAV_Init != InitDriveway || slab.FunctionFlags != 32 || slab.RoomFlags == 0 || slab.NumGraphics != 1 || slab.MasterID != 0) throw new Exception("The driveway's definition did not survive");
+
+var slabMaster = objects.Single(o => o.GUID == Shared.DrivewayLargeGUID);
+if (!slabMaster.IsMultiTile || slabMaster.SubIndex != -1 || slabMaster.FunctionFlags != 32) throw new Exception("The driveway's definition did not survive");
+var slabParts = objects.Where(o => o.MasterID == slabMaster.MasterID && o.SubIndex != -1).ToList();
+var slabPlaces = slabParts.Select(p => (X: ((ushort)p.SubIndex) >> 8, Y: ((ushort)p.SubIndex) & 0xFF)).OrderBy(p => p).ToList();
+var slabExpected = (from x in Enumerable.Range(0, Shared.DrivewayWidth) from y in Enumerable.Range(0, Shared.DrivewayLength) select (X: x, Y: y)).OrderBy(p => p).ToList();
+if (!slabPlaces.SequenceEqual(slabExpected) || slabParts.Any(p => p.BHAV_Init != InitDriveway || p.FunctionFlags != 0)) throw new Exception("The driveway's tiles did not survive");
+Console.WriteLine($"Objects: \"{check.Get<CTSS>(slabMaster.CatalogStringsID).GetString(0)}\" ({slabMaster.GUID:X8}) on {slabParts.Count} tiles");
 
 var master = objects.Single(o => o.GUID == Shared.CarGUID);
 if (!master.IsMultiTile || master.SubIndex != -1 || master.FunctionFlags != 32 || master.TreeTableID != CarMenu) throw new Exception("The car's definition did not survive");
@@ -390,8 +440,12 @@ void CheckGraphics(OBJD obj, IEnumerable<Box> model, Point tile, ref float worst
 
 float slabWorst = 0, carWorst = 0; int slabSolid = 0, carSolid = 0, slabRim = 0, carRim = 0;
 CheckGraphics(slab, driveway, new Point(0, 0), ref slabWorst, ref slabSolid, ref slabRim);
+float largeWorst = 0; int largeSolid = 0, largeRim = 0;
+foreach (var part in slabParts) CheckGraphics(part, drivewayLarge, new Point(((ushort)part.SubIndex) >> 8, ((ushort)part.SubIndex) & 0xFF), ref largeWorst, ref largeSolid, ref largeRim);
+Console.WriteLine($"Driveway: {largeSolid} solid pixels over {slabParts.Count} tiles and 4 views, each within {largeWorst:0.000} tiles of the model when rebuilt in 3D");
+if (largeSolid < 30000 || largeWorst > 0.03f) throw new Exception("The driveway's sprites do not describe it");
 foreach (var part in parts) CheckGraphics(part, car, new Point(((ushort)part.SubIndex) >> 8, ((ushort)part.SubIndex) & 0xFF), ref carWorst, ref carSolid, ref carRim);
-Console.WriteLine($"Driveway: {slabSolid} solid pixels over 4 views, each within {slabWorst:0.000} tiles of the model when rebuilt in 3D");
+Console.WriteLine($"Driveway Tile: {slabSolid} solid pixels over 4 views, each within {slabWorst:0.000} tiles of the model when rebuilt in 3D");
 Console.WriteLine($"Car: {carSolid} solid pixels over {parts.Count} tiles and 4 views, each within {carWorst:0.000} tiles of the model when rebuilt in 3D ({carRim} of them the rims along the joins between tiles)");
 if (slabSolid < 4000 || carSolid < 40000 || slabWorst > 0.03f || carWorst > 0.03f || carRim > carSolid / 20) throw new Exception("The sprites do not describe the models");
 Console.WriteLine("OK");
@@ -438,7 +492,9 @@ if (args.Length > 1)
         }
     }
     for (uint view = 0; view < 4; view++) Preview($"car-view{view}.ppm", parts, view);
-    Preview("driveway.ppm", new[] { slab }, 0);
+    Preview("driveway-tile.ppm", new[] { slab }, 0);
+    Preview("driveway.ppm", slabParts, 0);
+    Preview("driveway-and-car.ppm", slabParts.Concat(parts), 1);
     Console.WriteLine("Previews written to " + args[1]);
 }
 
