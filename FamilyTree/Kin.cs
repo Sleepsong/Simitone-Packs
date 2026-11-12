@@ -33,6 +33,28 @@ namespace FamilyTree
         public bool Touches(uint x) => A == x || B == x;
     }
 
+    /// <summary>
+    /// A baby that has not grown up yet. The Sims 1's baby is an object on its lot, not a Sim, until it becomes a
+    /// child days later. This is who its parents are, kept until then.
+    /// </summary>
+    public struct Expected
+    {
+        /// <summary>The house the baby is in.</summary>
+        public int House;
+        /// <summary>The baby's object on that lot: its number there, and what kind of object it is.</summary>
+        public int ObjectId;
+        public uint ObjectGuid;
+        /// <summary>The parents, or 0 where one is not known.</summary>
+        public uint ParentA;
+        public uint ParentB;
+
+        public IEnumerable<uint> Parents()
+        {
+            if (ParentA != 0) yield return ParentA;
+            if (ParentB != 0 && ParentB != ParentA) yield return ParentB;
+        }
+    }
+
     /// <summary>What the player picks for a pair of Sims, read as "the first is the second's ...".</summary>
     public enum Choice
     {
@@ -72,8 +94,10 @@ namespace FamilyTree
         public const int MostParents = 2;
 
         public List<KinLink> Links = new List<KinLink>();
+        /// <summary>Babies whose parents are known, waiting to grow up.</summary>
+        public List<Expected> Babies = new List<Expected>();
 
-        public Kin Clone() => new Kin() { Links = new List<KinLink>(Links) };
+        public Kin Clone() => new Kin() { Links = new List<KinLink>(Links), Babies = new List<Expected>(Babies) };
 
         // ---- who is what ----
 
@@ -303,6 +327,42 @@ namespace FamilyTree
             return said;
         }
 
+        // ---- what happens in play ----
+
+        /// <summary>
+        /// A child has arrived whose parents are known: make each of them the child's parent, where the rules allow.
+        /// Returns the parents that were given.
+        /// </summary>
+        public List<uint> GiveParents(uint child, IEnumerable<uint> parents, Func<uint, bool> isAdult, Func<uint, string> name, List<string> refused = null)
+        {
+            var given = new List<uint>();
+            foreach (var parent in parents.Distinct())
+            {
+                if (parent == child) continue;
+                if (ChoiceFor(parent, child) == Choice.Parent)
+                {
+                    given.Add(parent);
+                    continue;
+                }
+                var why = WhyNot(parent, child, Choice.Parent, isAdult, name);
+                if (why != null)
+                {
+                    refused?.Add(why);
+                    continue;
+                }
+                Set(parent, child, Choice.Parent);
+                given.Add(parent);
+            }
+            return given;
+        }
+
+        /// <summary>Everyone with a tie to this Sim, however it comes about, with the tie.</summary>
+        public List<(uint, Tie)> FamilyOf(uint x)
+        {
+            return Links.SelectMany(l => new[] { l.A, l.B }).Distinct().Where(other => other != x)
+                .Select(other => (other, Between(x, other))).Where(pair => pair.Item2 != Tie.None).ToList();
+        }
+
         // ---- Sims coming and going ----
 
         /// <summary>Forget every tie this Sim has.</summary>
@@ -341,6 +401,11 @@ namespace FamilyTree
             {
                 lines.Add(l.Kind.ToString().ToLowerInvariant() + " " + l.A.ToString("X8") + " " + l.B.ToString("X8"));
             }
+            if (Babies.Count > 0) lines.Add("# baby HOUSE OBJECT KIND A B: a baby in that house, not yet grown up, whose parents are A and B.");
+            foreach (var b in Babies)
+            {
+                lines.Add("baby " + b.House + " " + b.ObjectId + " " + b.ObjectGuid.ToString("X8") + " " + b.ParentA.ToString("X8") + " " + b.ParentB.ToString("X8"));
+            }
             return string.Join("\n", lines) + "\n";
         }
 
@@ -354,6 +419,18 @@ namespace FamilyTree
                 var line = raw.Trim();
                 if (line == "" || line.StartsWith("#")) continue;
                 var parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                const System.Globalization.NumberStyles hex = System.Globalization.NumberStyles.HexNumber;
+                if (parts.Length == 6 && parts[0].ToLowerInvariant() == "baby")
+                {
+                    if (int.TryParse(parts[1], out var house) && int.TryParse(parts[2], out var objectId)
+                        && uint.TryParse(parts[3], hex, null, out var objectGuid)
+                        && uint.TryParse(parts[4], hex, null, out var parentA) && uint.TryParse(parts[5], hex, null, out var parentB))
+                    {
+                        kin.Babies.Add(new Expected() { House = house, ObjectId = objectId, ObjectGuid = objectGuid, ParentA = parentA, ParentB = parentB });
+                    }
+                    else skipped++;
+                    continue;
+                }
                 if (parts.Length == 3
                     && Enum.TryParse<LinkKind>(parts[0], true, out var kind) && Enum.IsDefined(typeof(LinkKind), kind)
                     && uint.TryParse(parts[1], System.Globalization.NumberStyles.HexNumber, null, out var a)

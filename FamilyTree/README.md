@@ -7,9 +7,10 @@ The Sims 1 keeps no family ties at all. It only knows how well two Sims get on, 
 made in Create a Family begin as two strangers who share a house. With this pack you say what they
 are to each other, and they begin that way.
 
-**This is a first stage, and it has not been run in the game.** It has been compiled, its patches
-checked against the engine, and its rules and saving checked without the game (below). Its windows
-have not been seen on a screen. **Back up your `UserData` folders before trying it.**
+**It has not been run in the game.** It has been compiled, its patches checked against the engine,
+and its rules and saving checked without the game (below). Its windows have not been seen on a
+screen, and how it follows babies and marriages rests on a reading of the engine that only play can
+confirm. **Back up your `UserData` folders before trying it.**
 
 ## Using it
 
@@ -61,22 +62,43 @@ are married to, brothers and sisters, cousins, children, nieces and nephews, gra
 relative is a button that moves the tree to them, and **Back to (name)** returns to your Sim.
 
 **Change ties** lists the Sim's household, the family they already have and every Sim they have
-met, with the same button as in Create a Family. Use it for families that were made before you had
-the pack, and to keep the tree up to date (below). Changing a tie here does not change how well two
-Sims get on.
+met (not pets), with the same button as in Create a Family. Use it for families that were made
+before you had the pack, and to put right anything the pack got wrong (below). Changing a tie here
+does not change how well two Sims get on.
 
 In the **relationship panel**, a Sim who is family has what they are to your Sim under their name:
 Wife, Father, Cousin.
 
+### What the tree follows by itself
+
+**Babies.** When a baby arrives, the pack notes who its parents are: the Sims of the household whose
+interaction brought it. With only one Sim involved, their husband or wife is the other parent, if
+they live there too. When the baby grows into a child, the child is given those parents in the tree,
+starts out getting on with the whole family as the table above says, and a message tells you. If
+the parents are not known (an adopted baby, say), the message says so and the tree is left for you.
+
+**Marriages.** When an adult joins the household, brought in by one of its Sims, the two may be
+married. If the interaction was a proposal they are, and a message says so. Otherwise you are asked:
+"Are they married?" Nobody is asked about a Sim who is already married, or about family.
+
+What the pack saw and decided each time is written to the terminal, in lines starting `[family]`.
+
 ## Limits
 
-- **The tree does not follow what happens in play.** A proposal, a Sim moving in or a baby does not
-  change it: add those ties yourself with **Change ties**. Following them is the next stage.
+- **Following play is a best guess.** The Sims 1 never says who a baby's parents are or that two
+  Sims have married, so the pack works it out from who was doing what at the time. Where it is
+  wrong, put it right with **Change ties**.
+- A proposal is told from other ways of moving in by the interaction's English name. With the game
+  in another language you are asked each time instead.
+- A baby's parents are kept from when it arrives to when it grows up. A baby that was already there
+  when you first switched the pack on has none noted.
+- A Sim who moves out, or dies, keeps their place in the tree, and so does a marriage.
 - **The game does not act on the tree.** The Sims 1's own scripts know nothing of it, so relatives
   are offered the same interactions as anyone else. Only the starting scores reach the game.
 - **A married couple starts with high scores, and nothing else.** If the game keeps something more
   for a couple in love than its two scores, the pack does not set it.
-- Children in The Sims 1 never grow up, so a child can never be given a spouse or a child.
+- A child cannot be given a spouse or a child. Children in The Sims 1 never grow up by themselves;
+  with the [Life Stages](../LifeStages) pack they do, and can be given both once they are adults.
 - A Sim who has left the neighbourhood keeps their place in the file but is not shown.
 
 ## Where it is kept
@@ -102,8 +124,15 @@ Sims had earned them.
 - `People.cs` is what the game knows about a Sim (name, age, household, scores), and the tree's file.
 - `FamilyTreePack.cs` is where the two meet, as Harmony patches: the button on the Create a Family
   screen, the moment the game makes the family, the relationship panel, and the ways into the window.
+- `Following.cs` is how the tree follows play. The game's scripts make a baby object, turn it into a
+  character days later, and add a character to a household. It watches for those three.
 - `UIFamilyTiesDialog.cs` and `UIFamilyTreeDialog.cs` are the two windows, made from Simitone's own
   dialog, labels and buttons (`UIRowsDialog.cs`), so the pack has no artwork.
+
+The baby is recognised by its scripts, not by name: it is the object whose scripts can make a new
+Sim. So nothing here depends on which expansion packs are installed. Until it grows up it is an
+object on its lot and not a Sim, so its parents are kept beside the tree, in a `baby` line of the
+file, against the house and the object.
 
 While a family is being made its Sims have no characters yet, so a Sim is their place in the family.
 When the game makes the family, the ties move to the neighbourhood's tree under the characters it
@@ -118,4 +147,6 @@ dotnet run --project FamilyTree/tests -c Release
 This needs no copy of The Sims. It checks that every patch attaches to the Simitone the pack is
 built against, the rules above, the file, and a family of four made with ties in a made-up
 neighbourhood: the neighbourhood is saved with the game's own code and read back, to see the scores
-are in it.
+are in it. For following play it checks how a baby is recognised, how its parents are chosen, that
+it is kept until it grows up and the child then given them, and when a Sim who moves in is married
+or asked about. What it cannot check is the game's own scripts doing those things.

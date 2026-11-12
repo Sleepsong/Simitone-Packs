@@ -89,10 +89,50 @@ namespace FamilyTree
             return (data != null && index < data.Length) ? data[index] : otherwise;
         }
 
-        /// <summary>Children in The Sims never grow up, so a Sim is one or the other for good. A Sim the game has no age for counts as an adult.</summary>
+        /// <summary>An adult to the game, by the age it keeps for them (which the Life Stages pack moves on). A Sim the game has no age for counts as an adult.</summary>
         public static bool IsAdult(uint guid) => Data(guid, VMPersonDataVariable.PersonsAge, 27) >= 18;
 
         public static bool IsFemale(uint guid) => Data(guid, VMPersonDataVariable.Gender, 0) == 1;
+
+        private static readonly Dictionary<uint, bool> PersonCache = new Dictionary<uint, bool>();
+
+        /// <summary>
+        /// A Sim, and not a pet. Cats and dogs are characters to the game too, but are not in anyone's family tree.
+        /// A character whose file does not say counts as a Sim.
+        /// </summary>
+        public static bool IsPerson(uint guid)
+        {
+            if (PersonCache.TryGetValue(guid, out var known)) return known;
+            var person = true;
+            try
+            {
+                //the first of a character's body strings is what it is: adult, child, or a kind of pet
+                var kind = Content.Get()?.WorldObjects?.Get(guid)?.Resource?.Get<STR>(200)?.GetString(0);
+                if (!string.IsNullOrWhiteSpace(kind))
+                {
+                    kind = kind.Trim().ToLowerInvariant();
+                    person = kind == "adult" || kind == "child";
+                }
+            }
+            catch (Exception)
+            {
+                return true; //(not remembered: it may read next time)
+            }
+            PersonCache[guid] = person;
+            return person;
+        }
+
+        /// <summary>Start a Sim off getting on with all the family they have in the tree, as their tie to each calls for. Returns how many.</summary>
+        public static int RaiseScoresWithFamily(Kin kin, uint sim)
+        {
+            int raised = 0;
+            foreach (var (other, tie) in kin.FamilyOf(sim))
+            {
+                var scores = StartingScores.For(tie);
+                if (scores != null && RaiseScores(sim, other, scores.Value.Item1, scores.Value.Item2)) raised++;
+            }
+            return raised;
+        }
 
         // ---- how two Sims get on ----
 
@@ -127,7 +167,7 @@ namespace FamilyTree
             scores[LifetimeScore] = Math.Max(scores[LifetimeScore], lifetime);
         }
 
-        /// <summary>The Sims this one has met: everyone the game keeps a score for, from them.</summary>
+        /// <summary>The Sims this one has met: everyone the game keeps a score for, from them. Not pets.</summary>
         public static List<uint> Met(uint guid)
         {
             var result = new List<uint>();
@@ -136,7 +176,7 @@ namespace FamilyTree
             if (n?.Relationships == null || all == null) return result;
             foreach (var id in n.Relationships.Keys)
             {
-                if (all.TryGetValue((short)id, out var other) && other.GUID != guid && !result.Contains(other.GUID)) result.Add(other.GUID);
+                if (all.TryGetValue((short)id, out var other) && other.GUID != guid && !result.Contains(other.GUID) && IsPerson(other.GUID)) result.Add(other.GUID);
             }
             return result;
         }

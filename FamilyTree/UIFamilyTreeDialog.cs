@@ -185,7 +185,7 @@ namespace FamilyTree
             {
                 foreach (var sim in sims)
                 {
-                    if (sim != centre && !result.Contains(sim)) result.Add(sim);
+                    if (sim != centre && !result.Contains(sim) && People.IsPerson(sim)) result.Add(sim);
                 }
             }
             Add(People.FamilyOf(centre)?.FamilyGUIDs ?? new uint[0]);

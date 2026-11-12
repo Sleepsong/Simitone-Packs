@@ -10,7 +10,10 @@ using FSO.Client.UI.Framework;
 using FSO.Common.Rendering.Framework.Model;
 using FSO.Content;
 using FSO.Files.Formats.IFF.Chunks;
+using FSO.LotView.Model;
 using FSO.SimAntics;
+using FSO.SimAntics.Engine.Primitives;
+using FSO.SimAntics.Primitives;
 using FSO.SimAntics.Utils;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
@@ -43,9 +46,11 @@ namespace FamilyTree
     ///     family does (a married couple starts married, not as strangers).
     ///  4. The relationship panel shows a Sim: say what they are to the Sim being played.
     ///  5. The ways into the Family Tree window: a button in Options, and the F8 key.
+    ///  6. The game makes a baby, and later a child from it: the child is given its parents (Following).
+    ///  7. The game adds an adult to the household: they may be married to the Sim who brought them in (Following).
     ///
-    /// Only 3 is needed for the pack to do its job, with 1 and 2 to reach it. A version of Simitone that 4 or 5 do
-    /// not fit costs only those.
+    /// Only 3 is needed for a family to be made with ties, with 1 and 2 to reach it. A version of Simitone that the
+    /// others do not fit costs only those.
     /// </summary>
     public class FamilyTreePack : ISimitonePack
     {
@@ -113,9 +118,25 @@ namespace FamilyTree
             // 5
             Optional(() => harmony.Patch(Found(AccessTools.Method(typeof(UILotControl), "Update"), "UILotControl.Update"), postfix: Mine(nameof(AfterLotControlUpdate))), "the F8 key");
             Optional(() => harmony.Patch(Found(AccessTools.Method(typeof(UIMainPanel), "AddPacksButton"), "UIMainPanel.AddPacksButton"), postfix: Mine(nameof(AfterPacksButton))), "the Family Tree button in Options");
+
+            // 6. babies: a script makes an object (which script, and then which object), and later a character from it
+            Optional(() =>
+            {
+                harmony.Patch(Found(AccessTools.Method(typeof(VMCreateObjectInstance), "Execute"), "VMCreateObjectInstance.Execute"),
+                    prefix: Theirs(nameof(Following.BeforeCreateObject)), finalizer: Theirs(nameof(Following.AfterCreateObject)));
+                harmony.Patch(Found(AccessTools.Method(typeof(VMContext), "CreateObjectInstance", new[] { typeof(uint), typeof(LotTilePos), typeof(Direction), typeof(short), typeof(short), typeof(bool) }),
+                    "VMContext.CreateObjectInstance"), postfix: Theirs(nameof(Following.AfterObjectMade)));
+                harmony.Patch(Found(AccessTools.Method(typeof(VMTS1MakeNewCharacter), "Execute"), "VMTS1MakeNewCharacter.Execute"),
+                    prefix: Theirs(nameof(Following.BeforeMakeCharacter)), postfix: Theirs(nameof(Following.AfterMakeCharacter)));
+            }, "babies to the family tree", "Give a new child their parents with Change ties.");
+            // 7. an adult joins the household
+            Optional(() => harmony.Patch(Found(AccessTools.Method(typeof(VMGenericTS1Call), "Execute"), "VMGenericTS1Call.Execute"),
+                prefix: Theirs(nameof(Following.BeforeGameCall)), postfix: Theirs(nameof(Following.AfterGameCall))), "marriages to the family tree", "Marry two Sims with Change ties.");
         }
 
-        private static void Optional(Action patch, string what)
+        private static HarmonyMethod Theirs(string name) => new HarmonyMethod(typeof(Following), name);
+
+        private static void Optional(Action patch, string what, string instead = null)
         {
             try
             {
@@ -123,7 +144,7 @@ namespace FamilyTree
             }
             catch (Exception e)
             {
-                People.Log("Could not add " + what + ": " + e.Message + " The console still opens the window: " + Command);
+                People.Log("Could not add " + what + ": " + e.Message + " " + (instead ?? "The console still opens the window: " + Command));
             }
         }
 
