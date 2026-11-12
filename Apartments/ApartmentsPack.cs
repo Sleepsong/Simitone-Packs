@@ -49,6 +49,7 @@ namespace Apartments
     ///  4. The lot ticks: hold the neighbours' needs up, bring back any the game sent away, and write down what
     ///     they do.
     ///  5. The game takes or gives money: write down who caused it (it always goes to the played household).
+    ///  6. The lot is saved: keep the pack's file for the lot with it.
     ///
     /// This is a prototype whose first purpose is to find out what the game's scripts make of Sims who live on a lot
     /// without being played. Everything it learns goes to Apartments.log. It has no apartments yet: no units, doors,
@@ -77,16 +78,33 @@ namespace Apartments
             AptLog.Write("Apartments prototype loaded. Console: apt help");
         }
 
-        public void OnLotLoaded(VM vm, string lotPath)
+        public void OnLotLoaded(VM vm)
         {
             //normally done already (3). this covers a lot that reached the screen another way
-            if (lotPath != null && !Neighbours.IsShared(vm)) Neighbours.Reconcile(vm, "lot loaded");
+            if (!Neighbours.IsShared(vm)) Guard("looking at the lot that loaded", () => Neighbours.Reconcile(vm, "lot loaded"));
         }
 
-        public void OnLotSaved(VM vm, string lotPath)
+        /// <summary>
+        /// Nothing this pack does may take the game down with it. Whatever goes wrong is written to the log, in full,
+        /// and the game carries on.
+        /// </summary>
+        public static bool Guard(string doing, Action action)
         {
-            Neighbours.SaveLot(vm);
+            try
+            {
+                action();
+                return true;
+            }
+            catch (Exception e)
+            {
+                if (++Failures <= MostFailuresLogged) AptLog.Write("Something went wrong while " + doing + ": " + e);
+                if (Failures == MostFailuresLogged) AptLog.Write("(No more of these will be written down this session.)");
+                return false;
+            }
         }
+
+        private const int MostFailuresLogged = 20;
+        private static int Failures;
 
         private static HarmonyMethod Mine(string name) => new HarmonyMethod(typeof(ApartmentsPack), name);
 
@@ -107,6 +125,9 @@ namespace Apartments
             harmony.Patch(Find(typeof(VM), "Tick"), postfix: Mine(nameof(AfterTick)));
             // 5
             harmony.Patch(Find(typeof(VMTS1Budget), "Execute"), prefix: Mine(nameof(BeforeBudget)), postfix: Mine(nameof(AfterBudget)));
+
+            // 6. (only calls Simitone makes in every version are relied on, so the pack looks for a save itself)
+            harmony.Patch(Find(typeof(TS1GameScreen), "Save"), postfix: Mine(nameof(AfterSave)));
 
             // the ways into the Apartments window. the pack works without them (the console opens the window too), so
             // a version of Simitone they do not fit costs only that way in
@@ -173,35 +194,35 @@ namespace Apartments
 
         public static void AfterNeighbourhoodLoad(TS1NeighborhoodProvider __instance)
         {
-            try
-            {
-                Residency.FixTable(__instance);
-            }
-            catch (Exception e)
-            {
-                AptLog.Write("Could not read the shared houses of this neighbourhood: " + e.Message);
-            }
+            Guard("reading the shared houses of this neighbourhood", () => Residency.FixTable(__instance));
         }
 
         // ---- 2 ----
 
         public static void AfterMoveOut(TS1NeighborhoodProvider __instance, short houseID)
         {
-            Residency.AfterMoveOut(__instance, houseID);
+            Guard("moving a household out", () => Residency.AfterMoveOut(__instance, houseID));
         }
 
         // ---- 3 ----
 
         public static void AfterVerifyFamily(VM vm)
         {
-            Neighbours.Reconcile(vm, "family checked");
+            Guard("putting the households on the lot", () => Neighbours.Reconcile(vm, "family checked"));
         }
 
         // ---- 4 ----
 
         public static void AfterTick(VM __instance)
         {
-            if (__instance.TS1) Neighbours.AfterTick(__instance);
+            if (__instance.TS1) Guard("looking after the neighbours", () => Neighbours.AfterTick(__instance));
+        }
+
+        // ---- 6 ----
+
+        public static void AfterSave(TS1GameScreen __instance)
+        {
+            Guard("keeping the apartments with the saved lot", () => Neighbours.SaveLot(__instance.vm));
         }
 
         // ---- 5. the game has one purse, the played household's. this only reports what reaches it ----
@@ -215,6 +236,12 @@ namespace Apartments
         {
             var vm = context.VM;
             if (!Neighbours.IsShared(vm)) return;
+            Guard("writing down a payment", () => ReportMoney(context, __state));
+        }
+
+        private static void ReportMoney(VMStackFrame context, int __state)
+        {
+            var vm = context.VM;
             var now = vm.TS1State?.CurrentFamily?.Budget ?? 0;
             if (now == __state) return;
             var change = now - __state;

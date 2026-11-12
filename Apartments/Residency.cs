@@ -7,7 +7,6 @@ http://mozilla.org/MPL/2.0/.
 using FSO.Content;
 using FSO.Content.TS1;
 using FSO.Files.Formats.IFF.Chunks;
-using Simitone.Client.Packs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,7 +22,7 @@ namespace Apartments
     /// neighbourhood file.
     ///
     /// The one thing the file cannot say is which of them is being played. That is kept in the pack's own file for the
-    /// lot (LotPackData), and the game's table is pointed at that family.
+    /// lot (PackStore), and the game's table is pointed at that family.
     ///
     /// Without the pack, a shared house shows as lived in by one of its families (the last in the file). The others
     /// are untouched but cannot be reached until the pack is on again.
@@ -94,7 +93,7 @@ namespace Apartments
         {
             try
             {
-                return LotFile.Parse(LotPackData.Read(PackId, LotPath(house, neigh)));
+                return LotFile.Parse(PackStore.Read(PackId, LotPath(house, neigh)));
             }
             catch (Exception e)
             {
@@ -109,11 +108,11 @@ namespace Apartments
             var residents = Residents(house, neigh);
             if (residents.Count < 2 || file == null)
             {
-                LotPackData.Write(PackId, LotPath(house, neigh), null);
+                PackStore.Write(PackId, LotPath(house, neigh), null);
                 return;
             }
             file.Keep(residents.Select(x => (int)x.ChunkID));
-            LotPackData.Write(PackId, LotPath(house, neigh), file.ToBytes());
+            PackStore.Write(PackId, LotPath(house, neigh), file.ToBytes());
         }
 
         /// <summary>The household last played in this house, as the pack's file for the lot has it (0 if it has none).</summary>

@@ -21,11 +21,29 @@ foreach (var m in h.GetPatchedMethods()) {
     Console.WriteLine($"patched {m.DeclaringType.Name}.{m.Name}: prefixes={info.Prefixes.Count} postfixes={info.Postfixes.Count}");
 }
 // the two ways into the Apartments window are optional to the pack, but should fit the Simitone this is built against
-foreach (var needed in new[] { "UILotControl.Update", "UIMainPanel.AddPacksButton" }) {
+foreach (var needed in new[] { "TS1GameScreen.Save", "UILotControl.Update", "UIMainPanel.AddPacksButton" }) {
     if (!h.GetPatchedMethods().Any(m => m.DeclaringType.Name + "." + m.Name == needed)) { Console.WriteLine("FAILED: the patch on " + needed + " did not attach"); return 1; }
 }
 // the per-tick hook must be harmless on a VM it knows nothing about
 Console.WriteLine("IsShared(null) = " + Neighbours.IsShared(null) + ", HomeHouse(null) = " + Neighbours.HomeHouse(null));
+
+// ---- the pack must run on every Simitone that can load code packs, not only the newest ----
+// It was once built on a helper (LotPackData) that only the newest Simitone has, and failed on an older one. From
+// Simitone's pack code it may use only what was there from the start.
+{
+    var allowed = new System.Collections.Generic.HashSet<string>() { "ISimitonePack", "Pack", "PackManager" };
+    using var file = System.IO.File.OpenRead(typeof(ApartmentsPack).Assembly.Location);
+    using var pe = new System.Reflection.PortableExecutable.PEReader(file);
+    var md = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(pe);
+    var used = md.TypeReferences.Select(t => md.GetTypeReference(t))
+        .Where(t => md.GetString(t.Namespace) == "Simitone.Client.Packs").Select(t => md.GetString(t.Name)).Distinct().ToList();
+    var extra = used.Where(t => !allowed.Contains(t)).ToList();
+    Console.WriteLine((extra.Count == 0 ? "ok   " : "FAIL ") + "uses only the first pack API (" + string.Join(", ", used) + ")" + (extra.Count == 0 ? "" : ": NOT " + string.Join(", ", extra)));
+    if (extra.Count > 0) return 1;
+    var members = md.MemberReferences.Select(m => md.GetMemberReference(m)).Select(m => md.GetString(m.Name)).ToHashSet();
+    var late = new[] { "NotifyLotSaved" }.Where(members.Contains).ToList();
+    if (late.Count > 0) { Console.WriteLine("FAIL uses a later pack call: " + string.Join(", ", late)); return 1; }
+}
 
 // ---- residency, against a made-up neighbourhood ----
 FSO.Common.FSOEnvironment.UserDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "apt-test-" + Guid.NewGuid().ToString("n"));
@@ -86,6 +104,9 @@ var sharedBack = Residency.Load(20, neigh);
 Check("house file round trip, strangers dropped", sharedBack.Played == 11 && sharedBack.Rate == 2 && sharedBack.Units.Count == 1 && sharedBack.Units[10].Count == 1);
 Residency.WritePlayed(20, 10, neigh);
 Check("changing the played household keeps the apartments", Residency.Load(20, neigh).Played == 10 && Residency.Load(20, neigh).Units[10].Count == 1);
+
+Check("the pack keeps its files where Simitone's own helper would", PackStore.PathFor("sample.apartments", neigh.GetHousePath(20)).Replace('\\', '/').Contains("/LocalHouse/PackData/sample.apartments/House20-"));
+Check("writing nothing removes the file", PackStore.Write("sample.apartments", neigh.GetHousePath(20), null) && PackStore.Read("sample.apartments", neigh.GetHousePath(20)) == null);
 
 // ---- rent ----
 var clock = new FSO.SimAntics.VMClock() { Year = 1997, Month = 6, DayOfMonth = 30 };

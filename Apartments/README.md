@@ -134,7 +134,8 @@ exactly one played family, and switching changes which one it is.
 **Who lives where** needs nothing new in the save. Every family in the neighbourhood file names its
 own house. The game only expects one family to name a given house; here several may, and they are
 that house's residents. What the file cannot say is which of them is played, which rooms are whose
-and what rent is owed. Those are in the pack's own file for the lot (`LotPackData`).
+and what rent is owed. Those are in the pack's own file for the lot, beside the saves
+(`LocalHouse/PackData/sample.apartments/` in the user directory).
 
 An apartment is kept as one tile inside each of its rooms, not as the engine's room numbers, which
 change whenever a wall is built or knocked down. Whatever room the tile is in now is the household's.
@@ -152,9 +153,17 @@ The rest is five Harmony patches:
 4. The lot ticks: hold the neighbours' needs up, bring back any the game sent away, take the day's
    rent, and write down what the neighbours do. A lot that is not shared costs one lookup a tick.
 5. The game takes or gives money: write down who caused it.
+6. The lot is saved: keep the pack's file for the lot with it.
+
+Nothing the pack does should be able to take the game down: each of these is guarded, and whatever
+goes wrong is written to the log in full while the game carries on. Changing household stops at the
+first step that fails and says so.
+
+It uses only what every Simitone with code packs has, so it does not need the newest build.
 
 - `Residency.cs` is who lives where.
-- `Units.cs` is the apartments, the rent, and the pack's file for a lot.
+- `Units.cs` is the apartments, the rent, and what the pack's file for a lot says.
+- `PackStore.cs` is where that file is kept.
 - `Neighbours.cs` is the unplayed households on the lot.
 - `Actions.cs` is everything the player can do, shared by the window and the console.
 - `UIApartmentsDialog.cs` is the window. It is made the way Simitone's own Packs window is, from the

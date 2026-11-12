@@ -171,10 +171,28 @@ namespace Apartments
                 if (screen?.vm != vm) return;
                 UIApartmentsDialog.CloseIfOpen();
                 AptLog.Write("=== Switching house " + house + " to " + Residency.NameOf(family) + ". Saving first.");
-                screen.Save();
-                Residency.SetPlayed(family);
-                screen.ActiveFamily = family;
-                screen.InitializeLot(Content.Get().Neighborhood.GetHousePath(house), false);
+                //each step is checked: a half-done switch must stop where it is, say so, and leave the game running
+                if (!ApartmentsPack.Guard("saving the lot before switching", () => screen.Save()))
+                {
+                    Say("Apartments", "The lot could not be saved, so the household was not changed. The log says what went wrong.");
+                    return;
+                }
+                if (!ApartmentsPack.Guard("making " + Residency.NameOf(family) + " the played household", () => Residency.SetPlayed(family)))
+                {
+                    Say("Apartments", "The household could not be changed. The log says what went wrong.");
+                    return;
+                }
+                AptLog.Write("Saved. Loading the lot again for " + Residency.NameOf(family) + ".");
+                if (!ApartmentsPack.Guard("loading the lot for " + Residency.NameOf(family), () =>
+                {
+                    screen.ActiveFamily = family;
+                    screen.InitializeLot(Content.Get().Neighborhood.GetHousePath(house), false);
+                }))
+                {
+                    Say("Apartments", "The lot could not be loaded again. Leave to the neighbourhood and come back in: the household has been changed. The log says what went wrong.");
+                    return;
+                }
+                AptLog.Write("=== Now playing " + Residency.NameOf(family) + ".");
             });
             return null;
         }
