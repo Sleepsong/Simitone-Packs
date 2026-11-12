@@ -40,6 +40,60 @@ namespace Driveways
         public bool AlongX;
         /// <summary>The first and last row (or column) the road covers.</summary>
         public int First, Last;
+        /// <summary>
+        /// The first and last row (or column) of the whole strip along that side of the lot that cannot be built on:
+        /// the road and the verge beside it. Not set when the road was found by its tiles alone.
+        /// </summary>
+        public int? VergeFirst, VergeLast;
+
+        /// <summary>Where the strip that cannot be built on starts and ends (the road itself, when no verge is known).</summary>
+        public int StripFirst => VergeFirst ?? First;
+        public int StripLast => VergeLast ?? Last;
+
+        /// <summary>
+        /// Find the road from where the player cannot build. A lot has a narrow margin round it that cannot be built
+        /// on, and a much deeper one along the side with the road. The deepest margin is the strip; the road is taken
+        /// to be its outer part, with two tiles of verge left on the house's side when the strip is deep enough.
+        /// asphalt, if given, says which rows (or columns) of the strip are known to be road, and is used instead
+        /// when it names any.
+        /// </summary>
+        public static Road? FindByMargin(Func<int, int, bool> cannotBuild, int width, int height, Func<bool, int, bool> asphalt = null)
+        {
+            //a row or column is margin when nearly all of it cannot be built on
+            bool Row(int y) { int n = 0; for (int x = 0; x < width; x++) if (cannotBuild(x, y)) n++; return n * 10 >= width * 9; }
+            bool Col(int x) { int n = 0; for (int y = 0; y < height; y++) if (cannotBuild(x, y)) n++; return n * 10 >= height * 9; }
+            int north = 0, south = 0, west = 0, east = 0;
+            while (north < height && Row(north)) north++;
+            while (south < height && Row(height - 1 - south)) south++;
+            while (west < width && Col(west)) west++;
+            while (east < width && Col(width - 1 - east)) east++;
+            //(a lot where nothing can be built has no road side to speak of)
+            if (north >= height || west >= width) return null;
+
+            var deepest = Math.Max(Math.Max(north, south), Math.Max(west, east));
+            if (deepest < 3) return null;
+            Road road;
+            if (south == deepest) road = new Road { AlongX = true, VergeFirst = height - south, VergeLast = height - 1 };
+            else if (north == deepest) road = new Road { AlongX = true, VergeFirst = 0, VergeLast = north - 1 };
+            else if (east == deepest) road = new Road { AlongX = false, VergeFirst = width - east, VergeLast = width - 1 };
+            else road = new Road { AlongX = false, VergeFirst = 0, VergeLast = west - 1 };
+
+            int first = road.VergeFirst.Value, last = road.VergeLast.Value;
+            bool atLowEdge = first == 0;
+            //the rows of the strip known to be road, if any
+            int knownFirst = -1, knownLast = -1;
+            if (asphalt != null)
+                for (int i = first; i <= last; i++)
+                    if (asphalt(road.AlongX, i)) { if (knownFirst == -1) knownFirst = i; knownLast = i; }
+            if (knownFirst != -1) { road.First = knownFirst; road.Last = knownLast; }
+            else
+            {
+                int verge = (deepest > 4) ? 2 : 0;
+                road.First = atLowEdge ? first : first + verge;
+                road.Last = atLowEdge ? last - verge : last;
+            }
+            return road;
+        }
 
         /// <summary>
         /// Find the road from the lot's tiles. A row or column counts as road when at least half of it is road tiles,
@@ -77,6 +131,32 @@ namespace Driveways
                 }
             }
             return best;
+        }
+    }
+
+    /// <summary>Where a driveway goes: it always lies against the strip by the road, pointing at it.</summary>
+    public static class DrivewaySnap
+    {
+        /// <summary>
+        /// The place for a driveway the player is holding over the tile (x, y). The driveway is width tiles wide and
+        /// length long; facing north its lead tile is its north west corner, and facing east (heading 1) it lies on
+        /// its side with the lead tile at its north east corner. It slides along the road with the cursor and nowhere else.
+        /// </summary>
+        public static (int X, int Y, int Heading) Place(Road road, int x, int y, int width, int length, int lotWidth, int lotHeight)
+        {
+            bool roadAtHighEdge = road.StripFirst > 0;
+            if (road.AlongX)
+            {
+                //upright: columns x..x+width-1, rows y..y+length-1
+                int leadY = roadAtHighEdge ? road.StripFirst - length : road.StripLast + 1;
+                return (Math.Max(0, Math.Min(x, lotWidth - width)), leadY, 0);
+            }
+            else
+            {
+                //on its side: columns x-length+1..x, rows y..y+width-1
+                int leadX = roadAtHighEdge ? road.StripFirst - 1 : road.StripLast + length;
+                return (leadX, Math.Max(0, Math.Min(y, lotHeight - width)), 1);
+            }
         }
     }
 
@@ -225,9 +305,10 @@ namespace Driveways
             float halfAcross = (nosePointsAcross ? carLength : carWidth) / 2f;
             float halfAlong = (nosePointsAcross ? carWidth : carLength) / 2f;
 
-            float roadNear, toRoad; //the road's edge on the car's side, and which way it is (+1 or -1)
-            if (cAcross + halfAcross <= road.First + 0.001f) { toRoad = 1; roadNear = road.First; }
-            else if (cAcross - halfAcross >= road.Last + 1 - 0.001f) { toRoad = -1; roadNear = road.Last + 1; }
+            //the edge, on the car's side, of the strip that cannot be built on; the road's own edge; and which way they are (+1 or -1)
+            float stripNear, roadNear, toRoad;
+            if (cAcross + halfAcross <= road.StripFirst + 0.001f) { toRoad = 1; stripNear = road.StripFirst; roadNear = road.First; }
+            else if (cAcross - halfAcross >= road.StripLast + 1 - 0.001f) { toRoad = -1; stripNear = road.StripLast + 1; roadNear = road.Last + 1; }
             else { plan.Problem = RouteProblem.OnRoad; return plan; }
 
             if (!nosePointsAcross) { plan.Problem = RouteProblem.NotFacingRoad; return plan; }
@@ -277,7 +358,7 @@ namespace Driveways
             });
 
             //the tiles between the back of the parked car and the road
-            float from = cAcross - toRoad * halfAcross, to = roadNear;
+            float from = cAcross - toRoad * halfAcross, to = stripNear;
             int acrossFirst = (int)Math.Floor(Math.Min(from, to) + 0.001f), acrossLast = (int)Math.Ceiling(Math.Max(from, to) - 0.001f) - 1;
             int alongFirst = (int)Math.Floor(cAlong - halfAlong + 0.001f), alongLast = (int)Math.Ceiling(cAlong + halfAlong - 0.001f) - 1;
             for (int a = acrossFirst; a <= acrossLast; a++)

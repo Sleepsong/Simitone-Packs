@@ -9,9 +9,9 @@ testing. Expect to find things to fix. The `driveways` console command (below) i
 
 The objects are in buy mode under **Decorative > Other**.
 
-1. Lay **Driveways** end to end from where the car will stand to the edge of your lot by the road. A
-   Driveway is two tiles wide and four long, the size of the car. **Driveway Tile** is a single square,
-   for filling in where a whole Driveway does not fit.
+1. Pick up the **Driveway**. It is two tiles wide and four long, the size of the car, and it snaps to
+   the road as in The Sims 2: it lies against the edge of your lot by the road, pointing at it, and
+   slides along the road with the cursor.
 2. Put the **Runabout** on the driveway with its front or its back towards the road.
 3. Click the car and choose **Go for a Drive**. Any adult of the household can.
 
@@ -24,7 +24,7 @@ If the car cannot be driven, a message says why:
 
 | Message | What to do |
 |---|---|
-| The car needs a driveway under it, all the way to the road | Every tile the car passes over, the ones it is parked on included, needs driveway on it, up to where your lot stops and the verge begins |
+| The car needs a driveway under it, all the way to the road | Park the car on the Driveway, all of it. Further back from the road than that, every tile it would pass over needs driveway too |
 | Something is in the way between the car and the road | Move the object, wall or fence that is on the driveway |
 | The car has to be parked with its front or its back towards the road | Turn it a quarter turn |
 | There is no road on this lot to drive on | The pack did not recognise this lot's road. Run `driveways` and report what it says |
@@ -33,9 +33,16 @@ If the car cannot be driven, a message says why:
 
 Open the console (Ctrl+Shift+C) and type `driveways`. It shows where the pack thinks the road is on this
 lot, which floor tiles the part of the lot you cannot build on is made of, and whether each car on the
-lot can be driven right now.
+lot can be driven right now. It also writes all of that, with two maps of the lot, to
+`driveways-report.txt` in Simitone's user directory (next to `config.ini`).
 
 ## Changes
+
+- **0.3**: the Driveway snaps to the road. The road is now found from the strip of the lot you cannot
+  build on, which fixes "There is no road on this lot" on lots where it was looked for by its floor
+  tiles and not found. The single square, Driveway Tile, is no longer sold; ones already on a lot stay,
+  and can be picked up and sold. The `driveways` command also writes `driveways-report.txt`, with maps
+  of the lot, in Simitone's user directory.
 
 - **0.2**: the Driveway is now two tiles by four; the single square is still there as Driveway Tile. The
   car and the driveways can be picked up, moved and sold: in 0.1 they could be put down but never picked
@@ -55,8 +62,9 @@ lot can be driven right now.
   the corner onto the road.
 - **Nothing gets run over.** The car checks that the driveway is clear before it sets off. A Sim who
   walks onto the driveway afterwards is driven through.
-- **The road is found by its tiles.** The pack looks for The Sims 1's two road floor tiles, or failing
-  that the paved strip you cannot build on. This is the part most likely to need adjusting on real lots.
+- **The road is found by where you cannot build.** The deep strip along one side of the lot is taken to
+  be the road and its verge, and the car turns onto its outer part. Where exactly the tarmac is within
+  the strip is a guess unless the lot has The Sims 1's road floor tiles.
 - The car is a few coloured boxes. It has no art files: like the Test Cube, its pictures are drawn by
   the generator.
 

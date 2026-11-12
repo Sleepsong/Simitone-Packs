@@ -165,5 +165,75 @@ List<Pose> Run(Path path, out int ticks, out float fastest, out float slowest)
     Check(DrivePlan.Make(30.5f, 53.5f, 0, W, L, road, Lot, Lot).Problem == RouteProblem.None, "a car parked right up to the road is fine");
 }
 
+// ---- finding the road from where the player cannot build ----
+
+{
+    //a lot with a one tile margin all round, and nine tiles that cannot be built on along the south side
+    Func<int, int, bool> southLot = (x, y) => x < 1 || y < 1 || x > 62 || y > 54;
+    var road = Road.FindByMargin(southLot, Lot, Lot);
+    Check(road != null && road.Value.AlongX && road.Value.StripFirst == 55 && road.Value.StripLast == 63, "margin: the deep strip along the south side is found");
+    Check(road != null && road.Value.First == 57 && road.Value.Last == 63, "margin: the road is the strip less two tiles of verge on the house's side");
+
+    Func<int, int, bool> northLot = (x, y) => x < 1 || y < 9 || x > 62 || y > 62;
+    var north = Road.FindByMargin(northLot, Lot, Lot);
+    Check(north != null && north.Value.AlongX && north.Value.StripFirst == 0 && north.Value.StripLast == 8 && north.Value.First == 0 && north.Value.Last == 6, "margin: a strip along the north side, the verge on its south");
+
+    Func<int, int, bool> westLot = (x, y) => x < 9 || y < 1 || x > 62 || y > 62;
+    var west = Road.FindByMargin(westLot, Lot, Lot);
+    Check(west != null && !west.Value.AlongX && west.Value.StripFirst == 0 && west.Value.StripLast == 8, "margin: a strip along the west side");
+    Func<int, int, bool> eastLot = (x, y) => x < 1 || y < 1 || x > 54 || y > 62;
+    var east = Road.FindByMargin(eastLot, Lot, Lot);
+    Check(east != null && !east.Value.AlongX && east.Value.StripFirst == 55 && east.Value.StripLast == 63, "margin: a strip along the east side");
+
+    Check(Road.FindByMargin((x, y) => x < 1 || y < 1 || x > 62 || y > 62, Lot, Lot) == null, "margin: a lot with only a narrow margin has no road");
+    Check(Road.FindByMargin((x, y) => true, Lot, Lot) == null, "margin: a lot where nothing can be built has no road");
+    Check(Road.FindByMargin((x, y) => false, Lot, Lot) == null, "margin: a lot where everything can be built has no road");
+
+    //rows known to be road are used in place of the guess
+    var known = Road.FindByMargin(southLot, Lot, Lot, (alongX, i) => alongX && i >= 58 && i <= 62);
+    Check(known != null && known.Value.First == 58 && known.Value.Last == 62 && known.Value.StripFirst == 55, "margin: road tiles inside the strip say where the road is");
+
+    //a car parked right against the strip drives across the verge to the road
+    var plan = DrivePlan.Make(30.5f, 51.5f, 0, W, L, road.Value, Lot, Lot); //body rows 51..54
+    Check(plan.Problem == RouteProblem.None, "margin: a car against the strip can be driven");
+    Check(plan.Corridor.Count == 2 * 4 && plan.Corridor.All(t => t.Y >= 51 && t.Y <= 54), "margin: only the tiles it stands on need a driveway");
+    var lane = plan.Out.Legs[1].Y;
+    Check(lane - W / 2f >= 57 && lane + W / 2f <= 64, $"margin: its lane is on the road ({lane})");
+    Check(DrivePlan.Make(30.5f, 52.5f, 0, W, L, road.Value, Lot, Lot).Problem == RouteProblem.OnRoad, "margin: a car standing on the strip is refused");
+}
+
+// ---- snapping a driveway to the road ----
+
+{
+    //the tiles a driveway covers from its lead tile, as the engine lays a multi-tile object out
+    List<(int X, int Y)> Tiles((int X, int Y, int Heading) place) =>
+        (from x in Enumerable.Range(0, W) from y in Enumerable.Range(0, L)
+         let off = DrivePlan.Rotate(x, y, place.Heading)
+         select (place.X + (int)Math.Round(off.X), place.Y + (int)Math.Round(off.Y))).ToList();
+
+    var south = new Road { AlongX = true, First = 57, Last = 63, VergeFirst = 55, VergeLast = 63 };
+    var a = Tiles(DrivewaySnap.Place(south, 20, 10, W, L, Lot, Lot));
+    Check(a.Min(t => t.Y) == 51 && a.Max(t => t.Y) == 54 && a.Min(t => t.X) == 20 && a.Max(t => t.X) == 21, "snap, south road: against the strip, under the cursor's column");
+    var b = Tiles(DrivewaySnap.Place(south, 63, 40, W, L, Lot, Lot));
+    Check(b.Max(t => t.X) == 63 && b.Max(t => t.Y) == 54, "snap, south road: kept on the lot");
+
+    var north = new Road { AlongX = true, First = 0, Last = 6, VergeFirst = 0, VergeLast = 8 };
+    var c = Tiles(DrivewaySnap.Place(north, 20, 40, W, L, Lot, Lot));
+    Check(c.Min(t => t.Y) == 9 && c.Max(t => t.Y) == 12, "snap, north road: against the strip");
+
+    var east = new Road { AlongX = false, First = 57, Last = 63, VergeFirst = 55, VergeLast = 63 };
+    var d = Tiles(DrivewaySnap.Place(east, 5, 30, W, L, Lot, Lot));
+    Check(d.Min(t => t.X) == 51 && d.Max(t => t.X) == 54 && d.Min(t => t.Y) == 30 && d.Max(t => t.Y) == 31, "snap, east road: on its side against the strip, under the cursor's row");
+
+    var west = new Road { AlongX = false, First = 0, Last = 6, VergeFirst = 0, VergeLast = 8 };
+    var e = Tiles(DrivewaySnap.Place(west, 40, 30, W, L, Lot, Lot));
+    Check(e.Min(t => t.X) == 9 && e.Max(t => t.X) == 12 && e.Count == 8 && e.Distinct().Count() == 8, "snap, west road: on its side against the strip");
+
+    //a car put on a snapped driveway, nose to the road, is ready to go
+    var place = DrivewaySnap.Place(south, 20, 10, W, L, Lot, Lot);
+    var plan = DrivePlan.Make(place.X + 0.5f, place.Y + 0.5f, 0, W, L, south, Lot, Lot);
+    Check(plan.Problem == RouteProblem.None && plan.Corridor.OrderBy(t => t).SequenceEqual(a.OrderBy(t => t)), "snap: a car on the driveway needs exactly the driveway's tiles");
+}
+
 Console.WriteLine($"{passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

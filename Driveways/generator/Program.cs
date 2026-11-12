@@ -236,7 +236,7 @@ AddScript(GoForADrive, "Go for a Drive", 1,
     // ...then drive. this instruction runs every tick until the car is home again
     Call(Shared.ModeDrive));
 
-// --- the driveway tile: one tile of paving ---
+// --- the driveway tile: one tile of paving. versions 0.1 and 0.2 sold these; now there is only the whole driveway ---
 
 iff.AddChunk(new OBJD()
 {
@@ -248,13 +248,11 @@ iff.AddChunk(new OBJD()
     BaseGraphicID = 100, NumGraphics = 1,
     CatalogStringsID = 2000,
     Price = 15,
-    FunctionFlags = 32,      //buy mode: decorative
-    FunctionSubsort = 128,   //...under "other"
-    RoomFlags = 0xFF,        //for every kind of room. without a room the catalog hides it
+    //(not in the catalog any more: FunctionFlags is left at 0. it is kept so lots that have some still load them)
 });
 var drivewayStrings = new CTSS() { ChunkID = 2000, ChunkLabel = "Catalog - Driveway Tile", ChunkProcessed = true };
 drivewayStrings.InsertString(0, new STRItem("Driveway Tile"));
-drivewayStrings.InsertString(1, new STRItem("One square of driveway, for filling in where a whole Driveway does not fit. From the Driveways pack."));
+drivewayStrings.InsertString(1, new STRItem("One square of driveway, from an earlier version of the Driveways pack."));
 iff.AddChunk(drivewayStrings);
 AddGraphics("Driveway Tile", 100, 100, driveway, new Point(0, 0), true);
 
@@ -271,11 +269,13 @@ iff.AddChunk(new OBJD()
     StackSize = 8,
     CatalogStringsID = 2002,
     Price = 100,
-    FunctionFlags = 32, FunctionSubsort = 128, RoomFlags = 0xFF,
+    FunctionFlags = 32,      //buy mode: decorative
+    FunctionSubsort = 128,   //...under "other"
+    RoomFlags = 0xFF,        //for every kind of room. without a room the catalog hides it
 });
 var drivewayLargeStrings = new CTSS() { ChunkID = 2002, ChunkLabel = "Catalog - Driveway", ChunkProcessed = true };
 drivewayLargeStrings.InsertString(0, new STRItem("Driveway"));
-drivewayLargeStrings.InsertString(1, new STRItem("Concrete for a car to stand on, two tiles wide and four long: the size of the car. Lay them end to end from where the car is parked to the edge of your lot by the road. From the Driveways pack."));
+drivewayLargeStrings.InsertString(1, new STRItem("Concrete for a car to stand on, two tiles wide and four long: the size of the car. It goes down against the road, and slides along it. Park the car on it. From the Driveways pack."));
 iff.AddChunk(drivewayLargeStrings);
 
 int drivewayPart = 0;
@@ -365,7 +365,7 @@ var objects = check.List<OBJD>();
 if (objects.Count != 3 + Shared.CarWidth * Shared.CarLength + Shared.DrivewayWidth * Shared.DrivewayLength) throw new Exception("Expected a driveway tile, a driveway and a car, and their tiles");
 
 var slab = objects.Single(o => o.GUID == Shared.DrivewayGUID);
-if (slab.BHAV_Init != InitDriveway || slab.FunctionFlags != 32 || slab.RoomFlags == 0 || slab.NumGraphics != 1 || slab.MasterID != 0) throw new Exception("The driveway's definition did not survive");
+if (slab.BHAV_Init != InitDriveway || slab.FunctionFlags != 0 || slab.NumGraphics != 1 || slab.MasterID != 0) throw new Exception("The driveway's definition did not survive");
 
 var slabMaster = objects.Single(o => o.GUID == Shared.DrivewayLargeGUID);
 if (!slabMaster.IsMultiTile || slabMaster.SubIndex != -1 || slabMaster.FunctionFlags != 32) throw new Exception("The driveway's definition did not survive");

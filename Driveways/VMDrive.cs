@@ -266,19 +266,57 @@ namespace Driveways
 
         private static readonly Direction[] Directions = { Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST };
 
+        //the road of each lot, once it has been looked for. where the player can build does not change while a lot is played
+        private static ConditionalWeakTable<VM, RoadFound> Roads = new ConditionalWeakTable<VM, RoadFound>();
+        private class RoadFound { public Road? Road; public string How; }
+
         /// <summary>
-        /// Find the lot's road. First by the road's own floor tiles; failing that, by the strip the player cannot
-        /// build on that has any floor at all, which takes the pavement beside the road as part of it.
+        /// Find the lot's road. First by where the player cannot build: the deep strip along one side of the lot is
+        /// the road and its verge. Within it, The Sims 1's own road tiles say which rows are the road, if the lot has
+        /// any; otherwise the strip's outer part is taken. Failing a strip, by the road tiles alone.
         /// </summary>
         private static Road? FindRoad(VM vm, out string how)
         {
+            if (Roads.TryGetValue(vm, out var known)) { how = known.How; return known.Road; }
             var context = vm.Context;
             var arch = context.Architecture;
-            how = "its road tiles";
-            var road = Road.Find((x, y) => RoadFloors.Contains(arch.GetFloor((short)x, (short)y, 1).Pattern), arch.Width, arch.Height);
-            if (road != null) return road;
-            how = "the paved strip that cannot be built on";
-            return Road.Find((x, y) => arch.GetFloor((short)x, (short)y, 1).Pattern != 0 && context.IsUserOutOfBounds(LotTilePos.FromBigTile((short)x, (short)y, 1)), arch.Width, arch.Height);
+            Func<int, int, bool> isRoadTile = (x, y) => RoadFloors.Contains(arch.GetFloor((short)x, (short)y, 1).Pattern);
+            //a row (or column) of the strip is road when at least half of it is road tiles
+            Func<bool, int, bool> asphalt = (alongX, i) =>
+            {
+                int n = 0, length = alongX ? arch.Width : arch.Height;
+                for (int j = 0; j < length; j++) if (alongX ? isRoadTile(j, i) : isRoadTile(i, j)) n++;
+                return n * 2 >= length;
+            };
+
+            var road = Road.FindByMargin((x, y) => context.IsUserOutOfBounds(LotTilePos.FromBigTile((short)x, (short)y, 1)), arch.Width, arch.Height, asphalt);
+            how = "the strip that cannot be built on";
+            if (road == null)
+            {
+                road = Road.Find(isRoadTile, arch.Width, arch.Height);
+                how = "its road tiles";
+            }
+            Roads.Add(vm, new RoadFound { Road = road, How = how });
+            return road;
+        }
+
+        /// <summary>
+        /// A driveway the player is holding or putting down goes against the strip by the road, pointing at it, as in
+        /// The Sims 2: it follows the cursor along the road and nowhere else. Called before the game moves any object;
+        /// changes where a driveway is being moved to. Only the player's own placing is touched, never a lot loading.
+        /// </summary>
+        public static void SnapDriveway(VMMultitileGroup group, ref LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags)
+        {
+            if ((flags & VMPlaceRequestFlags.UserBuildableLimit) == 0 || pos == LotTilePos.OUT_OF_WORLD || group.Objects.Count == 0) return;
+            if (GUIDOf(group.Objects[0]) != Shared.DrivewayLargeGUID) return;
+            var vm = context.VM;
+            if (vm == null || !vm.TS1) return;
+            var road = FindRoad(vm, out _);
+            if (road == null) return;
+            var arch = context.Architecture;
+            var place = DrivewaySnap.Place(road.Value, pos.TileX, pos.TileY, Shared.DrivewayWidth, Shared.DrivewayLength, arch.Width, arch.Height);
+            pos = LotTilePos.FromBigTile((short)place.X, (short)place.Y, 1);
+            direction = Directions[place.Heading];
         }
 
         /// <summary>
@@ -292,8 +330,13 @@ namespace Driveways
             var lines = new List<string>();
 
             var road = FindRoad(vm, out var how);
-            if (road == null) lines.Add("No road found on this lot.");
-            else lines.Add($"Road: {(road.Value.AlongX ? "rows" : "columns")} {road.Value.First} to {road.Value.Last} of a {arch.Width} by {arch.Height} lot, found by {how}.");
+            if (road == null) lines.Add($"No road found on this {arch.Width} by {arch.Height} lot.");
+            else
+            {
+                var lines2 = road.Value.AlongX ? "rows" : "columns";
+                lines.Add($"Road: {lines2} {road.Value.First} to {road.Value.Last} of a {arch.Width} by {arch.Height} lot, found by {how}."
+                    + (road.Value.VergeFirst != null ? $" The strip that cannot be built on is {lines2} {road.Value.StripFirst} to {road.Value.StripLast}." : ""));
+            }
 
             var floors = new Dictionary<ushort, int>();
             for (short y = 0; y < arch.Height; y++)
@@ -317,6 +360,37 @@ namespace Driveways
                 lines.Add(where + (plan.Problem == RouteProblem.None ? "ready to drive." : Explain(plan.Problem)));
             }
             return string.Join("\n\n", lines);
+        }
+
+        /// <summary>
+        /// The same, with two maps of the lot's ground floor, as text for a file: where the player cannot build, and
+        /// the floor tile on each of those tiles. For sending to whoever is working on the pack.
+        /// </summary>
+        public static string DescribeWithMaps(VM vm)
+        {
+            var context = vm.Context;
+            var arch = context.Architecture;
+            var text = new System.Text.StringBuilder();
+            text.AppendLine(Describe(vm).Replace("\n\n", Environment.NewLine));
+            text.AppendLine();
+            text.AppendLine("Where the player cannot build (#), north at the top:");
+            for (short y = 0; y < arch.Height; y++)
+            {
+                for (short x = 0; x < arch.Width; x++) text.Append(context.IsUserOutOfBounds(LotTilePos.FromBigTile(x, y, 1)) ? '#' : '.');
+                text.AppendLine();
+            }
+            text.AppendLine();
+            text.AppendLine("Floor tile ids on the ground floor (two hex digits, .. for none, ** for 256 and up):");
+            for (short y = 0; y < arch.Height; y++)
+            {
+                for (short x = 0; x < arch.Width; x++)
+                {
+                    var pattern = arch.GetFloor(x, y, 1).Pattern;
+                    text.Append(pattern == 0 ? ".." : (pattern > 255 ? "**" : pattern.ToString("X2")));
+                }
+                text.AppendLine();
+            }
+            return text.ToString();
         }
 
         private static DrivePlan PlanFor(VM vm, VMMultitileGroup car)
