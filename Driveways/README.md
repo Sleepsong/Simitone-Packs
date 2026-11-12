@@ -10,8 +10,8 @@ testing. Expect to find things to fix. The `driveways` console command (below) i
 The objects are in buy mode under **Decorative > Other**.
 
 1. Pick up the **Driveway**. It is two tiles wide and four long, the size of the car, and it snaps to
-   the road as in The Sims 2: it lies against the edge of your lot by the road, pointing at it, and
-   slides along the road with the cursor.
+   the road as in The Sims 2: it lies against the pavement by the road, pointing at the road, and
+   slides along it with the cursor.
 2. Put the **Runabout** on the driveway with its front or its back towards the road.
 3. Click the car and choose **Go for a Drive**. Any adult of the household can.
 
@@ -38,6 +38,12 @@ lot can be driven right now. It also writes all of that, with two maps of the lo
 
 ## Changes
 
+- **0.4**: the road is found on real lots. A report from the game showed the tarmac is floor tile 9,
+  with tile 11 only for the dashes of the middle line (which is all 0.1 to 0.3 looked for), the
+  pavement is tile 12, and nothing on the lot is marked as impossible to build on (which is what 0.3
+  went by). The Driveway now snaps against the pavement, and the car crosses the pavement and the
+  verge to the road.
+
 - **0.3**: the Driveway snaps to the road. The road is now found from the strip of the lot you cannot
   build on, which fixes "There is no road on this lot" on lots where it was looked for by its floor
   tiles and not found. The single square, Driveway Tile, is no longer sold; ones already on a lot stay,
@@ -62,9 +68,11 @@ lot can be driven right now. It also writes all of that, with two maps of the lo
   the corner onto the road.
 - **Nothing gets run over.** The car checks that the driveway is clear before it sets off. A Sim who
   walks onto the driveway afterwards is driven through.
-- **The road is found by where you cannot build.** The deep strip along one side of the lot is taken to
-  be the road and its verge, and the car turns onto its outer part. Where exactly the tarmac is within
-  the strip is a guess unless the lot has The Sims 1's road floor tiles.
+- **The road is found by its floor tiles.** Tarmac is tile 9 (and 10 and 11, the line down the
+  middle), in a strip along one side of the lot; the pavement, tile 12, marks where the garden starts.
+  These were read off one lot in the game. A lot that paves its road differently will not be found.
+- **The driveway stops at the pavement.** It does not cross it to the road as The Sims 2's does: a car
+  parked across the pavement would block the Sims who walk along it.
 - The car is a few coloured boxes. It has no art files: like the Test Cube, its pictures are drawn by
   the generator.
 

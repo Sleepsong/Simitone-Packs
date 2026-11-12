@@ -235,5 +235,52 @@ List<Pose> Run(Path path, out int ticks, out float fastest, out float slowest)
     Check(plan.Problem == RouteProblem.None && plan.Corridor.OrderBy(t => t).SequenceEqual(a.OrderBy(t => t)), "snap: a car on the driveway needs exactly the driveway's tiles");
 }
 
+// ---- a real lot, as the "driveways" command reported it from the game: 52 by 52, the road along the east side ----
+
+{
+    const int Real = 52;
+    //tarmac (9) on columns 43 to 49, rows 1 to 50, with dashes of the middle line (11) down column 46, three rows
+    //on and three off; the pavement (12) on column 41; a house's floors in the garden
+    ushort Floor(int x, int y)
+    {
+        if (y >= 1 && y <= 50)
+        {
+            if (x == 41) return 12;
+            if (x >= 43 && x <= 49) return (ushort)((x == 46 && ((y - 1) % 6) >= 3) ? 11 : 9);
+        }
+        if (x >= 16 && x <= 27 && y >= 20 && y <= 30) return 0x15;
+        return 0;
+    }
+    var roadTiles = new HashSet<ushort> { 9, 10, 11 };
+    var found = Road.Find((x, y) => roadTiles.Contains(Floor(x, y)), Real, Real);
+    Check(found != null && !found.Value.AlongX && found.Value.First == 43 && found.Value.Last == 49, "real lot: the road is columns 43 to 49");
+    Check(Road.Find((x, y) => Floor(x, y) == 10 || Floor(x, y) == 11, Real, Real) == null, "real lot: the dashes of the middle line alone are not enough to find it (what 0.1 to 0.3 looked for)");
+
+    var road = found.Value.WithVerge(line => Enumerable.Range(0, Real).Count(y => Floor(line, y) == 12) * 2 >= Real, Real, Real);
+    Check(road.StripFirst == 41 && road.StripLast == 51, "real lot: with the pavement and the verge, columns 41 to 51");
+
+    var place = DrivewaySnap.Place(road, 10, 25, W, L, Real, Real);
+    var tiles = (from x in Enumerable.Range(0, W) from y in Enumerable.Range(0, L)
+                 let off = DrivePlan.Rotate(x, y, place.Heading)
+                 select (X: place.X + (int)Math.Round(off.X), Y: place.Y + (int)Math.Round(off.Y))).ToList();
+    Check(tiles.Min(t => t.X) == 37 && tiles.Max(t => t.X) == 40 && tiles.Min(t => t.Y) == 25 && tiles.Max(t => t.Y) == 26, "real lot: a driveway lies against the pavement, columns 37 to 40");
+
+    //a car on it, nose to the road (facing east): its lead tile is the front left, the north east corner
+    var plan = DrivePlan.Make(40.5f, 25.5f, 1, W, L, road, Real, Real);
+    Check(plan.Problem == RouteProblem.None, "real lot: a car on the driveway can be driven");
+    Check(plan.Corridor.OrderBy(t => t).SequenceEqual(tiles.OrderBy(t => t)), "real lot: it needs exactly the driveway under it");
+    var lane = plan.Out.Legs[1].X;
+    Check(lane - W / 2f >= 43 && lane + W / 2f <= 46, $"real lot: it turns into the near half of the road ({lane})");
+    Check(plan.Out.Legs[1].Heading == 2 && plan.Out.PoseAt(plan.Out.Length).Y - L / 2f > Real, "real lot: and drives off the south edge");
+    var home = plan.Back.PoseAt(plan.Back.Length);
+    Check(Near(home.X, 39) && Near(home.Y, 26) && home.Heading == 1, "real lot: and comes home");
+
+    //a road at the low edge, for the same code the other way round
+    var westRoad = new Road { AlongX = false, First = 2, Last = 8 }.WithVerge(line => line == 10, Real, Real);
+    Check(westRoad.StripFirst == 0 && westRoad.StripLast == 10, "a west road's verge runs from the lot's edge to the pavement");
+    var noPavement = new Road { AlongX = true, First = 43, Last = 49 }.WithVerge(line => false, Real, Real);
+    Check(noPavement.StripFirst == 43 && noPavement.StripLast == 51, "with no pavement, the strip is the road and what is beyond it");
+}
+
 Console.WriteLine($"{passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

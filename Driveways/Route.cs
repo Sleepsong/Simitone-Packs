@@ -51,6 +51,30 @@ namespace Driveways
         public int StripLast => VergeLast ?? Last;
 
         /// <summary>
+        /// Add the verge to a road found by its tiles. Between the house and the road a Sims 1 lot has a pavement,
+        /// one tile wide, and a tile of grass. pavement says whether a row (or column, when the road runs north-south)
+        /// is the pavement; it is looked for within three tiles of the road, on the side away from the nearer edge
+        /// of the lot. The strip then runs from the pavement to that edge. With no pavement found, it is the road
+        /// and everything between it and the edge.
+        /// </summary>
+        public Road WithVerge(Func<int, bool> pavement, int lotWidth, int lotHeight)
+        {
+            var road = this;
+            int across = AlongX ? lotHeight : lotWidth;
+            bool roadAtHighEdge = (across - 1 - Last) <= First;
+            int houseSide = roadAtHighEdge ? First : Last;
+            for (int i = 1; i <= 3; i++)
+            {
+                int line = roadAtHighEdge ? First - i : Last + i;
+                if (line < 0 || line >= across) break;
+                if (pavement(line)) houseSide = line;
+            }
+            if (roadAtHighEdge) { road.VergeFirst = houseSide; road.VergeLast = across - 1; }
+            else { road.VergeFirst = 0; road.VergeLast = houseSide; }
+            return road;
+        }
+
+        /// <summary>
         /// Find the road from where the player cannot build. A lot has a narrow margin round it that cannot be built
         /// on, and a much deeper one along the side with the road. The deepest margin is the strip; the road is taken
         /// to be its outer part, with two tiles of verge left on the house's side when the strip is deep enough.

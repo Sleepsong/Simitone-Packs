@@ -38,10 +38,13 @@ namespace Driveways
         public const int StaleAfter = 10;
 
         /// <summary>
-        /// Road tiles, as The Sims 1 stores them in a house: the two halves of the street. (The engine's house loader
-        /// swaps these two ids on mirrored lots and calls it flipping the road; that is where they come from.)
+        /// Road tiles, as The Sims 1 stores them in a house: 9 is the tarmac, and 11 the tarmac with a dash of the line
+        /// down the middle of the road (10 on mirrored lots: the engine's house loader swaps the two, and calls it
+        /// flipping the road). Read off a lot in the game, with the "driveways" console command.
         /// </summary>
-        public static readonly HashSet<ushort> RoadFloors = new HashSet<ushort> { 10, 11 };
+        public static readonly HashSet<ushort> RoadFloors = new HashSet<ushort> { 9, 10, 11 };
+        /// <summary>The pavement that runs along the road, a tile of grass away from it.</summary>
+        public const ushort PavementFloor = 12;
 
         /// <summary>Called when a drive cannot start, with what to tell the player.</summary>
         public static Action<VM, string> OnMessage;
@@ -271,30 +274,34 @@ namespace Driveways
         private class RoadFound { public Road? Road; public string How; }
 
         /// <summary>
-        /// Find the lot's road. First by where the player cannot build: the deep strip along one side of the lot is
-        /// the road and its verge. Within it, The Sims 1's own road tiles say which rows are the road, if the lot has
-        /// any; otherwise the strip's outer part is taken. Failing a strip, by the road tiles alone.
+        /// Find the lot's road: by The Sims 1's road tiles, which fill a strip along one side of the lot, with the
+        /// pavement beside it marking where the verge ends and the garden begins. A lot with no road tiles is tried
+        /// by where the player cannot build, in case it has a deep strip of that along one side.
         /// </summary>
         private static Road? FindRoad(VM vm, out string how)
         {
             if (Roads.TryGetValue(vm, out var known)) { how = known.How; return known.Road; }
             var context = vm.Context;
             var arch = context.Architecture;
-            Func<int, int, bool> isRoadTile = (x, y) => RoadFloors.Contains(arch.GetFloor((short)x, (short)y, 1).Pattern);
-            //a row (or column) of the strip is road when at least half of it is road tiles
-            Func<bool, int, bool> asphalt = (alongX, i) =>
-            {
-                int n = 0, length = alongX ? arch.Width : arch.Height;
-                for (int j = 0; j < length; j++) if (alongX ? isRoadTile(j, i) : isRoadTile(i, j)) n++;
-                return n * 2 >= length;
-            };
+            Func<int, int, ushort> floor = (x, y) => arch.GetFloor((short)x, (short)y, 1).Pattern;
 
-            var road = Road.FindByMargin((x, y) => context.IsUserOutOfBounds(LotTilePos.FromBigTile((short)x, (short)y, 1)), arch.Width, arch.Height, asphalt);
-            how = "the strip that cannot be built on";
-            if (road == null)
+            how = "its road tiles";
+            var road = Road.Find((x, y) => RoadFloors.Contains(floor(x, y)), arch.Width, arch.Height);
+            if (road != null)
             {
-                road = Road.Find(isRoadTile, arch.Width, arch.Height);
-                how = "its road tiles";
+                var alongX = road.Value.AlongX;
+                //a row (or column) is the pavement when at least half of it is pavement tiles
+                road = road.Value.WithVerge(line =>
+                {
+                    int n = 0, length = alongX ? arch.Width : arch.Height;
+                    for (int j = 0; j < length; j++) if ((alongX ? floor(j, line) : floor(line, j)) == PavementFloor) n++;
+                    return n * 2 >= length;
+                }, arch.Width, arch.Height);
+            }
+            else
+            {
+                how = "the strip that cannot be built on";
+                road = Road.FindByMargin((x, y) => context.IsUserOutOfBounds(LotTilePos.FromBigTile((short)x, (short)y, 1)), arch.Width, arch.Height);
             }
             Roads.Add(vm, new RoadFound { Road = road, How = how });
             return road;
@@ -335,7 +342,7 @@ namespace Driveways
             {
                 var lines2 = road.Value.AlongX ? "rows" : "columns";
                 lines.Add($"Road: {lines2} {road.Value.First} to {road.Value.Last} of a {arch.Width} by {arch.Height} lot, found by {how}."
-                    + (road.Value.VergeFirst != null ? $" The strip that cannot be built on is {lines2} {road.Value.StripFirst} to {road.Value.StripLast}." : ""));
+                    + (road.Value.VergeFirst != null ? $" With its verge and pavement it is {lines2} {road.Value.StripFirst} to {road.Value.StripLast}: a driveway goes against that." : ""));
             }
 
             var floors = new Dictionary<ushort, int>();
@@ -445,7 +452,7 @@ namespace Driveways
                             }
                         }
                     }
-                    //the verge and pavement by the road, where the player cannot build, need no driveway
+                    //(the corridor stops at the pavement by the road: the pavement and verge need no driveway)
                     if (!paved && !context.IsUserOutOfBounds(tilePos)) { plan.Problem = RouteProblem.NoDriveway; return plan; }
                 }
             }
