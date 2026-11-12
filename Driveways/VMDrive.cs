@@ -75,6 +75,8 @@ namespace Driveways
             {
                 case Shared.ModeInitDriveway:
                     InitObject(context.Caller, true);
+                    //(a new object's picture is set as it is made, before this runs; a loaded one's is caught by the patch)
+                    if (context.Caller is VMGameObject paving) { try { DrivewayLook.Dress(paving); } catch (Exception) { } }
                     return VMPrimitiveExitCode.GOTO_TRUE;
                 case Shared.ModeInitCar:
                     InitObject(context.Caller, false);
@@ -366,6 +368,7 @@ namespace Driveways
                 (floors.Count == 0 ? "none" : string.Join(", ", floors.OrderByDescending(f => f.Value).Take(8).Select(f => f.Key + " x " + f.Value))) + ".");
 
             lines.Add($"Driveways snapped to the road since the game started: {Snaps} times. The last: {LastSnap}.");
+            lines.Add("The driveway's look: " + DrivewayLook.Describe());
             lines.Add("The car's look: " + CarLook.Describe());
 
             var cars = vm.Entities.Where(e => e is VMGameObject && GUIDOf(e) == Shared.CarGUID).Select(e => e.MultitileGroup).Distinct().ToList();
@@ -537,6 +540,73 @@ namespace Driveways
         {
             if (!VM.UseWorld || sim.WorldUI == null) return;
             sim.WorldUI.Visible = visible;
+        }
+    }
+
+    /// <summary>
+    /// The driveway's look: the game's own pavement. The pack's object file gives the driveway only its shape; here
+    /// its tiles are given pictures painted with the pavement floor tile from the player's game (see FloorDress).
+    /// </summary>
+    public static class DrivewayLook
+    {
+        private static bool Looked;
+        private static string Outcome = "not looked for yet.";
+        //the painted drawing groups, by the id of the plain one each stands in for; the file is held so they stay loaded
+        private static FSO.Files.Formats.IFF.IffFile Dressed;
+
+        public static string Describe() => Looked ? Outcome : "not looked for yet (no driveway has been drawn).";
+
+        private static bool IsDrivewayTile(VMGameObject obj)
+        {
+            var guid = (obj.MasterDefinition ?? obj.Object.OBJ).GUID;
+            return guid == Shared.DrivewayGUID || guid == Shared.OldDrivewayGUID || guid == Shared.OldTileGUID;
+        }
+
+        private static void Look(FSO.Files.Formats.IFF.IffFile packFile)
+        {
+            Looked = true;
+            try
+            {
+                //the game's built-in floors: floor n's near sprite is sprite n + 512 (as the engine's floor provider reads them)
+                var path = System.IO.Path.Combine(FSO.Content.Content.Get().TS1BasePath, "GameData/floors.iff");
+                var floors = new FSO.Files.Formats.IFF.IffFile(path);
+                var sprite = floors.Get<FSO.Files.Formats.IFF.Chunks.SPR2>((ushort)(VMDrive.PavementFloor + 512));
+                if (sprite == null || sprite.Frames.Length == 0) { Outcome = $"the pack's plain grey: the game's floors have no tile {VMDrive.PavementFloor}."; return; }
+                var frame = sprite.Frames[0];
+                frame.DecodeIfRequired(false);
+                if (frame.PixelData == null || frame.Width < 8 || frame.Height < 4) { Outcome = "the pack's plain grey: the pavement tile could not be read."; return; }
+
+                var palette = (floors.Get<FSO.Files.Formats.IFF.Chunks.PALT>(frame.PaletteID) ?? floors.Get<FSO.Files.Formats.IFF.Chunks.PALT>((ushort)sprite.DefaultPaletteID))?.Colors;
+                if (palette == null)
+                {
+                    //no palette to be found: the colours the tile uses will do
+                    palette = frame.PixelData.Where(c => c.A != 0).Select(c => new Color(c.R, c.G, c.B)).Distinct().Take(255).ToArray();
+                }
+                var tile = new FloorDress.Tile { Pixels = (Color[])frame.PixelData.Clone(), Width = frame.Width, Height = frame.Height, Palette = palette };
+
+                var groups = packFile.List<FSO.Files.Formats.IFF.Chunks.OBJD>()
+                    .Where(o => o.NumGraphics > 0 && (o.MasterID == 0 ? o.GUID == Shared.OldTileGUID : true) && !(o.GUID >= Shared.CarGUID && o.GUID < Shared.CarGUID + 0x10))
+                    .Select(o => o.BaseGraphicID).ToList();
+                Dressed = FloorDress.Build(packFile, groups, tile);
+                Outcome = $"painted with the game's pavement, floor tile {VMDrive.PavementFloor} ({frame.Width} by {frame.Height}), on {groups.Count} tiles.";
+            }
+            catch (Exception e)
+            {
+                Dressed = null;
+                Outcome = "the pack's plain grey: painting it with the game's pavement failed (" + e.Message + ").";
+            }
+        }
+
+        /// <summary>
+        /// Called whenever the game sets an object's picture. For a tile of a driveway, set the painted one in its place.
+        /// </summary>
+        public static void Dress(VMGameObject obj)
+        {
+            if (!VM.UseWorld || !IsDrivewayTile(obj)) return;
+            if (!Looked) Look(obj.Object.OBJ.ChunkParent);
+            if (Dressed == null) return;
+            var painted = Dressed.Get<FSO.Files.Formats.IFF.Chunks.DGRP>((ushort)(obj.Object.OBJ.BaseGraphicID + FloorDress.IDOffset));
+            if (painted != null && obj.WorldUI is ObjectComponent picture) picture.DGRP = painted;
         }
     }
 

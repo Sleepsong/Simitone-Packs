@@ -41,7 +41,7 @@ namespace Driveways
             //a driveway being put down snaps to the road
             var move = AccessTools.Method(typeof(VMMultitileGroup), "ChangePosition") ?? throw new Exception("VMMultitileGroup.ChangePosition was not found: this pack was made for a different version of Simitone");
             harmony.Patch(move, prefix: new HarmonyMethod(typeof(DrivewaysPack), nameof(BeforeMove)));
-            //the car is drawn with a real Sims 1 car's pictures, when the game has one that fits
+            //the driveway is drawn with the game's own pavement, and the car with a real Sims 1 car's pictures when the game has one that fits
             var graphic = AccessTools.Method(typeof(VMGameObject), "RefreshGraphic") ?? throw new Exception("VMGameObject.RefreshGraphic was not found: this pack was made for a different version of Simitone");
             harmony.Patch(graphic, postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterGraphic)));
             VMDrive.OnMessage = ShowMessage;
@@ -81,7 +81,9 @@ namespace Driveways
 
         public static void AfterGraphic(VMGameObject __instance)
         {
-            try { CarLook.Dress(__instance); } catch (Exception) { } //(never let a picture stop the game)
+            //(never let a picture stop the game)
+            try { DrivewayLook.Dress(__instance); } catch (Exception) { }
+            try { CarLook.Dress(__instance); } catch (Exception) { }
         }
 
         /// <summary>

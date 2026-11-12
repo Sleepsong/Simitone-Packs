@@ -11,6 +11,8 @@
     <ProjectReference Include="$(SimitonePath)\FreeSO\TSOClient\tso.files\FSO.Files.csproj" />
     <!-- the ids and sizes the objects share with the pack's code -->
     <Compile Include="..\Shared.cs" />
+    <!-- painting the driveway with a floor tile happens in the game; the generator runs it on a made-up tile, to check it -->
+    <Compile Include="..\FloorDress.cs" />
   </ItemGroup>
 
 </Project>

@@ -45,26 +45,10 @@ var driveway = new[] { new Box(new Vector3(-0.5f, 0, -0.5f), new Vector3(0.5f, 0
 // the driveway of versions 0.2 to 0.4: one plain slab
 var oldDriveway = new[] { new Box(new Vector3(-0.5f, 0, -0.5f), new Vector3(Shared.OldDrivewayWidth - 0.5f, 0.02f, Shared.OldDrivewayLength - 0.5f), concrete) };
 
-// the driveway, after The Sims 2's: a pad of pale concrete cast in panels, with joints between them, which crosses
-// the pavement and ends in a ridged apron at the kerb. it faces north: the apron is at high z
-var pale = new Color(206, 192, 156);
-var joint = new Color(170, 154, 120);
-var ridge = new Color(188, 173, 138);
-float padLeft = -0.5f, padRight = Shared.DrivewayWidth - 0.5f, padTop = -0.5f, padEnd = Shared.DrivewayLength - 0.5f;
-float crossing = padEnd - Shared.DrivewayCrossing;  //where the pad meets the pavement
-float apron = padEnd - 1;                           //where the apron starts
-Color Paving(float x, float z)
-{
-    const float half = 0.035f; //half a joint's width
-    //a joint all round the edge, across where the pad meets the pavement and the apron, and dividing the pad into four panels
-    if (x < padLeft + 2 * half || x > padRight - 2 * half || z < padTop + 2 * half || z > padEnd - 2 * half) return joint;
-    if (Math.Abs(z - crossing) < half || Math.Abs(z - apron) < half) return joint;
-    if (z < crossing && (Math.Abs(x - (padLeft + padRight) / 2) < half || Math.Abs(z - (padTop + crossing) / 2) < half)) return joint;
-    //the apron: ridges across it, inside a plain border
-    if (z > apron + 0.18f && z < padEnd - 0.18f && x > padLeft + 0.3f && x < padRight - 0.3f && ((z - apron) % 0.16f) < 0.07f) return ridge;
-    return pale;
-}
-var drivewayPad = new[] { new Box(new Vector3(padLeft, 0, padTop), new Vector3(padRight, 0.02f, padEnd), pale, Paving, new[] { pale, joint, ridge }) };
+// the driveway, after The Sims 2's: a pad that crosses the pavement to the road. it faces north: the road end is at
+// high z. this is only its shape, in one plain colour: the pack ships no texture for it. in the game it is painted
+// with the game's own pavement tile (FloorDress.cs), and this colour shows only if that could not be done
+var drivewayPad = new[] { new Box(new Vector3(-0.5f, 0, -0.5f), new Vector3(Shared.DrivewayWidth - 0.5f, 0.02f, Shared.DrivewayLength - 0.5f), concrete) };
 
 // the car faces north: its nose is at low z. it stands on Shared.CarWidth x Shared.CarLength tiles
 var paint = new Color(44, 96, 178);
@@ -335,7 +319,7 @@ iff.AddChunk(new OBJD()
 });
 var padStrings = new CTSS() { ChunkID = 2003, ChunkLabel = "Catalog - Driveway", ChunkProcessed = true };
 padStrings.InsertString(0, new STRItem("Driveway"));
-padStrings.InsertString(1, new STRItem("A concrete driveway. It joins your garden to the road, across the pavement, and can only go there: move it along the road to where you want it. Park a car on it. From the Driveways pack."));
+padStrings.InsertString(1, new STRItem("A driveway, paved like the pavement. It joins your garden to the road, across the pavement, and can only go there: move it along the road to where you want it. Park a car on it. From the Driveways pack."));
 iff.AddChunk(padStrings);
 
 int padPart = 0;
@@ -505,6 +489,7 @@ void CheckGraphics(OBJD obj, IEnumerable<Box> model, Point tile, ref float worst
     }
 }
 
+Func<OBJD, DGRP> dressedPreview = null; Func<ushort, SPR2> dressedSprites = null;
 float slabWorst = 0, carWorst = 0; int slabSolid = 0, carSolid = 0, slabRim = 0, carRim = 0;
 CheckGraphics(slab, driveway, new Point(0, 0), ref slabWorst, ref slabSolid, ref slabRim);
 float largeWorst = 0; int largeSolid = 0, largeRim = 0;
@@ -519,6 +504,63 @@ foreach (var part in parts) CheckGraphics(part, car, new Point(((ushort)part.Sub
 Console.WriteLine($"Driveway Tile: {slabSolid} solid pixels over 4 views, each within {slabWorst:0.000} tiles of the model when rebuilt in 3D");
 Console.WriteLine($"Car: {carSolid} solid pixels over {parts.Count} tiles and 4 views, each within {carWorst:0.000} tiles of the model when rebuilt in 3D ({carRim} of them the rims along the joins between tiles)");
 if (slabSolid < 4000 || carSolid < 40000 || slabWorst > 0.03f || carWorst > 0.03f || carRim > carSolid / 20) throw new Exception("The sprites do not describe the models");
+
+// --- painting the driveway with a floor tile, as the game will with its pavement: here with a made-up tile whose
+// four quarters are four colours, so what lands where can be checked ---
+{
+    var quarters = new[] { new Color(200, 60, 60), new Color(60, 180, 60), new Color(60, 60, 200), new Color(220, 200, 60) };
+    var fake = new FloorDress.Tile { Width = 128, Height = 64, Pixels = new Color[128 * 64], Palette = Enumerable.Repeat(new Color(255, 0, 255), 256).ToArray() };
+    for (int i = 0; i < 4; i++) fake.Palette[i] = quarters[i];
+    //the diamond: its points are the middles of the sprite's sides. the quarter is by which side of each axis of the tile a pixel is on
+    for (int y = 0; y < 64; y++)
+        for (int x = 0; x < 128; x++)
+        {
+            float dx = (x + 0.5f - 64) / 64f, dy = (y + 0.5f - 32) / 32f;
+            if (Math.Abs(dx) + Math.Abs(dy) > 1) continue;
+            fake.Pixels[y * 128 + x] = quarters[(dx + dy > 0 ? 1 : 0) + (dy - dx > 0 ? 2 : 0)];
+        }
+    var ids = padParts.Select(p => p.BaseGraphicID).ToList();
+    var dressedFile = FloorDress.Build(check, ids, fake);
+    int painted = 0, wrong = 0; var seen = new HashSet<Color>();
+    foreach (var part in padParts)
+    {
+        var plain = check.Get<DGRP>(part.BaseGraphicID);
+        var dressed = dressedFile.Get<DGRP>((ushort)(part.BaseGraphicID + FloorDress.IDOffset));
+        if (dressed == null || dressed.Images.Length != plain.Images.Length) throw new Exception("A dressed drawing group is missing");
+        for (uint view = 0; view < 4; view++)
+            for (uint zoom = 1; zoom <= 3; zoom++)
+            {
+                var a = plain.GetImage(1, zoom, view).Sprites[0]; var b = dressed.GetImage(1, zoom, view).Sprites[0];
+                var fa = check.Get<SPR2>((ushort)a.SpriteID).Frames[a.SpriteFrameIndex]; var fb = dressedFile.Get<SPR2>((ushort)b.SpriteID).Frames[b.SpriteFrameIndex];
+                fa.DecodeIfRequired(true); fb.DecodeIfRequired(true);
+                if (fa.Width != fb.Width || fa.Height != fb.Height || a.SpriteOffset != b.SpriteOffset) throw new Exception("A dressed sprite is not the shape of its original");
+                for (int i = 0; i < fa.PixelData.Length; i++)
+                {
+                    if (fa.ZBufferData[i] != fb.ZBufferData[i] || (fa.PixelData[i].A == 0) != (fb.PixelData[i].A == 0)) throw new Exception("A dressed sprite's depth or outline changed");
+                    if (fb.PixelData[i].A == 0) continue;
+                    painted++; seen.Add(new Color(fb.PixelData[i].R, fb.PixelData[i].G, fb.PixelData[i].B));
+                    if (zoom != 3) continue;
+                    //which quarter of its tile this pixel shows, worked out again from its depth
+                    int x = i % fa.Width, y = i / fa.Width;
+                    var start = a.SpriteOffset + new Vector2(72, 348 - fa.Height);
+                    var pt = Vector3.Transform(new Vector3(start.X + x, start.Y + y, (1f - fa.ZBufferData[i] / 255f) * DepthRange), ToObject[view]);
+                    if (Math.Abs(pt.X) < 0.06f || Math.Abs(pt.Z) < 0.06f || Math.Abs(pt.X) > 0.44f || Math.Abs(pt.Z) > 0.44f) continue; //(too near a border to call)
+                    //on the tile, x runs down-right and z down-left on the canvas at view 0
+                    var p0 = Vector3.Transform(new Vector3(pt.X, 0, pt.Z), Matrix.Invert(ToObject[0])) - Vector3.Transform(Vector3.Zero, Matrix.Invert(ToObject[0]));
+                    var want = quarters[(p0.X / 64f + p0.Y / 32f > 0 ? 1 : 0) + (p0.Y / 32f - p0.X / 64f > 0 ? 2 : 0)];
+                    if (new Color(fb.PixelData[i].R, fb.PixelData[i].G, fb.PixelData[i].B) != want) wrong++;
+                }
+            }
+    }
+    Console.WriteLine($"Dressed with a floor tile: {painted} pixels painted in {seen.Count} colours, {wrong} of the near ones not from the right quarter of the tile");
+    if (painted < 400000 || seen.Count != 4 || !seen.All(c => quarters.Contains(c)) || wrong > painted / 500) throw new Exception("The driveway was not painted with the floor tile");
+    if (args.Length > 1)
+    {
+        //what that looks like, for the previews: the dressed drawing groups in the tiles' places
+        dressedPreview = part => dressedFile.Get<DGRP>((ushort)(part.BaseGraphicID + FloorDress.IDOffset));
+        dressedSprites = id => dressedFile.Get<SPR2>(id);
+    }
+}
 Console.WriteLine("OK");
 
 // optional: a preview folder gets car-view0.ppm .. car-view3.ppm, the car's tiles put together as the game would
@@ -526,7 +568,7 @@ Console.WriteLine("OK");
 if (args.Length > 1)
 {
     Directory.CreateDirectory(args[1]);
-    void Preview(string file, IEnumerable<OBJD> objs, uint view)
+    void Preview(string file, IEnumerable<OBJD> objs, uint view, bool dressed = false)
     {
         const int W = 900, H = 560, OX = 450, OY = 120;
         var colour = new Color[W * H]; var depth = new float[W * H];
@@ -536,8 +578,8 @@ if (args.Length > 1)
             var tile = obj.SubIndex == -1 || obj.MasterID == 0 ? new Point(0, 0) : new Point(((ushort)obj.SubIndex) >> 8, ((ushort)obj.SubIndex) & 0xFF);
             //where this tile's canvas sits: the screen position of its middle, from the lead tile's
             var shift = Vector3.Transform(new Vector3(tile.X, 0, tile.Y), FromObject[view]) - Vector3.Transform(Vector3.Zero, FromObject[view]);
-            var near = check.Get<DGRP>(obj.BaseGraphicID).GetImage(1, 3, view).Sprites[0];
-            var f = check.Get<SPR2>((ushort)near.SpriteID).Frames[near.SpriteFrameIndex];
+            var near = (dressed ? dressedPreview(obj) : check.Get<DGRP>(obj.BaseGraphicID)).GetImage(1, 3, view).Sprites[0];
+            var f = (dressed ? dressedSprites((ushort)near.SpriteID) : check.Get<SPR2>((ushort)near.SpriteID)).Frames[near.SpriteFrameIndex];
             f.DecodeIfRequired(true);
             var start = near.SpriteOffset + new Vector2(0, 348 - f.Height);
             for (int y = 0; y < f.Height; y++)
@@ -565,6 +607,7 @@ if (args.Length > 1)
     for (uint view = 0; view < 4; view++) Preview($"car-view{view}.ppm", parts, view);
     Preview("driveway-tile.ppm", new[] { slab }, 0);
     for (uint view = 0; view < 4; view++) Preview($"driveway-view{view}.ppm", padParts, view);
+    Preview("driveway-dressed-view1.ppm", padParts, 1, true);
     Console.WriteLine("Previews written to " + args[1]);
 }
 

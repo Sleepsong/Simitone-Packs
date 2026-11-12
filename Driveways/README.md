@@ -9,9 +9,9 @@ testing. Expect to find things to fix. The `driveways` console command (below) i
 
 The objects are in buy mode under **Decorative > Other**.
 
-1. Pick up the **Driveway**. It is a concrete pad three tiles wide, after The Sims 2's: it joins your
-   garden to the road, across the pavement, with an apron at the kerb. It can only go there, and slides
-   along the road with the cursor.
+1. Pick up the **Driveway**. It is three tiles wide, paved with the game's own pavement, and after The
+   Sims 2's it joins your garden to the road: it runs across the pavement and the verge to the tarmac.
+   It can only go there, and slides along the road with the cursor.
 2. Put the **Runabout** on the driveway, clear of the pavement, with its front or its back towards the
    road.
 3. Click the car and choose **Go for a Drive**. Any adult of the household can.
@@ -38,6 +38,11 @@ lot can be driven right now. It also writes all of that, with two maps of the lo
 `driveways-report.txt` in Simitone's user directory (next to `config.ini`).
 
 ## Changes
+
+- **0.6**: the driveway has no texture of the pack's own any more. It is painted, when the game runs,
+  with the pavement floor tile out of your own copy of The Sims, so it matches the pavement it crosses.
+  The joints and the ridged apron that 0.5 drew are gone. The `driveways` report says whether the
+  painting worked; if it did not, the driveway shows as plain grey.
 
 - **0.5**: a new Driveway after The Sims 2's: three tiles by eight, cast in panels, crossing the pavement
   and the verge to an apron at the kerb. It snaps with its apron against the tarmac. The two by four
@@ -91,6 +96,7 @@ lot can be driven right now. It also writes all of that, with two maps of the lo
 |---|---|
 | `pack/driveways/content/Downloads/Driveways.iff` | The objects. Written by `generator`, and committed, since it is data |
 | `generator/` | Writes that file, then reads it back and checks it. The car and the driveway are lists of boxes; the generator traces rays against them to draw each sprite and its depth, with the camera maths the engine uses to rebuild a 3D model from a sprite. The car covers eight tiles, and each tile gets its slice |
+| `FloorDress.cs` | Paints the driveway. The object file gives each driveway tile its shape and depth in one plain colour; this makes a second set of sprites in memory, each pixel coloured from the place on the game's pavement tile that it lies over. Nothing of the game's is copied into the pack |
 | `VMDrive.cs` | A new SimAntics primitive, number 200. The objects' scripts are one or two instructions that call it: to set an object up, to say whether the car is parked, and to drive |
 | `Route.cs` | Where the car goes: finding the road, the way out and back, and how fast. Plain numbers, nothing from the engine |
 | `tests/` | Checks `Route.cs` |
