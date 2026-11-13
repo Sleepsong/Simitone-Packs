@@ -32,7 +32,7 @@ Console.WriteLine("IsShared(null) = " + Neighbours.IsShared(null) + ", HomeHouse
 // It was once built on a helper (LotPackData) that only the newest Simitone has, and failed on an older one. From
 // Simitone's pack code it may use only what was there from the start.
 {
-    var allowed = new System.Collections.Generic.HashSet<string>() { "ISimitonePack", "Pack", "PackManager" };
+    var allowed = new System.Collections.Generic.HashSet<string>() { "ISimitonePack", "Pack", "PackManager", "PackManifest" };
     using var file = System.IO.File.OpenRead(typeof(ApartmentsPack).Assembly.Location);
     using var pe = new System.Reflection.PortableExecutable.PEReader(file);
     var md = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(pe);

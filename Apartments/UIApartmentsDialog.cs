@@ -33,7 +33,7 @@ namespace Apartments
         private const int SmallButton = 150;
         private const int Gap = 20;
 
-        public enum Tab { Households, Apartments, MoveIn, Testing }
+        public enum Tab { Households, Apartments, MoveIn, Settings }
 
         /// <summary>One line of the window: a title, a line or two under it, and buttons at the right.</summary>
         private class Row
@@ -79,6 +79,8 @@ namespace Apartments
             //the window coming back ends whatever was being shown on the lot
             UIPickPanel.Close();
             Neighbours.Show(Actions.Screen.vm, false);
+            //(a window that was put away by anything but its own Close button is not one to bring up to date)
+            if (Current != null && (Current.Closing || Current.Parent == null)) Current = null;
             if (Current == null)
             {
                 Current = new UIApartmentsDialog();
@@ -216,6 +218,11 @@ namespace Apartments
                     var outNow = Neighbours.OutNow(vm, family);
                     detail += (outNow.Count == 0) ? " At home." : (" Out now: " + string.Join(", ", outNow) + ".");
                 }
+                if (mine && file != null)
+                {
+                    if (file.ApartmentOf(family.ChunkID) == null) detail += " Give them one on the Apartments page: More, then Tenant.";
+                    else detail += " " + (Neighbours.RentNote(vm) ?? "Rent is taken as each day begins.");
+                }
                 var row = new Row(Residency.NameOf(family) + (mine ? "  -  you are playing them" : ""), detail);
                 var target = family;
                 if (!mine) row.Button("Options", () => HouseholdOptions(target));
@@ -247,7 +254,9 @@ namespace Apartments
                     }),
                     Actions.Choice("Knock", () => Do(() => Actions.Knock(family))),
                     Actions.Choice("Bring out", () => Do(() => Actions.BringOut(family))),
-                    Actions.Choice("Move out", () => Do(() => Actions.MoveOut(family))),
+                    Actions.Choice("Move out", () => Actions.Confirm("Move " + Residency.NameOf(family) + " out?",
+                        "They go back to the family bin, and can move in somewhere else. Their apartment becomes vacant, and their things stay in it.",
+                        "Move out", () => Do(() => Actions.MoveOut(family)))),
                 });
         }
 
@@ -299,6 +308,7 @@ namespace Apartments
                 {
                     CloseMe();
                     Neighbours.Show(vm, true);
+                    UIPickPanel.OpenShowing(vm);
                 }, false, false, 190));
 
             var rate = file.Rate;
@@ -309,7 +319,9 @@ namespace Apartments
             if (Residency.Residents(house).Count <= 1)
             {
                 rows.Add(new Row("Apartment building", "Make this an ordinary house again. Its apartments are forgotten.")
-                    .Button("Ordinary house", () => Do(Actions.MakeOrdinary)));
+                    .Button("Ordinary house", () => Actions.Confirm("Make this an ordinary house?",
+                        "Its apartments are forgotten when you save: " + (file.Apartments.Count == 0 ? "it has none yet." : string.Join(", ", file.Apartments.Select(x => x.Name)) + "."),
+                        "Ordinary house", () => Do(Actions.MakeOrdinary))));
             }
             return rows;
         }
@@ -317,14 +329,19 @@ namespace Apartments
         private void ApartmentOptions(int house, LotFile file, Apartment apartment)
         {
             Actions.Choose(apartment.Name,
-                "Remove room: click in a room to take it out of the apartment.\n\n"
+                "Remove room: click in rooms to take them out of the apartment.\n\n"
+                + "Rename: give the apartment a name of its own.\n\n"
                 + "Tenant: choose which household lives here, or nobody.\n\n"
                 + "Delete: the apartment is gone, and its rooms are shared.",
                 new[]
                 {
                     Actions.Choice("Remove room", () => PickRoom(apartment, true)),
+                    Actions.Choice("Rename", () => Actions.AskText("Rename " + apartment.Name, "What should this apartment be called?", apartment.Name, 40,
+                        name => Do(() => Actions.RenameApartment(apartment, name)))),
                     Actions.Choice("Tenant", () => ChooseTenant(house, file, apartment)),
-                    Actions.Choice("Delete", () => Do(() => Actions.DeleteApartment(apartment))),
+                    Actions.Choice("Delete", () => Actions.Confirm("Delete " + apartment.Name + "?",
+                        "Its rooms become shared. " + (apartment.Vacant ? "Nobody lives in it." : (Actions.TenantText(house, apartment) + " live in it: they stay on the lot, with no apartment.")),
+                        "Delete", () => Do(() => Actions.DeleteApartment(apartment)))),
                 });
         }
 
@@ -398,7 +415,7 @@ namespace Apartments
             {
                 var target = family;
                 var sims = family.FamilyGUIDs.Length;
-                rows.Add(new Row(Residency.NameOf(family), sims + " Sim" + (sims == 1 ? "" : "s") + ", " + family.Budget + " simoleons. They move in beside you, free of charge, and you choose their apartment.")
+                rows.Add(new Row(Residency.NameOf(family), sims + " Sim" + (sims == 1 ? "" : "s") + ", " + family.Budget + " simoleons. They move in beside you. You choose their apartment, and they pay " + Units.DepositDays + " days' rent to move in.")
                     .Button("Move in", () => MoveInHere(target), true));
             }
             return rows;
@@ -428,7 +445,7 @@ namespace Apartments
                 + "\n\n" + Residency.NameOf(family) + " have " + family.Budget + " simoleons. Moving in costs " + Units.DepositDays + " days' rent.", choices);
         }
 
-        private List<Row> TestingRows()
+        private List<Row> SettingsRows()
         {
             var rows = new List<Row>();
             var often = Neighbours.ComeOut;
@@ -483,7 +500,7 @@ namespace Apartments
             var style = UIStyle.Current;
 
             //the three pages, across the top
-            var tabs = new[] { ("Households", Tab.Households), ("Apartments", Tab.Apartments), ("Move in", Tab.MoveIn), ("Testing", Tab.Testing) };
+            var tabs = new[] { ("Households", Tab.Households), ("Apartments", Tab.Apartments), ("Move in", Tab.MoveIn), ("Settings", Tab.Settings) };
             var tabWidth = Math.Min(ButtonWidth, (Width - Margin * 2 - Gap * (tabs.Length - 1)) / tabs.Length);
             for (int i = 0; i < tabs.Length; i++)
             {
@@ -495,7 +512,7 @@ namespace Apartments
             List<Row> all;
             try
             {
-                all = (Showing == Tab.Households) ? HouseholdRows() : (Showing == Tab.Apartments) ? ApartmentRows() : (Showing == Tab.MoveIn) ? MoveInRows() : TestingRows();
+                all = (Showing == Tab.Households) ? HouseholdRows() : (Showing == Tab.Apartments) ? ApartmentRows() : (Showing == Tab.MoveIn) ? MoveInRows() : SettingsRows();
             }
             catch (Exception e)
             {
@@ -529,9 +546,9 @@ namespace Apartments
             }
 
             var statusY = top + Math.Max(rows, 1) * RowHeight;
-            if (Message != null) AddLabel(Message, 15, style.SecondaryText, new Vector2(Margin, statusY), Width - Margin * 2, 2);
+            if (Message != null) AddLabel(Message, 15, style.SecondaryText, new Vector2(Margin, statusY), Width - Margin * 2, 3);
 
-            var buttonY = statusY + 70;
+            var buttonY = statusY + 90;
             AddButton("Close", true, new Vector2((Width - ButtonWidth) / 2, buttonY), ButtonWidth, CloseMe);
             if (pages > 1)
             {

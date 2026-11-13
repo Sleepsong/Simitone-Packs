@@ -34,8 +34,9 @@ screen. If the window does not come up or looks wrong, everything still works fr
    apartment the family takes; when only one is left, you are asked to confirm it. Moving in costs
    two days' rent, and a family that cannot afford an apartment is not offered it. (An apartment is
    rented, not bought, so the lot's price is not charged.)
-6. **Play.** Entering a building where several households live asks which one you want to play. The
-   others are at home, as neighbours.
+6. **Play.** A household that has just moved in is told what it paid and what the rent will be.
+   Entering a building where several households live asks which one you want to play. The others
+   are at home, as neighbours.
 
 A house two households already share (from an earlier version of this pack) is a building already,
 and their rooms are its apartments.
@@ -55,7 +56,10 @@ along the bottom. If the window is taller than the screen, **<** and **>** turn 
 neighbouring household asks what to do with them: **Knock** (the Sim you are playing goes to their
 door, to be asked in), **Play** (save, then play that household; yours go
 home and become neighbours), **Bring out** (one of them comes out of their apartment now) or **Move
-out** (back to the family bin; their things stay, and their apartment is vacant).
+out** (back to the family bin; their things stay, and their apartment is vacant). The line for your
+own household says what the last rent came to.
+
+Moving a household out, deleting an apartment and making the lot an ordinary house again ask first.
 
 **Apartments** is where a building is laid out.
 
@@ -65,8 +69,9 @@ out** (back to the family bin; their things stay, and their apartment is vacant)
 | **Add** (on "New apartment") | Adds an apartment, then lets you click its first room |
 | **Add room** | Lets you click rooms to add to that apartment, until you press Esc |
 | **Plan** | A plan of the lot, floor by floor, with each apartment in its own colour |
-| **On the lot** | Shows the apartments on the lot itself: they are lit, and the shared rooms darkened, until you open the window again |
-| **More > Remove room** | Lets you click a room to take out of its apartment |
+| **On the lot** | Shows the apartments on the lot itself: they are lit, and the shared rooms darkened, with the plan in a corner, until you open the window again |
+| **More > Remove room** | Lets you click rooms to take out of the apartment |
+| **More > Rename** | Gives the apartment a name of its own |
 | **More > Tenant** | Chooses which of the households living here has that apartment, or nobody |
 | **More > Delete** | The apartment is gone, and its rooms are shared |
 | **-** and **+** (on "Rent") | The rent on this lot, in simoleons for each tile each day |
@@ -76,7 +81,7 @@ out** (back to the family bin; their things stay, and their apartment is vacant)
 You are asked which free apartment it takes. (Into an empty building, move households in from the
 neighbourhood screen.)
 
-**Testing** has the switches for trying things out: how often neighbours come out (never, sometimes,
+**Settings** has the pack's switches: how often neighbours come out (never, sometimes,
 often), **Bring out** and **Send home** to do it now, whether apartments are private, whether
 visitors are shown to your door, whether the mailbox can be moved, whether the other apartments are
 dimmed,
@@ -110,7 +115,7 @@ Most of what the window does can also be typed, as `apt` followed by a command.
 | `apt log` | Where the log is |
 
 Everything is kept when you save the lot, like anything else you do on it. The switches on the
-Testing page are kept between runs, in `apartments.cfg` in the user directory.
+Settings page are kept between runs, in `apartments.cfg` in the user directory.
 
 ## Neighbours
 
@@ -181,11 +186,11 @@ You can still build and buy anywhere on the lot, including in other households' 
 ## What to try, and what to look for
 
 1. Follow "Setting up a building" from an empty lot, with two apartments and two families.
-2. Play one household. On the **Testing** page press **Bring out**, and watch what the neighbour does.
+2. Play one household. On the **Settings** page press **Bring out**, and watch what the neighbour does.
 3. Play a game day or two at normal speed with neighbours coming out **Often**.
 4. Leave to the neighbourhood, enter the building again, and choose the other household.
 
-Then send `Apartments.log` (the **Testing** page says where it is). It answers these:
+Then send `Apartments.log` (the **Settings** page says where it is). It answers these:
 
 | Question | In the log |
 |---|---|
@@ -203,13 +208,17 @@ Then send `Apartments.log` (the **Testing** page says where it is). It answers t
 
 ## If the game goes down
 
+Each time the game starts, a line of `=====` in `Apartments.log` marks it, with the pack's version.
+When the log passes half a megabyte it is put aside as `Apartments.old.log` and a new one begun, so
+the file to send stays short.
+
 `Apartments.log` is written as things happen, not afterwards, so its last lines say what was going
 on: `[window]` and `[question]` lines for each button pressed, `[tool]` and `[menu]` for choosing
 rooms and knocking, and `(first)` lines the first time each part of the pack acts on a lot. Whatever
 error closes the game is written there too, as `=== THE GAME IS CLOSING ON AN ERROR`, whether or not
 the pack caused it.
 
-Each part has a switch on the Testing page, and the switches are kept between runs. If something
+Each part has a switch on the Settings page, and the switches are kept between runs. If something
 misbehaves, switch it off: the rest of the pack carries on without it.
 
 ## What it does not do yet
@@ -225,7 +234,7 @@ misbehaves, switch it off: the rest of the pack carries on without it.
 - **A dimmed apartment is only dimmed.** You can still look into it, and nothing in it moves.
 - **Not yet seen in the game:** private apartments and knocking, visitors being walked to your door,
   moving the mailbox, the plan of the lot, and the lighting while rooms are chosen. Each has a switch
-  on the Testing page or is only used when you ask for it, and each fails on its own: the log says
+  on the Settings page or is only used when you ask for it, and each fails on its own: the log says
   if one could not be added.
 - Away from home (downtown, on holiday) nothing here applies. The other households stay on the lot.
 
@@ -283,7 +292,7 @@ It uses only what every Simitone with code packs has, so it does not need the ne
 - `Doors.cs` is who may walk into which apartment, knocking, and showing visitors to the door. Doors
   are closed by leaving them out when the engine plans a walk from room to room.
 - `UIApartmentMap.cs` is the plan of the lot: in a window, and in the corner while rooms are chosen.
-- `Settings.cs` keeps the Testing page's switches between runs.
+- `Settings.cs` keeps the Settings page's switches between runs.
 - `UIChoiceDialog.cs` is a question with a button for each answer. The game's own message box takes
   only one button of each kind, so the pack has its own.
 - `UIRoomPicker.cs` is choosing a room by clicking in it: one of the lot's own tools, like the wall

@@ -316,7 +316,19 @@ namespace Apartments
             Close();
             ApartmentsPack.Guard("showing the plan while choosing a room", () =>
             {
-                Current = new UIPickPanel(vm, apartment, remove);
+                Current = new UIPickPanel(vm, apartment, (remove ? "Click in rooms to take them out of their apartment." : ("Click in rooms to add them to " + apartment.Name + "."))
+                    + " The lit rooms are " + apartment.Name + "'s. Press Esc when you have finished.");
+                UIScreen.GlobalShowDialog(Current, false);
+            });
+        }
+
+        /// <summary>The panel while every apartment is shown on the lot: the plan, and how to finish.</summary>
+        public static void OpenShowing(VM vm)
+        {
+            Close();
+            ApartmentsPack.Guard("showing the plan while apartments are shown on the lot", () =>
+            {
+                Current = new UIPickPanel(vm, null, "The apartments are lit, and the shared rooms darkened. Open the Apartments window again (F9) to finish.");
                 UIScreen.GlobalShowDialog(Current, false);
             });
         }
@@ -328,7 +340,7 @@ namespace Apartments
             if (panel != null) ApartmentsPack.Guard("putting the plan away", () => UIScreen.RemoveDialog(panel));
         }
 
-        private UIPickPanel(VM vm, Apartment apartment, bool remove)
+        private UIPickPanel(VM vm, Apartment apartment, string instructions)
         {
             this.vm = vm;
             White = TextureGenerator.GetPxWhite(GameFacade.GraphicsDevice);
@@ -351,8 +363,7 @@ namespace Apartments
             label.MaxLines = 7;
             label.Position = new Vector2(Pad, Pad);
             label.Size = new Vector2(PanelWidth - Pad * 2, 1);
-            Instructions = (remove ? "Click in rooms to take them out of their apartment." : ("Click in rooms to add them to " + apartment.Name + "."))
-                + " The lit rooms are " + apartment.Name + "'s. Press Esc when you have finished.";
+            Instructions = instructions;
             label.Caption = Instructions;
             Label = label;
             Add(label);

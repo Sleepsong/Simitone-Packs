@@ -21,6 +21,31 @@ namespace Apartments
 
         public static string FilePath => LogPath ??= Path.Combine(FSOEnvironment.UserDir, "Apartments.log");
 
+        private const long MostBytes = 512 * 1024;
+
+        /// <summary>
+        /// Called once as the game starts. A log that has grown long is put aside (as Apartments.old.log, replacing the
+        /// one before it), so the file to send is the recent one; and the start of this run is marked.
+        /// </summary>
+        public static void StartRun(string version)
+        {
+            try
+            {
+                var file = new FileInfo(FilePath);
+                if (file.Exists && file.Length > MostBytes)
+                {
+                    var old = Path.Combine(file.DirectoryName, "Apartments.old.log");
+                    if (File.Exists(old)) File.Delete(old);
+                    file.MoveTo(old);
+                }
+            }
+            catch
+            {
+                //the log just carries on in the same file
+            }
+            Write("================ Apartments " + version + " loaded. Window: Options > Apartments, or F9. ================");
+        }
+
         public static void Write(string line)
         {
             line = "[apt] " + line;

@@ -224,6 +224,21 @@ namespace Apartments
             return Residency.NameOf(family) + " now live in " + apartment.Name + ". " + KeepNote;
         }
 
+        public static string RenameApartment(Apartment apartment, string name)
+        {
+            var vm = BuildingLot(out _, out var file, out var problem);
+            if (vm == null) return problem;
+            if (!file.Apartments.Contains(apartment)) return "That apartment is gone.";
+            name = (name ?? "").Replace('|', '/').Replace('\n', ' ').Trim();
+            if (name.Length > 40) name = name.Substring(0, 40).Trim();
+            if (name == "") return "A name is needed. " + apartment.Name + " keeps its name.";
+            if (file.Apartments.Any(x => x != apartment && string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase))) return "Another apartment is already called " + name + ".";
+            var was = apartment.Name;
+            apartment.Name = name;
+            AptLog.Write(was + " renamed " + name + ".");
+            return was + " is now called " + name + ". " + KeepNote;
+        }
+
         public static string SetRent(int rate)
         {
             var vm = BuildingLot(out var house, out var file, out var problem);
@@ -444,5 +459,39 @@ namespace Apartments
         }
 
         public static KeyValuePair<string, Action> Choice(string text, Action action) => new KeyValuePair<string, Action>(text, action);
+
+        /// <summary>Ask before doing something that cannot be undone: one button to go ahead, and Cancel.</summary>
+        public static void Confirm(string title, string message, string goAhead, Action action)
+        {
+            Choose(title, message, new[] { Choice(goAhead, action) });
+        }
+
+        /// <summary>
+        /// Ask the player to type something. The game's own message box does this (it is how a baby is named): one OK
+        /// button and a line to type on.
+        /// </summary>
+        public static void AskText(string title, string message, string initial, int maxChars, Action<string> answered)
+        {
+            UIMobileAlert alert = null;
+            alert = new UIMobileAlert(new UIAlertOptions()
+            {
+                Title = title,
+                Message = message,
+                TextEntry = true,
+                MaxChars = maxChars,
+                Buttons = new[]
+                {
+                    new UIAlertButton(UIAlertButtonType.OK, (b) =>
+                    {
+                        var text = alert.ResponseText;
+                        alert.Close();
+                        ApartmentsPack.Guard("taking what was typed", () => answered(text));
+                    }),
+                    new UIAlertButton(UIAlertButtonType.Cancel, (b) => alert.Close()),
+                }
+            });
+            alert.ResponseText = initial ?? "";
+            UIScreen.GlobalShowDialog(alert, true);
+        }
     }
 }

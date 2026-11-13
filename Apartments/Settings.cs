@@ -13,7 +13,7 @@ using System.Linq;
 namespace Apartments
 {
     /// <summary>
-    /// The switches on the window's Testing page, kept between runs in apartments.cfg in the user directory. So a part
+    /// The switches on the window's Settings page, kept between runs in apartments.cfg in the user directory. So a part
     /// of the pack that misbehaves can be switched off and stays off.
     /// </summary>
     public static class Settings

@@ -57,15 +57,18 @@ namespace Apartments
     /// And on the neighbourhood screen (Hood.cs): a building's panel says what it is, moving a family into one asks
     /// which apartment, and entering one asks which household to play.
     ///
-    /// This is a prototype whose first purpose is to find out what the game's scripts make of Sims who live on a lot
-    /// without being played. Everything it learns goes to Apartments.log. It has no apartments yet: no units, doors,
-    /// rent or bills of its own. Those come once this stage shows what has to be worked around.
+    /// Around those are patches that each stand alone (the pack runs without any one of them): apartments are
+    /// private (Doors.cs), a door can be knocked at, the mailbox can be moved, and the ways into the pack's window.
+    ///
+    /// Nothing the pack does may take the game down. Every patch and every button is guarded: what goes wrong is
+    /// written to Apartments.log, in full, and the game carries on.
     /// </summary>
     public class ApartmentsPack : ISimitonePack
     {
         public void OnLoad(Pack pack)
         {
             Residency.PackId = pack.Id;
+            AptLog.StartRun(pack.Manifest?.Version ?? "?");
             var harmony = new Harmony("pack." + pack.Id);
             try
             {
@@ -91,7 +94,6 @@ namespace Apartments
             {
                 if (Actions.Screen?.vm == vm) Actions.Say("Rent", message);
             };
-            AptLog.Write("Apartments prototype loaded. Console: apt help");
         }
 
         public void OnLotLoaded(VM vm)

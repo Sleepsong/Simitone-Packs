@@ -43,7 +43,7 @@ namespace Apartments
     /// </summary>
     public static class Neighbours
     {
-        // ---- settings (the window's Testing page, or the console). they last until the game closes ----
+        // ---- settings (the window's Settings page, or the console). they are kept between runs (Settings.cs) ----
 
         public static Outings ComeOut = Outings.Sometimes;
         /// <summary>A neighbour's needs never fall below this while they are out (-100 to 100). Null to leave them alone.</summary>
@@ -111,6 +111,8 @@ namespace Apartments
             /// <summary>While apartments are being shown on the lot: the one picked out (null: none is), or not showing at all.</summary>
             public bool Showing;
             public Apartment ShowingOne;
+            /// <summary>What the last rent taken came to, for the window to say.</summary>
+            public string RentNote;
             /// <summary>While showing: what each lit room is (by the room its light is worked out with). 0: shared, 1: the one picked out, 2: another apartment.</summary>
             public Dictionary<ushort, int> ShowRooms = new Dictionary<ushort, int>();
         }
@@ -540,7 +542,7 @@ namespace Apartments
             {
                 var tile = new Tile((sbyte)(1 + Dice.Next(Math.Max(1, arch.Stories))), (short)Dice.Next(arch.Width), (short)Dice.Next(arch.Height));
                 var room = Units.IndoorRoomAt(vm, tile.ToPos());
-                if (room == 0 || state.RoomOwners.ContainsKey(room)) continue;
+                if (room == 0 || state.RoomApts.ContainsKey(room)) continue; //(not in any apartment, lived in or vacant)
                 if (vm.Context.RoomInfo[room].Room.Area < 4) continue;
                 return tile;
             }
@@ -753,6 +755,12 @@ namespace Apartments
 
         internal static void RefreshDim(VM vm, LotState state) => SetDimRooms(vm, state);
 
+        /// <summary>What the last rent taken on this lot came to (null if none has been since it was loaded).</summary>
+        public static string RentNote(VM vm) => StateOf(vm)?.RentNote;
+
+        /// <summary>Whether apartments are being shown on the lot by light.</summary>
+        public static bool IsShowing(VM vm) => StateOf(vm)?.Showing ?? false;
+
         /// <summary>
         /// Show the apartments on the lot itself, by light: the one picked out is fully lit, the others are dark, and
         /// shared rooms are in between. With none picked out, every apartment is lit and shared rooms are darkened.
@@ -769,7 +777,7 @@ namespace Apartments
             if (on && rooms != null)
             {
                 state.RoomApts = Units.RoomApartments(vm, state.File);
-            state.ResidentIds = new HashSet<int>(Residency.Residents(state.House).Select(x => (int)x.ChunkID));
+                state.ResidentIds = new HashSet<int>(Residency.Residents(state.House).Select(x => (int)x.ChunkID));
                 foreach (var pair in state.RoomApts)
                 {
                     if (pair.Key >= rooms.Length) continue;
@@ -881,6 +889,7 @@ namespace Apartments
             var paid = Units.Pay(ref budget, ref owed, due);
             played.Budget = budget;
             account.Owed = owed;
+            state.RentNote = "Last rent: " + paid + " paid on day " + vm.Context.Clock.DayOfMonth + (days > 1 ? " (for " + days + " days)" : "") + (owed > 0 ? ", " + owed + " still owed" : "") + ".";
             AptLog.Write("Rent: " + Residency.NameOf(played) + " paid " + paid + " (" + days + " day" + (days == 1 ? "" : "s") + " at " + Units.DailyRent(area, file.Rate)
                 + " a day for " + area + " tiles" + (owed > 0 ? "; " + owed + " still owed" : "") + "). Money now " + budget + ".");
             if (owed > 0) OnRentShortfall?.Invoke(vm, "The rent could not be paid in full. " + owed + " simoleons are owed, and will be taken when there is money.");
