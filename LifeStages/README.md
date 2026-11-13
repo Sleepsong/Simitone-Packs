@@ -28,13 +28,26 @@ has; from there the pack takes over.
   chance from the ones the game has. The Sims has no grown-up version of a child's face, so the adult
   does not look like the child did. Their name, skills, personality, relationships and needs carry over.
 
+## Seeing a Sim's age
+
+Open the **Personality** panel in live mode. Beside the Sim's personality is their age, after The Sims
+2's age bar:
+
+- the stage they are in,
+- a bar of the stages of life, each as wide as it is long, filled as far as the Sim has lived, with a
+  figure standing on each and a mark where the Sim is now,
+- how many days until the next stage, and which day of this one it is.
+
+It follows the Sim you have selected. For a pet or a visitor it says they do not age. Away from home, or
+with ageing switched off, it says why the days are not counting.
+
 ## The console
 
 Open the cheat console (Ctrl+Shift+C):
 
 | Type | To |
 |---|---|
-| `age` | See your household's stages and days |
+| `age` | See the stages and days of everyone in your household at once |
 | `age off` / `age on` | Stop and start the days counting. Nothing is forgotten while it is off |
 | `age up` | Move the selected Sim to the next stage now. `age up Bella` for a Sim by name |
 | `age days` | See how long the stages last. `age days adult 40` changes one |
@@ -73,12 +86,15 @@ a teen stays a large child until the pack is on again. Sims who never changed st
 
 ## How it works
 
-The engine is not changed. The pack patches it in three places with Harmony:
+The engine is not changed. The pack patches it in four places with Harmony:
 
 1. **Each tick of a lot**, it watches the clock for midnight and for six in the evening.
 2. **When the game looks up a skin texture**, it answers for the grey copies of heads, which it makes
    from the Sim's own head while the game runs. No picture is written to disk.
 3. **When the game loads a neighbourhood**, it forgets the ages of the one before.
+4. **When the live panel changes what it shows**, it adds the age display to the Personality panel, in
+   the space Simitone leaves empty there. If this patch does not fit a version of Simitone, the rest of
+   the pack still runs.
 
 The game's scripts ask one thing of a Sim's age: under 18 is a child. So a teen is given 15 and an
 elder 65, and every object in the game goes on working. A teen's size is the game's own size setting
@@ -91,6 +107,8 @@ for a Sim.
 | `Life.cs` | What is done in the game: counting days, and putting a stage on a Sim |
 | `Body.cs` | Choosing the head and body a child grows into |
 | `GreyHair.cs` | The grey copy of a head |
+| `AgeView.cs` | What the age display shows: its words, the bar's segments, and the figures |
+| `UIAgeDisplay.cs` | Drawing the age display, in Simitone's UI colours and with figures drawn in code |
 | `LifeStagesPack.cs` | The patches and the console |
 
 What it does goes to the terminal and to `LifeStages.log` in the user directory, in lines starting
@@ -102,7 +120,7 @@ What it does goes to the terminal and to `LifeStages.log` in the user directory,
 dotnet run --project LifeStages/tests
 ```
 
-They need no copy of The Sims. They check that the three patches fit the engine the pack is built
+They need no copy of The Sims. They check that the four patches fit the engine the pack is built
 against, and the pack's own rules: a whole life day by day, the clock, the file, the body chosen for a
-grown child, and grey hair on made-up colours. They do not load a lot or a Sim, so they say nothing
+grown child, grey hair on made-up colours, and what the age display shows. They do not load a lot or a Sim, so they say nothing
 about how it looks or plays.

@@ -26,7 +26,7 @@ var apply = typeof(LifeStagesPack).GetMethod("Apply", BindingFlags.NonPublic | B
 try { apply.Invoke(null, new object[] { h }); }
 catch (TargetInvocationException e) { Console.WriteLine("FAILED: " + e.InnerException); return 1; }
 var patched = h.GetPatchedMethods().Select(m => m.DeclaringType.Name + "." + m.Name).ToList();
-foreach (var needed in new[] { "VM.Tick", "TS1AvatarTextureProvider.Get", "TS1NeighborhoodProvider.InitSpecific" })
+foreach (var needed in new[] { "VM.Tick", "TS1AvatarTextureProvider.Get", "TS1NeighborhoodProvider.InitSpecific", "UIMainPanel.SetSubpanel" })
     Check("patched " + needed, patched.Contains(needed));
 // the per-tick hook must be harmless on a lot it knows nothing about
 Life.AfterTick(null);
@@ -153,6 +153,57 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     var made = GreyHair.Find(name, Lookup);
     Check("a grey copy is made of a head that exists, once", made != null && made != real && GreyHair.Find(name, Lookup) == made && asked.Count == 1);
     Check("and not of one that does not", GreyHair.Find(GreyHair.NameFor("nosuchhead", "lgt"), Lookup) == null && GreyHair.Find("c003falgt_annie", Lookup) == null);
+}
+
+// ---- the age display ----
+{
+    var s = new Settings();
+    const int W = 300;
+    var teen = AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 3 }, s, true, W);
+    Check("a teen on day 4: " + teen.Title + " / " + teen.Counter + " / " + teen.Status, teen.Title == "Teen" && teen.Counter == "Day 4 of 15" && teen.Status == "12 days until adult" && teen.Note == "");
+    Check("the bar has the four stages, in order, across its whole width", teen.Segments.Select(x => x.Stage).SequenceEqual(new[] { Stage.Child, Stage.Teen, Stage.Adult, Stage.Elder }) && teen.Segments[0].X == 0 && teen.Segments.Last().X + teen.Segments.Last().Width == W);
+    Check("segments do not touch or overlap", Enumerable.Range(1, 3).All(i => teen.Segments[i].X == teen.Segments[i - 1].X + teen.Segments[i - 1].Width + AgeView.Gap));
+    Check("a longer stage is a wider segment, and none is too narrow for its figure", teen.Segments[0].Width < teen.Segments[1].Width && teen.Segments[1].Width < teen.Segments[2].Width && teen.Segments.All(x => x.Width >= AgeView.NarrowestSegment && x.Width >= Figures.Width));
+    Check("what is lived is filled: childhood whole, 3 of 15 teen days, nothing after", teen.Segments[0].Fill == 1 && Math.Abs(teen.Segments[1].Fill - 0.2f) < 0.001f && teen.Segments[2].Fill == 0 && teen.Segments[3].Fill == 0);
+    Check("only the Sim's own stage is marked", teen.Segments.Count(x => x.Current) == 1 && teen.Segments[1].Current);
+
+    Check("one day left is one day", AgeView.For(new SimAge() { Stage = Stage.Child, Days = 7 }, s, true, W).Status == "1 day until teen");
+    var due = AgeView.For(new SimAge() { Stage = Stage.Adult, Days = 29 }, s, true, W);
+    Check("a Sim who is due: " + due.Status, due.Status == "Becomes an elder at 6 this evening" && due.Counter == "Day 29 of 29" && due.Segments[2].Fill == 1);
+    var elder = AgeView.For(new SimAge() { Stage = Stage.Elder, Days = 40 }, s, true, W);
+    Check("an elder: " + elder.Counter + " / " + elder.Status, elder.Title == "Elder" && elder.Counter == "Day 41" && elder.Status == "The last stage of life" && elder.Segments.All(x => x.Fill == 1));
+    Check("away from home, and with ageing off, it says so", AgeView.For(new SimAge(), s, false, W).Note == "Days only count at home." && AgeView.For(new SimAge(), new Settings() { Ageing = false }, true, W).Note == "Ageing is off.");
+
+    var noTeens = new Settings() { Teens = false };
+    var child = AgeView.For(new SimAge() { Stage = Stage.Child, Days = 2 }, noTeens, true, W);
+    Check("without teens the bar has three stages and a child grows into an adult", child.Segments.Count == 3 && child.Status == "6 days until adult");
+    Check("a teen from before still has a place on it", AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 2 }, noTeens, true, W).Segments.Count == 4);
+    Check("the display changes when a day passes, and not otherwise", teen.Key != AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 4 }, s, true, W).Key && teen.Key == AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 3 }, s, true, W).Key);
+    var none = AgeView.Unaged();
+    Check("a Sim who does not age has words and no bar", none.Segments.Count == 0 && none.Title == "Does not age");
+    Check("a very narrow bar still holds together", AgeView.For(new SimAge(), s, true, 40).Segments.All(x => x.Width > 0));
+
+    int Ink(Stage st) => Figures.Mask(st).Count(b => b > 127);
+    foreach (Stage st in Enum.GetValues(typeof(Stage)))
+    {
+        var mask = Figures.Mask(st);
+        int tall = Figures.Height(st);
+        bool Row(int y) => Enumerable.Range(0, Figures.Width).Any(x => mask[y * Figures.Width + x] > 127);
+        bool Col(int x) => Enumerable.Range(0, tall).Any(y => mask[y * Figures.Width + x] > 127);
+        Check("the " + Stages.Name(st) + " figure fills its height and stays inside its width", mask.Length == Figures.Width * tall && Row(0) && Row(tall - 1) && !Col(0) && !Col(Figures.Width - 1));
+    }
+    Check("the figures grow with age, and an elder stoops", Figures.Height(Stage.Child) < Figures.Height(Stage.Teen) && Figures.Height(Stage.Teen) < Figures.Height(Stage.Adult) && Figures.Height(Stage.Elder) < Figures.Height(Stage.Adult) && Ink(Stage.Child) < Ink(Stage.Teen) && Ink(Stage.Teen) < Ink(Stage.Adult));
+
+    // for a look at it without the game: dotnet run --project LifeStages/tests -- --preview [folder]
+    var at = Array.IndexOf(args, "--preview");
+    if (at >= 0 && at + 1 < args.Length)
+    {
+        Directory.CreateDirectory(args[at + 1]);
+        foreach (Stage st in Enum.GetValues(typeof(Stage)))
+            File.WriteAllBytes(Path.Combine(args[at + 1], Stages.Name(st) + ".pgm"), System.Text.Encoding.ASCII.GetBytes("P5\n" + Figures.Width + " " + Figures.Height(st) + "\n255\n").Concat(Figures.Mask(st)).ToArray());
+        var views = new[] { AgeView.For(new SimAge() { Stage = Stage.Child, Days = 5 }, s, true, W), teen, due, elder, AgeView.For(new SimAge() { Stage = Stage.Adult, Days = 10 }, s, false, W), none };
+        File.WriteAllLines(Path.Combine(args[at + 1], "views.txt"), views.Select(v => v.Key));
+    }
 }
 
 // ---- the console, with no game running ----

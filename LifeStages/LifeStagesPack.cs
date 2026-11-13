@@ -14,6 +14,7 @@ using FSO.SimAntics;
 using HarmonyLib;
 using Simitone.Client.Packs;
 using Simitone.Client.UI.Panels;
+using Simitone.Client.UI.Panels.LiveSubpanels;
 using Simitone.Client.UI.Screens;
 using System;
 using System.Collections.Generic;
@@ -30,6 +31,9 @@ namespace LifeStages
     ///  1. A lot has ticked: watch its clock for midnight (a day lived) and six in the evening (birthdays).
     ///  2. The game looks up a skin texture: answer for the grey copies of heads that elders wear.
     ///  3. The game has loaded a neighbourhood: forget the ages of the one before.
+    ///
+    /// and a fourth, which the pack can do without: the live panel changes what it shows, so that the Personality
+    /// panel can be given the age display (UIAgeDisplay.cs).
     ///
     /// The rules are in Stages.cs, what is remembered in Ledger.cs, and what is done to a Sim in Life.cs.
     /// </summary>
@@ -84,6 +88,25 @@ namespace LifeStages
             harmony.Patch(Find(typeof(TS1AvatarTextureProvider), "Get", typeof(string)), postfix: Mine(nameof(AfterTextureLookup)));
             // 3
             harmony.Patch(Find(typeof(TS1NeighborhoodProvider), "InitSpecific"), postfix: Mine(nameof(AfterNeighbourhoodLoad)));
+
+            // the age display. the pack works without it (the console says the same), so a version of Simitone it
+            // does not fit costs only the display
+            try
+            {
+                harmony.Patch(Find(typeof(UIMainPanel), "SetSubpanel"), postfix: Mine(nameof(AfterSetSubpanel)));
+            }
+            catch (Exception e)
+            {
+                Log.Write("The age display is not available: " + e.Message);
+            }
+        }
+
+        /// <summary>The live panel has changed what it shows: the Personality panel gets the age display.</summary>
+        private static void AfterSetSubpanel(UIMainPanel __instance, UISubpanel sub)
+        {
+            if (!(sub is UIPersonalitySubpanel)) return;
+            //the panel's own contents start 334 across: the display has the space before that
+            Guard("adding the age display", () => sub.Add(new UIAgeDisplay(__instance.Game) { Position = new Microsoft.Xna.Framework.Vector2(14, 8) }));
         }
 
         private static void AfterTick(VM __instance)
@@ -136,7 +159,7 @@ namespace LifeStages
         private static TS1GameScreen Screen => GameFacade.Screens?.CurrentUIScreen as TS1GameScreen;
 
         private const string Help =
-            "age - your household's ages\n" +
+            "age - your household's ages (the selected Sim's is also in the Personality panel)\n" +
             "age on / age off - whether days count\n" +
             "age up [name] - move a Sim to the next stage now (the selected Sim, if no name)\n" +
             "age days child|teen|adult [number] - how many days a stage lasts\n" +
