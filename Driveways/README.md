@@ -17,7 +17,8 @@ The objects are in buy mode under **Decorative > Other**.
    along the road with the cursor. It lays floor under itself, and takes it up again when it goes.
 2. Buy a car: **Sedan**, **Junker**, **Pickup Truck**, **SUV**, **Town Car** or **Bentley**. Each is drawn
    with one of the game's own cars. A car can only be put down on a driveway, on the garden side of the
-   pavement, and is turned to point along it.
+   pavement. Hold it over a driveway and it slides to fit, and is turned to point along it; turn it a
+   notch to swap its front and back.
 3. Click the car and choose **Go for a Drive**. Any adult of the household can.
 
 The Sim walks to the car, the car pulls out along the driveway, turns onto the road and drives off the
@@ -57,8 +58,22 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 | `driveways cars` | Lists the game's vehicles in `driveways-cars.txt` |
 | `driveways work` | Writes how the game's carpool works (its menu and scripts) to `driveways-work.txt` |
 | `driveways reverse` | If the cars drive along the road backwards, this turns them round. It is remembered |
+| `driveways help` | What the commands are |
 
 ## Changes
+
+- **0.10**: a review of the pack.
+  - A car held over a driveway slides to lie wholly on it, so it no longer has to be lined up tile by
+    tile, and no longer seems to jump when it is turned to face the road.
+  - Cancelling a drive while the car is still on its way out turns it straight round. Before, only
+    cancelling once it had left the lot did.
+  - The opening for the pavement now shows at once in 2D as well as 3D.
+  - Nothing the pack does on the game's tick, or during a drive, can stop the game any more: a fault
+    there ends the drive and puts the car and the Sim back.
+  - `driveways help` (or any command it does not know) says what the commands are. The `driveways`
+    report drops a line that no longer meant anything and says how many driveways are on the lot.
+  - Quicker checks on every object the game moves, and the looking-up of floors and cars is done by
+    one thread at a time.
 
 - **0.9**: a driveway no longer jumps sideways as it is put down. (The game places an object where it
   is already being held; the pack took that for the cursor and centred the driveway on it a second
@@ -138,7 +153,7 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 | `generator/` | Writes that file, then reads it back and checks it. Every tile of a driveway or a car is its own object; all the driveway's share one flat grey square and all the cars' one grey block, drawn by tracing rays with the camera maths the engine uses to rebuild a 3D model from a sprite |
 | `FloorDress.cs` | Paints the driveway. It makes a second set of sprites in memory, the shape and depth of the grey square, each pixel coloured from the place on a floor tile of the game's that it lies over. Nothing of the game's is copied into the pack |
 | `VMDrive.cs` | A new SimAntics primitive, number 200. The objects' scripts are one or two instructions that call it: to set an object up, to say whether the car is parked, and to drive. Also where a driveway and a car may be put, and what each is drawn with: the floor for the driveway, and the game's cars' tiles for the cars |
-| `Route.cs` | Where the car goes: finding the road, the way out and back, and how fast. Plain numbers, nothing from the engine |
+| `Route.cs` | Where things go: finding the road, the car's way out and back and how fast, where a driveway snaps to, and where a car fits on one. Plain numbers, nothing from the engine |
 | `tests/` | Checks `Route.cs` |
 | `DrivewaysPack.cs` | Adds the primitive and the console commands, and Harmony patches: on the game's tick, so a car is never left hidden if its drive is cut short; round an object being moved or deleted, to snap a driveway to the road, keep cars on driveways, and lay and take up the driveway's floor; and when an object's picture is set, to give driveways and cars theirs |
 | `Shared.cs` | The ids and sizes the object file and the code must agree on, and the cars: which of the game's each is drawn with. Compiled into both |

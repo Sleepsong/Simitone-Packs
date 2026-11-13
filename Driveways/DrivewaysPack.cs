@@ -25,12 +25,13 @@ using System;
 namespace Driveways
 {
     /// <summary>
-    /// Driveways and a car Sims can drive, as a pack.
+    /// Driveways and cars Sims can drive, as a pack.
     ///
-    /// The pack is two things. Its content layer is one object file with a driveway piece and a car, written by the
+    /// The pack is two things. Its content layer is one object file with a driveway and some cars, written by the
     /// generator folder. Its code layer is this assembly: one new SimAntics primitive (VMDrive) that the objects'
-    /// short scripts call, and two Harmony patches: one so a car is never left hidden if its drive is cut short, and
-    /// one that snaps a driveway to the road as it is put down.
+    /// short scripts call, a console command, and Harmony patches at four places in the engine: the game's tick, an
+    /// object being moved, an object being deleted, and an object's picture being set. Every patch catches whatever
+    /// goes wrong in it: the pack must never stop the game doing what it was doing.
     /// </summary>
     public class DrivewaysPack : ISimitonePack
     {
@@ -61,6 +62,7 @@ namespace Driveways
         ///   driveways work            writes how the game's carpool works to driveways-work.txt
         ///   driveways floor <words>   paints driveways with the floor whose name has those words; "tarmac" for the road's; nothing for the pack's choice
         ///   driveways reverse         turns the cars round as they drive along the road, if they drive backwards
+        ///   driveways help            (or anything else) says what the commands are
         /// </summary>
         private static bool Command(string[] args)
         {
@@ -82,9 +84,19 @@ namespace Driveways
                     Settings.Save();
                     Show("Driveways", Settings.ReverseCars ? "Cars now drive along the road with their lead tile at the back." : "Cars now drive along the road with their lead tile at the front.");
                     return true;
-                default: return false;
+                case "help":
+                default:
+                    Show("Driveways", Help);
+                    return true;
             }
         }
+
+        private const string Help =
+            "driveways: what the pack makes of this lot, written in full to driveways-report.txt\n\n" +
+            "driveways floors: lists the floors a driveway can be paved with, in driveways-floors.txt\n\n" +
+            "driveways floor <words from a floor's name>: paves driveways with that floor. \"driveways floor tarmac\" for the road's; \"driveways floor\" alone for the pack's choice\n\n" +
+            "driveways reverse: turns the cars round, if they drive along the road backwards\n\n" +
+            "driveways cars, driveways work: lists of the game's vehicles and how its carpool works, for whoever is working on the pack";
 
         private static bool ReportTo(string name, Func<string> what, string says)
         {
@@ -117,13 +129,13 @@ namespace Driveways
         }
 
         /// <summary>
-        /// "driveways": says where the pack thinks the road is: says where the pack thinks the road is on this lot, and
-        /// whether each car on it can be driven. For finding out why a car will not go.
+        /// "driveways": says where the pack thinks the road is on this lot, what the driveway and the cars are drawn
+        /// with, and whether each car on it can be driven. For finding out why a car will not go.
         /// </summary>
         private static bool Report()
         {
             var vm = (GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm;
-            if (vm == null) return false;
+            if (vm == null) { Show("Driveways", "Open a lot first: this says what the pack makes of the lot being played."); return true; }
             var message = VMDrive.Describe(vm);
             try
             {
@@ -194,7 +206,7 @@ namespace Driveways
             {
                 VMDrive.BeforeDrivewayMoves(__instance, context);
                 VMDrive.SnapDriveway(__instance, ref pos, ref direction, context, flags);
-                if (!VMDrive.CarMayGo(__instance, pos, ref direction, context, flags))
+                if (!VMDrive.CarMayGo(__instance, ref pos, ref direction, context, flags))
                 {
                     __result = new VMPlacementResult(VMPlacementError.NotAllowedOnTerrain);
                     return false;
@@ -206,8 +218,9 @@ namespace Driveways
 
         public static void AfterTick(VM __instance)
         {
-            VMDrive.RepairOldObjects(__instance);
-            VMDrive.EndStaleTrips(__instance);
+            //(each on its own, and neither allowed to stop the game's tick)
+            try { VMDrive.RepairOldObjects(__instance); } catch (Exception) { }
+            try { VMDrive.EndStaleTrips(__instance); } catch (Exception) { }
         }
 
         private static void ShowMessage(VM fromVM, string message)

@@ -316,5 +316,34 @@ const int DW = 5, DL = 9; //the driveway, in tiles
     Check(noPavement.StripFirst == 43 && noPavement.StripLast == 51, "with no pavement, the strip is the road and what is beyond it");
 }
 
+// ---- sliding a car onto a driveway ----
+
+{
+    //the tiles a car covers from its lead tile
+    List<(int X, int Y)> CarTiles(int lx, int ly, int h) => (from x in Enumerable.Range(0, 3) from y in Enumerable.Range(0, 6)
+                                                             let off = DrivePlan.Rotate(x, y, h)
+                                                             select (lx + (int)Math.Round(off.X), ly + (int)Math.Round(off.Y))).ToList();
+    //the garden part of a driveway to an east road: columns 34 to 40, rows 23 to 27
+    const int X0 = 34, Y0 = 23, X1 = 40, Y1 = 27;
+    bool allFit = true, allStay = true, nearest = true;
+    foreach (var h in new[] { 1, 3 }) //lengthways to an east road
+        for (int lx = 28; lx <= 46; lx++)
+            for (int ly = 18; ly <= 32; ly++)
+            {
+                var fit = CarSnap.Fit(X0, Y0, X1, Y1, lx, ly, h, 3, 6);
+                if (fit == null) { allFit = false; continue; }
+                var tiles = CarTiles(fit.Value.X, fit.Value.Y, h);
+                if (tiles.Any(t => t.X < X0 || t.X > X1 || t.Y < Y0 || t.Y > Y1)) allFit = false;
+                if (CarSnap.Fit(X0, Y0, X1, Y1, fit.Value.X, fit.Value.Y, h, 3, 6) != fit) allStay = false;
+                //a car already wholly on the driveway is not moved
+                if (CarTiles(lx, ly, h).All(t => t.X >= X0 && t.X <= X1 && t.Y >= Y0 && t.Y <= Y1) && fit != (lx, ly)) nearest = false;
+            }
+    Check(allFit, "car: wherever it is held, it is slid wholly onto the driveway");
+    Check(allStay, "car: put down where it was slid to, it stays there");
+    Check(nearest, "car: one already on the driveway is left where it is");
+    Check(CarSnap.Fit(X0, Y0, X1, Y1, 36, 25, 0, 3, 6) == null && CarSnap.Fit(X0, Y0, X1, Y1, 36, 25, 2, 3, 6) == null, "car: across a driveway too narrow for its length, it does not fit");
+    Check(CarSnap.Fit(X0, Y0, X0 + 1, Y1, 36, 25, 1, 3, 6) == null, "car: a driveway shorter than the car does not take it");
+}
+
 Console.WriteLine($"{passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

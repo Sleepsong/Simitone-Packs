@@ -20,8 +20,9 @@ using System.Runtime.CompilerServices;
 namespace Driveways
 {
     /// <summary>
-    /// The pack's one SimAntics primitive. The car and the driveway piece have scripts of an instruction or two that
-    /// call it; what it does is chosen by the first byte of its operand (see Shared).
+    /// The pack's one SimAntics primitive, and the rules that go with it. The cars and the driveway have scripts of an
+    /// instruction or two that call it; what it does is chosen by the first byte of its operand (see Shared). Here
+    /// too: where a driveway and a car may be put, and the floor a driveway lays.
     ///
     /// A drive changes nothing the game saves. The car stays where it is parked as far as the game's rules go (it
     /// still takes up its tiles), and the Sim stays standing beside it. Only what is drawn moves: the car's picture
@@ -90,7 +91,13 @@ namespace Driveways
                         return parked ? VMPrimitiveExitCode.GOTO_TRUE : VMPrimitiveExitCode.GOTO_FALSE;
                     }
                 case Shared.ModeDrive:
-                    return Drive(context);
+                    try { return Drive(context); }
+                    catch (Exception)
+                    {
+                        //whatever went wrong, do not leave a car or a Sim hidden
+                        AbandonTrip(context);
+                        return VMPrimitiveExitCode.GOTO_FALSE;
+                    }
                 default:
                     return VMPrimitiveExitCode.GOTO_FALSE;
             }
@@ -117,8 +124,11 @@ namespace Driveways
 
         private const VMMovementFlags Movable = VMMovementFlags.SimsCanMove | VMMovementFlags.PlayersCanMove | VMMovementFlags.PlayersCanDelete;
 
-        public static bool IsDrivewayGUID(uint guid) => guid == Shared.DrivewayGUID || guid == Shared.OldTileGUID || Shared.OldDriveways.Any(o => o.GUID == guid);
-        public static bool IsCarGUID(uint guid) => Shared.Cars.Any(c => c.GUID == guid);
+        //(these are asked every time the game moves any object, so they are kept quick)
+        private static readonly HashSet<uint> DrivewayGUIDs = new HashSet<uint>(Shared.OldDriveways.Select(o => o.GUID).Concat(new[] { Shared.DrivewayGUID, Shared.OldTileGUID }));
+        private static readonly HashSet<uint> CarGUIDs = new HashSet<uint>(Shared.Cars.Select(c => c.GUID));
+        public static bool IsDrivewayGUID(uint guid) => DrivewayGUIDs.Contains(guid);
+        public static bool IsCarGUID(uint guid) => CarGUIDs.Contains(guid);
         private static bool IsDriveway(VMEntity obj) => IsDrivewayGUID(GUIDOf(obj));
 
         //the lots whose objects have been looked over since they loaded
@@ -154,6 +164,22 @@ namespace Driveways
         }
 
         // ---- a drive ----
+
+        /// <summary>End the trip this script is running, if any, and show the car and the Sim again.</summary>
+        private static void AbandonTrip(VMStackFrame context)
+        {
+            try
+            {
+                var car = CarOf(context.StackObject);
+                if (car != null && car.Objects.Count > 0)
+                {
+                    TripsOf(context.VM).Remove(car.BaseObject.ObjectID);
+                    Park(car);
+                }
+                if (context.Caller is VMAvatar sim) Show(sim, true);
+            }
+            catch (Exception) { }
+        }
 
         private static VMPrimitiveExitCode Drive(VMStackFrame context)
         {
@@ -203,7 +229,8 @@ namespace Driveways
                     {
                         Show(car, false);
                         trip.Phase = Phase.Away;
-                        trip.Timer = AwayTicks;
+                        //(cancelled on the way out: it turns straight round)
+                        trip.Timer = sim.GetFlag(VMEntityFlags.InteractionCanceled) ? 1 : AwayTicks;
                     }
                     else Draw(car, trip.Plan.Out.PoseAt(trip.Distance));
                     break;
@@ -348,6 +375,23 @@ namespace Driveways
             arch.SetFloor(x, y, 1, now, true);
         }
 
+        /// <summary>
+        /// Hide or show one tile of a driveway. The game's own "hidden" value is set, which it saves; and the picture
+        /// is told as an object's picture has to be, or in 2D (where objects that stand still are drawn once and
+        /// kept) the change would not show until something else redrew that part of the lot.
+        /// </summary>
+        private static void Hide(VMEntity tile, bool hide)
+        {
+            var value = (short)(hide ? 1 : 0);
+            if (tile.GetValue(VMStackObjectVariable.Hidden) == value) return;
+            tile.SetValue(VMStackObjectVariable.Hidden, value);
+            if (VM.UseWorld && tile.WorldUI is ObjectComponent picture)
+            {
+                picture.Visible = hide; //(the value above has already set it, quietly: set it wrong and then right, so the change is seen)
+                picture.Visible = !hide;
+            }
+        }
+
         /// <summary>Before a driveway is moved: put back the floor under where it is.</summary>
         public static void BeforeDrivewayMoves(VMMultitileGroup group, VMContext context)
         {
@@ -369,15 +413,14 @@ namespace Driveways
                 var pos = tile.Position;
                 if (pos == LotTilePos.OUT_OF_WORLD || pos.Level != 1 || pos.TileX < 0 || pos.TileY < 0 || pos.TileX >= arch.Width || pos.TileY >= arch.Height)
                 {
-                    if (tile.GetValue(VMStackObjectVariable.Hidden) != 0) tile.SetValue(VMStackObjectVariable.Hidden, 0);
+                    Hide(tile, false);
                     continue;
                 }
                 var floor = arch.GetFloor(pos.TileX, pos.TileY, 1);
                 bool paved = tile.GetAttribute(AttrPaved) == 1 && tile.GetAttribute(AttrX) == pos.TileX && tile.GetAttribute(AttrY) == pos.TileY;
                 //the pavement runs on across the driveway
                 bool pavement = floor.Pattern == PavementFloor && !paved;
-                var hide = (short)(pavement ? 1 : 0);
-                if (tile.GetValue(VMStackObjectVariable.Hidden) != hide) tile.SetValue(VMStackObjectVariable.Hidden, hide);
+                Hide(tile, pavement);
                 if (pavement || paved || tile.GhostImage) continue;
 
                 if (laying == 0)
@@ -419,20 +462,16 @@ namespace Driveways
         private static int Snaps;
         private static string LastSnap = "never";
 
-        /// <summary>
-        /// A driveway the player is holding or putting down goes against the strip by the road, pointing at it, as in
-        /// The Sims 2: it follows the cursor along the road and nowhere else. Called before the game moves any object;
-        /// changes where a driveway is being moved to. Only the player's own placing is touched, never a lot loading.
-        /// </summary>
-        /// <summary>
-        /// A car the player is holding or putting down can only go on a driveway: every tile of it on driveway, clear
-        /// of the pavement, and lengthways along the driveway (it is turned to point at the road if it is held
-        /// across). Returns false, with why, where it cannot go; changes the direction it is being given.
-        /// </summary>
         //the way the car last being held was pointed, and the sideways direction it was asked for when it was turned (-1: none yet)
         private static int LastCarHeading = -1, LastAcrossHeading = -1;
 
-        public static bool CarMayGo(VMMultitileGroup group, LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags)
+        /// <summary>
+        /// A car the player is holding or putting down can only go on a driveway: every tile of it on driveway, clear
+        /// of the pavement, and lengthways along the driveway. One held across is turned to point at the road, and one
+        /// held partly on a driveway is slid to lie wholly on it. Returns false where it cannot go; changes the place
+        /// and the direction it is being given.
+        /// </summary>
+        public static bool CarMayGo(VMMultitileGroup group, ref LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags)
         {
             if ((flags & VMPlaceRequestFlags.UserBuildableLimit) == 0 || pos == LotTilePos.OUT_OF_WORLD || group.Objects.Count == 0) return true;
             if (!IsCarGUID(GUIDOf(group.Objects[0]))) return true;
@@ -465,6 +504,24 @@ namespace Driveways
                 }
                 LastCarHeading = heading;
             }
+
+            //slide it onto the driveway it is held over: the one under its lead tile, or else under any of it
+            var driveway = DrivewayUnder(context, pos.TileX, pos.TileY);
+            for (int x = 0; x < Shared.CarWidth && driveway == null; x++)
+                for (int y = 0; y < Shared.CarLength && driveway == null; y++)
+                {
+                    var off = DrivePlan.Rotate(x, y, heading);
+                    driveway = DrivewayUnder(context, pos.TileX + (int)Math.Round(off.X), pos.TileY + (int)Math.Round(off.Y));
+                }
+            if (driveway == null) return false;
+            //(the part of it a car may stand on: not the pavement, the verge or the road)
+            var garden = driveway.Objects.Select(o => o.Position).Where(p => p != LotTilePos.OUT_OF_WORLD
+                && (road == null || (road.Value.AlongX ? p.TileY : p.TileX) < road.Value.StripFirst || (road.Value.AlongX ? p.TileY : p.TileX) > road.Value.StripLast)).ToList();
+            if (garden.Count == 0) return false;
+            var fit = CarSnap.Fit(garden.Min(p => p.TileX), garden.Min(p => p.TileY), garden.Max(p => p.TileX), garden.Max(p => p.TileY), pos.TileX, pos.TileY, heading, Shared.CarWidth, Shared.CarLength);
+            if (fit == null) return false;
+            if (fit.Value.X != pos.TileX || fit.Value.Y != pos.TileY) pos = LotTilePos.FromBigTile((short)fit.Value.X, (short)fit.Value.Y, 1);
+
             for (int x = 0; x < Shared.CarWidth; x++)
                 for (int y = 0; y < Shared.CarLength; y++)
                 {
@@ -482,6 +539,19 @@ namespace Driveways
             return true;
         }
 
+        private static VMMultitileGroup DrivewayUnder(VMContext context, int x, int y)
+        {
+            var arch = context.Architecture;
+            if (x < 0 || y < 0 || x >= arch.Width || y >= arch.Height) return null;
+            var here = context.ObjectQueries.GetObjectsAt(LotTilePos.FromBigTile((short)x, (short)y, 1));
+            return here?.FirstOrDefault(o => o != null && o is VMGameObject && !o.Dead && IsDriveway(o))?.MultitileGroup;
+        }
+
+        /// <summary>
+        /// A driveway the player is holding or putting down goes against the road, pointing at it, as in The Sims 2:
+        /// it follows the cursor along the road and nowhere else. Called before the game moves any object; changes
+        /// where a driveway is being moved to. Only the player's own placing is touched, never a lot loading.
+        /// </summary>
         public static void SnapDriveway(VMMultitileGroup group, ref LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags)
         {
             if ((flags & VMPlaceRequestFlags.UserBuildableLimit) == 0 || pos == LotTilePos.OUT_OF_WORLD || group.Objects.Count == 0) return;
@@ -499,8 +569,8 @@ namespace Driveways
         }
 
         /// <summary>
-        /// What the pack makes of a lot, for the "driveways" console command: where it thinks the road is, which floor
-        /// tiles the part of the lot that cannot be built on is made of, and whether each car could be driven now.
+        /// What the pack makes of a lot, for the "driveways" console command: where it thinks the road is, what the
+        /// driveway and the cars are drawn with, and whether each car could be driven now.
         /// </summary>
         public static string Describe(VM vm)
         {
@@ -517,22 +587,13 @@ namespace Driveways
                     + (road.Value.VergeFirst != null ? $" With its verge and pavement it is {lines2} {road.Value.StripFirst} to {road.Value.StripLast}: a driveway goes against that." : ""));
             }
 
-            var floors = new Dictionary<ushort, int>();
-            for (short y = 0; y < arch.Height; y++)
-                for (short x = 0; x < arch.Width; x++)
-                {
-                    if (!context.IsUserOutOfBounds(LotTilePos.FromBigTile(x, y, 1))) continue;
-                    var pattern = arch.GetFloor(x, y, 1).Pattern;
-                    floors[pattern] = floors.TryGetValue(pattern, out var count) ? count + 1 : 1;
-                }
-            lines.Add("Floor tiles where the player cannot build (tile id x count): " +
-                (floors.Count == 0 ? "none" : string.Join(", ", floors.OrderByDescending(f => f.Value).Take(8).Select(f => f.Key + " x " + f.Value))) + ".");
-
             lines.Add($"Driveways snapped to the road since the game started: {Snaps} times. The last: {LastSnap}.");
             lines.Add("The driveway's look: " + DrivewayLook.Describe());
             lines.Add("The car's look: " + CarLook.Describe());
 
             var cars = vm.Entities.Where(e => e is VMGameObject && IsCarGUID(GUIDOf(e))).Select(e => e.MultitileGroup).Distinct().ToList();
+            var driveways = vm.Entities.Where(e => e is VMGameObject && IsDriveway(e)).Select(e => e.MultitileGroup).Distinct().Count();
+            lines.Add(driveways == 0 ? "No driveways on this lot." : $"{driveways} driveway{(driveways == 1 ? "" : "s")} on this lot.");
             if (cars.Count == 0) lines.Add("No cars on this lot.");
             foreach (var car in cars)
             {
@@ -761,6 +822,9 @@ namespace Driveways
         private static FSO.Files.Formats.IFF.IffFile Dressed;
         //every driveway tile dressed so far, so they can be painted again when the floor is changed
         private static List<WeakReference<VMGameObject>> Tiles = new List<WeakReference<VMGameObject>>();
+        private static ConditionalWeakTable<VMGameObject, object> Known = new ConditionalWeakTable<VMGameObject, object>();
+        //(pictures are set from the loading thread as well as the game's: the looking is done by one at a time)
+        private static readonly object Looking = new object();
 
         public static string Describe() => Looked ? Outcome : "not looked for yet (no driveway has been drawn).";
 
@@ -856,7 +920,7 @@ namespace Driveways
         /// <summary>The floor to lay under a driveway: the one it is painted with. 0 if none could be found.</summary>
         public static ushort FloorFor(VMEntity tile)
         {
-            if (!Looked) Look(tile.Object.OBJ.ChunkParent);
+            lock (Looking) { if (!Looked) Look(tile.Object.OBJ.ChunkParent); }
             return Pattern;
         }
 
@@ -866,11 +930,15 @@ namespace Driveways
         public static void Dress(VMGameObject obj)
         {
             if (!VM.UseWorld || !IsDrivewayTile(obj)) return;
-            if (!Looked) Look(obj.Object.OBJ.ChunkParent);
+            lock (Looking) { if (!Looked) Look(obj.Object.OBJ.ChunkParent); }
             lock (Tiles)
             {
-                Tiles.RemoveAll(t => !t.TryGetTarget(out _));
-                if (!Tiles.Any(t => t.TryGetTarget(out var known) && known == obj)) Tiles.Add(new WeakReference<VMGameObject>(obj));
+                if (!Known.TryGetValue(obj, out _))
+                {
+                    Known.Add(obj, null);
+                    if (Tiles.Count > 256) Tiles.RemoveAll(t => !t.TryGetTarget(out _));
+                    Tiles.Add(new WeakReference<VMGameObject>(obj));
+                }
             }
             Paint(obj);
         }
@@ -887,8 +955,8 @@ namespace Driveways
         {
             List<VMGameObject> tiles;
             lock (Tiles) tiles = Tiles.Select(t => t.TryGetTarget(out var obj) ? obj : null).Where(o => o != null && !o.Dead).ToList();
-            if (tiles.Count == 0) { Looked = false; return; }
-            Look(tiles[0].Object.OBJ.ChunkParent);
+            if (tiles.Count == 0) { lock (Looking) Looked = false; return; }
+            lock (Looking) Look(tiles[0].Object.OBJ.ChunkParent);
             foreach (var tile in tiles) { try { Paint(tile); } catch (Exception) { } }
         }
     }
@@ -991,7 +1059,7 @@ namespace Driveways
         public static void Dress(VMGameObject obj)
         {
             if (!VM.UseWorld || obj.MasterDefinition == null || !VMDrive.IsCarGUID(obj.MasterDefinition.GUID)) return;
-            if (!Looked) Look();
+            lock (Held) { if (!Looked) Look(); }
             if (!Borrowed.TryGetValue(obj.MasterDefinition.GUID, out var tiles)) return;
             var place = PlaceOf(obj.Object.OBJ.SubIndex);
             if (tiles.TryGetValue(place.X * 256 + place.Y, out var dgrp) && obj.WorldUI is ObjectComponent picture) picture.DGRP = dgrp;

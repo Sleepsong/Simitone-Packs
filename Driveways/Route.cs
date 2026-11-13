@@ -191,6 +191,27 @@ namespace Driveways
         }
     }
 
+    /// <summary>Where a car goes on a driveway: it is slid to lie wholly on it.</summary>
+    public static class CarSnap
+    {
+        /// <summary>
+        /// The lead tile for a car being put on a driveway that covers the tiles (minX, minY) to (maxX, maxY), when
+        /// the player is holding it with its lead tile at (leadX, leadY): the nearest place where the whole car is on
+        /// the driveway. Null if the car is too big for it that way round. A car already wholly on the driveway
+        /// stays where it is, so putting it down where it is held does not move it.
+        /// </summary>
+        public static (int X, int Y)? Fit(int minX, int minY, int maxX, int maxY, int leadX, int leadY, int heading, int carWidth, int carLength)
+        {
+            //how far the car reaches from its lead tile, each way
+            var a = DrivePlan.Rotate(0, 0, heading); var b = DrivePlan.Rotate(carWidth - 1, carLength - 1, heading);
+            int x0 = (int)Math.Round(Math.Min(a.X, b.X)), x1 = (int)Math.Round(Math.Max(a.X, b.X));
+            int y0 = (int)Math.Round(Math.Min(a.Y, b.Y)), y1 = (int)Math.Round(Math.Max(a.Y, b.Y));
+            int lowX = minX - x0, highX = maxX - x1, lowY = minY - y0, highY = maxY - y1;
+            if (lowX > highX || lowY > highY) return null;
+            return (Math.Max(lowX, Math.Min(leadX, highX)), Math.Max(lowY, Math.Min(leadY, highY)));
+        }
+    }
+
     /// <summary>Where the car is at one moment: the middle of its body, and which way its nose points.</summary>
     public struct Pose
     {
