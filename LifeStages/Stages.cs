@@ -185,16 +185,18 @@ namespace LifeStages
     }
 
     /// <summary>
-    /// Watches a lot's clock for the two moments that matter: midnight, when a day has been lived, and six in the
-    /// evening, when birthdays happen (as in The Sims 2, and when Sims are mostly up). It only trusts the clock
-    /// stepping from one hour to the next: a clock that jumps, as it does when a lot loads, is not a day gone by.
+    /// Watches a lot's clock for the moments that matter: midnight, when a day has been lived, and each hour of the
+    /// evening from six, when birthdays happen (as in The Sims 2, and when Sims are mostly up). A birthday that
+    /// could not happen at six, because the household was out or the lot was not loaded, happens at the next hour
+    /// of the evening it can. It only trusts the clock stepping from one hour to the next: a clock that jumps, as
+    /// it does when a lot loads, is not a day gone by.
     /// </summary>
     public class DayWatch
     {
-        public const int BirthdayHour = 18;
+        public const int EveningHour = 18;
         private int LastHour = -1;
 
-        public enum Moment { None, Hour, Midnight, Birthdays }
+        public enum Moment { None, Hour, Midnight, Evening }
 
         public Moment Feed(int hour)
         {
@@ -203,7 +205,7 @@ namespace LifeStages
             if (last == -1 || last == hour) return Moment.None;
             if ((last + 1) % 24 != hour) return Moment.None;
             if (hour == 0) return Moment.Midnight;
-            return hour == BirthdayHour ? Moment.Birthdays : Moment.Hour;
+            return hour >= EveningHour ? Moment.Evening : Moment.Hour;
         }
     }
 }

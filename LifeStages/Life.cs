@@ -21,7 +21,7 @@ namespace LifeStages
     /// Ageing in the game: the days counted, and a stage put on a Sim.
     ///
     /// Who ages: the people (not pets) of the household being played, while it is on its own lot. A day is lived at
-    /// each midnight there, and a Sim who has lived a stage out moves to the next at six that evening. Neighbours,
+    /// each midnight there, and a Sim who has lived a stage out moves to the next that evening, from six. Neighbours,
     /// townies and households you are not playing stay as they are, as in The Sims 2.
     ///
     /// What a stage is to the game:
@@ -33,8 +33,8 @@ namespace LifeStages
     ///
     /// The pack's own record (Ledger.cs) says which stage a Sim is in and how many days into it. What the game holds
     /// (the Sim's file, its person data on the lot and in the neighbourhood) can fall behind that, for example in a
-    /// lot that was left without saving after a birthday. So whenever a lot starts, and every hour after, each Sim
-    /// of the household is looked at and what the game holds is brought into line.
+    /// lot that was left without saving after a birthday. So every few seconds each Sim of the household is looked
+    /// at and what the game holds is brought into line (Reconcile).
     /// </summary>
     public static class Life
     {
@@ -60,8 +60,12 @@ namespace LifeStages
             }
         }
 
-        /// <summary>The game has loaded a neighbourhood: what was in memory belongs to the one before.</summary>
-        public static void NeighbourhoodLoaded()
+        /// <summary>
+        /// Drop what is in memory, so that it is read from the file again. For when the game loads a neighbourhood
+        /// (what was in memory belongs to the one before), and when a lot is left: if the game was saved first the
+        /// file is the same, and if it was not, the days played and not saved go with the lot.
+        /// </summary>
+        public static void Forget()
         {
             Current = null;
             CurrentPath = null;
@@ -71,6 +75,12 @@ namespace LifeStages
         public static void Saved()
         {
             if (Current != null && CurrentPath != null) Current.Write(PackId, CurrentPath);
+        }
+
+        /// <summary>The player changed a setting: keep it now, whether or not the game is saved.</summary>
+        public static void SettingsChanged()
+        {
+            if (Current != null && CurrentPath != null) Current.WriteSettings(PackId, CurrentPath);
         }
 
         // ---- who ----
@@ -107,34 +117,26 @@ namespace LifeStages
 
         // ---- the clock ----
 
-        private static readonly ConditionalWeakTable<VM, DayWatch> Watches = new ConditionalWeakTable<VM, DayWatch>();
+        private class LotWatch
+        {
+            public DayWatch Clock = new DayWatch();
+            public int Ticks;
+        }
+
+        private static readonly ConditionalWeakTable<VM, LotWatch> Watches = new ConditionalWeakTable<VM, LotWatch>();
+
+        /// <summary>How often a lot's Sims are looked at, in ticks: a few seconds. A Sim who arrives is not left long at the wrong size.</summary>
+        public const int LookEvery = 90;
 
         /// <summary>Called after every tick of every lot.</summary>
         public static void AfterTick(VM vm)
         {
             if (vm == null || !vm.TS1 || vm.TS1State?.CurrentFamily == null) return;
-            var first = !Watches.TryGetValue(vm, out var watch);
-            if (first)
-            {
-                watch = new DayWatch();
-                Watches.Add(vm, watch);
-            }
-            var moment = watch.Feed(vm.Context.Clock.Hours);
-            if (first)
-            {
-                Reconcile(vm);
-                return;
-            }
-            if (moment == DayWatch.Moment.None) return;
+            var watch = Watches.GetValue(vm, x => new LotWatch());
+            var moment = watch.Clock.Feed(vm.Context.Clock.Hours);
             if (moment == DayWatch.Moment.Midnight) Midnight(vm);
-            if (moment == DayWatch.Moment.Birthdays) Birthdays(vm);
-            Reconcile(vm);
-        }
-
-        /// <summary>A lot has loaded: look at it afresh on its next tick, even if it was seen before.</summary>
-        public static void LotLoaded(VM vm)
-        {
-            if (vm != null) Watches.Remove(vm);
+            if (moment == DayWatch.Moment.Evening) Birthdays(vm);
+            if (moment != DayWatch.Moment.None || watch.Ticks++ % LookEvery == 0) Reconcile(vm);
         }
 
         public static void Midnight(VM vm)
@@ -144,7 +146,13 @@ namespace LifeStages
             foreach (var avatar in Household(vm)) Stages.AddDay(RecordOf(avatar), ledger.Settings);
         }
 
-        /// <summary>Six in the evening: everyone who is due grows up. Returns what to tell the player.</summary>
+        /// <summary>
+        /// Sims the game had no adult body for. They are not tried again by themselves, so the player is told once
+        /// and not every evening. Asking from the console tries again.
+        /// </summary>
+        private static readonly HashSet<uint> CouldNotGrow = new HashSet<uint>();
+
+        /// <summary>An hour of the evening: everyone who is due grows up. Returns what to tell the player.</summary>
         public static List<string> Birthdays(VM vm)
         {
             var news = new List<string>();
@@ -152,6 +160,7 @@ namespace LifeStages
             if (ledger == null || !ledger.Settings.Ageing || !AtHome(vm)) return news;
             foreach (var avatar in Household(vm))
             {
+                if (CouldNotGrow.Contains(avatar.Object.OBJ.GUID)) continue;
                 if (Stages.Due(RecordOf(avatar), ledger.Settings)) GrowUp(vm, avatar, news);
             }
             if (news.Count > 0) Announce?.Invoke(vm, string.Join("\n", news));
@@ -174,26 +183,65 @@ namespace LifeStages
                 news.Add(avatar.Name + " is an elder. Nothing comes after that yet.");
                 return false;
             }
-            if (Stages.IsChildToGame(sim.Stage) && !Stages.IsChildToGame(next.Value) && !GiveAdultBody(vm, avatar))
+            var newBody = Stages.IsChildToGame(sim.Stage) && !Stages.IsChildToGame(next.Value);
+            if (newBody && !GiveAdultBody(vm, avatar))
             {
-                news.Add(avatar.Name + " could not grow up: the game has no adult head or body to give. The log says more.");
+                CouldNotGrow.Add(avatar.Object.OBJ.GUID);
+                news.Add(avatar.Name + " could not grow up: the game has no adult head or body to give. LifeStages.log says more. To try again: age up " + avatar.Name);
                 return false;
             }
+            CouldNotGrow.Remove(avatar.Object.OBJ.GUID);
             Stages.Advance(sim, ledger.Settings);
-            Fit(vm, avatar, sim, ledger.Settings);
+            FitData(vm, avatar, sim);
+            FitLooks(avatar, sim, ledger.Settings);
             Log.Write(avatar.Name + " is now " + Article(sim.Stage) + ".");
-            news.Add(avatar.Name + " is now " + Article(sim.Stage) + ".");
+
+            var line = avatar.Name + " is now " + Article(sim.Stage) + ".";
+            var length = Stages.Length(sim.Stage, ledger.Settings);
+            if (length > 0) line += " " + length + " days until " + Stages.Name(Stages.Next(sim.Stage, ledger.Settings).Value) + ".";
+            news.Add(line);
+            if (newBody) news.Add("Not the look you wanted? Type age look in the console for another.");
             return true;
+        }
+
+        /// <summary>
+        /// Give a grown Sim another adult head and body, picked afresh. Growing up picks by chance, and the player
+        /// may not like what chance gave. Returns what to tell the player.
+        /// </summary>
+        public static string NewLook(VM vm, VMAvatar avatar)
+        {
+            var sim = RecordOf(avatar);
+            if (Stages.IsChildToGame(sim.Stage)) return avatar.Name + " is " + Article(sim.Stage) + ". Only a grown Sim can be given another look.";
+            if (!GiveAdultBody(vm, avatar)) return avatar.Name + " could not be given another look. LifeStages.log says why.";
+            FitData(vm, avatar, sim);
+            FitLooks(avatar, sim, Ledger.Settings);
+            return avatar.Name + " has a new look. It is kept when the game is saved. For another, type age look again.";
+        }
+
+        /// <summary>Put a Sim on a day of the stage they are in (1 is the first). Returns what to tell the player.</summary>
+        public static string SetDay(VMAvatar avatar, int day)
+        {
+            var settings = Ledger.Settings;
+            var sim = RecordOf(avatar);
+            var length = Stages.Length(sim.Stage, settings);
+            sim.Days = Math.Clamp(day - 1, 0, length > 0 ? length : Settings.LongestStage);
+            CouldNotGrow.Remove(avatar.Object.OBJ.GUID);
+            return avatar.Name + ": " + Stages.Describe(sim, settings) + (Stages.Due(sim, settings) ? ". They move on in the evening, at home." : ".");
         }
 
         private static string Article(Stage stage) => (stage == Stage.Adult || stage == Stage.Elder ? "an " : "a ") + Stages.Name(stage);
 
-        /// <summary>Bring what the game holds for every Sim of the household into line with the record.</summary>
+        /// <summary>
+        /// Bring what the game holds into line with the record. For the household being played, that is everything.
+        /// For any other Sim the pack knows (a household played before, here as a visitor), it is only how they are
+        /// drawn: their size and hair. Nothing is written for a Sim who is only visiting.
+        /// </summary>
         public static void Reconcile(VM vm)
         {
             var ledger = Ledger;
-            if (ledger == null) return;
-            foreach (var avatar in Household(vm))
+            if (ledger == null || vm == null || !vm.TS1) return;
+            var household = Household(vm);
+            foreach (var avatar in household)
             {
                 var sim = RecordOf(avatar);
                 var body = BodyStrings(avatar);
@@ -202,7 +250,13 @@ namespace LifeStages
                 if (childBody && !Stages.IsChildToGame(sim.Stage))
                 {
                     //the record says grown, the Sim's file says child: the file was lost or put back. grow again
-                    if (!GiveAdultBody(vm, avatar)) continue;
+                    var guid = avatar.Object.OBJ.GUID;
+                    if (CouldNotGrow.Contains(guid)) continue;
+                    if (!GiveAdultBody(vm, avatar))
+                    {
+                        CouldNotGrow.Add(guid);
+                        continue;
+                    }
                 }
                 else if (!childBody && Stages.IsChildToGame(sim.Stage))
                 {
@@ -210,12 +264,29 @@ namespace LifeStages
                     sim.Stage = Stage.Adult;
                     sim.Days = 0;
                 }
-                Fit(vm, avatar, sim, ledger.Settings);
+                FitData(vm, avatar, sim);
+                FitLooks(avatar, sim, ledger.Settings);
+            }
+
+            if (!VM.UseWorld) return;
+            foreach (var entity in vm.Context.ObjectQueries.Avatars)
+            {
+                var avatar = entity as VMAvatar;
+                if (avatar == null || avatar.Dead || avatar.IsPet || household.Contains(avatar)) continue;
+                var sim = ledger.Find(avatar.Object.OBJ.GUID);
+                if (sim == null) continue;
+                //only if the Sim's own file agrees: a visitor's body is not this lot's to change
+                var body = BodyStrings(avatar);
+                if (body == null || (body.GetString(0) != "adult") != Stages.IsChildToGame(sim.Stage)) continue;
+                FitLooks(avatar, sim, ledger.Settings);
             }
         }
 
-        /// <summary>Make the Sim's age, size and hair those of its stage. Changes nothing that is already right.</summary>
-        public static void Fit(VM vm, VMAvatar avatar, SimAge sim, Settings settings)
+        /// <summary>
+        /// Make the age and size the game holds for a Sim those of its stage: on the lot, in the neighbourhood, and
+        /// in the Sim's file. Changes nothing that is already right.
+        /// </summary>
+        public static void FitData(VM vm, VMAvatar avatar, SimAge sim)
         {
             var guid = avatar.Object.OBJ.GUID;
             var neighbourhood = Content.Get().Neighborhood;
@@ -246,21 +317,34 @@ namespace LifeStages
             if (held != size && (size != 100 || held == teenSize)) avatar.SetPersonData(VMPersonDataVariable.TS1ScalingSim, size);
             var heldThere = NeighbourData(neighbour, VMPersonDataVariable.TS1ScalingSim) ?? size;
             if (heldThere != size && (size != 100 || heldThere == teenSize)) SetNeighbourData(neighbour, VMPersonDataVariable.TS1ScalingSim, size);
-            //a lot that has just loaded holds the number but has not drawn with it yet
-            if (VM.UseWorld && avatar.WorldUI is AvatarComponent drawn && (size != 100 || held == teenSize) && drawn.Scale != size / 100f) drawn.Scale = size / 100f;
+        }
+
+        /// <summary>
+        /// Make a Sim look their stage on this lot: a teen's size and an elder's hair. Only what is drawn is
+        /// changed, and nothing that is already right.
+        /// </summary>
+        public static void FitLooks(VMAvatar avatar, SimAge sim, Settings settings)
+        {
+            if (!VM.UseWorld) return;
+
+            // size. a Sim who has just arrived or loaded holds the number, but is not drawn with it yet. a Sim of
+            // full size is only touched if still drawn as a teen: the game resizes Sims too (a spell, a potion)
+            var size = Stages.Size(sim.Stage) / 100f;
+            var teenSize = Stages.Size(Stage.Teen) / 100f;
+            if (avatar.WorldUI is AvatarComponent drawn && drawn.Scale != size && (size != 1f || Math.Abs(drawn.Scale - teenSize) < 0.001f))
+                drawn.Scale = size;
 
             // hair
-            if (VM.UseWorld && body != null && body.Length > 14)
-            {
-                var head = body.GetString(2) ?? "";
-                var worn = avatar.HeadOutfit?.OftData?.TS1TextureID;
-                var isGrey = worn != null && GreyHair.TryParse(worn, out _, out _);
-                var wantGrey = sim.Stage == Stage.Elder && settings.GreyHair && head.Contains('=');
-                if (wantGrey && !isGrey)
-                    avatar.HeadOutfit = new VMOutfitReference(GreyHair.NameFor(head, Body.SkinColour(body.GetString(14), avatar.GetPersonData(VMPersonDataVariable.SkinColor))), true);
-                else if (!wantGrey && isGrey)
-                    avatar.HeadOutfit = new VMOutfitReference(body, true);
-            }
+            var body = BodyStrings(avatar);
+            if (body == null || body.Length <= 14) return;
+            var head = body.GetString(2) ?? "";
+            var worn = avatar.HeadOutfit?.OftData?.TS1TextureID;
+            var isGrey = worn != null && GreyHair.TryParse(worn, out _, out _);
+            var wantGrey = sim.Stage == Stage.Elder && settings.GreyHair && head.Contains('=');
+            if (wantGrey && !isGrey)
+                avatar.HeadOutfit = new VMOutfitReference(GreyHair.NameFor(head, Body.SkinColour(body.GetString(14), avatar.GetPersonData(VMPersonDataVariable.SkinColor))), true);
+            else if (!wantGrey && isGrey)
+                avatar.HeadOutfit = new VMOutfitReference(body, true);
         }
 
         /// <summary>

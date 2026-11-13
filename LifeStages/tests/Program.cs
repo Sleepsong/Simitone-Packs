@@ -26,11 +26,24 @@ var apply = typeof(LifeStagesPack).GetMethod("Apply", BindingFlags.NonPublic | B
 try { apply.Invoke(null, new object[] { h }); }
 catch (TargetInvocationException e) { Console.WriteLine("FAILED: " + e.InnerException); return 1; }
 var patched = h.GetPatchedMethods().Select(m => m.DeclaringType.Name + "." + m.Name).ToList();
-foreach (var needed in new[] { "VM.Tick", "TS1AvatarTextureProvider.Get", "TS1NeighborhoodProvider.InitSpecific", "UIMainPanel.SetSubpanel" })
+foreach (var needed in new[] { "VM.Tick", "TS1AvatarTextureProvider.Get", "TS1NeighborhoodProvider.InitSpecific", "TS1GameScreen.Save", "TS1GameScreen.ExitLot", "UIMainPanel.SetSubpanel" })
     Check("patched " + needed, patched.Contains(needed));
 // the per-tick hook must be harmless on a lot it knows nothing about
 Life.AfterTick(null);
 Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(null));
+
+// ---- the pack must run on every Simitone that can load code packs, not only the newest ----
+// From Simitone's pack code it may use only what was there from the start (see the Apartments pack's tests).
+{
+    var allowed = new HashSet<string>() { "ISimitonePack", "Pack", "PackManager" };
+    using var file = File.OpenRead(typeof(LifeStagesPack).Assembly.Location);
+    using var pe = new System.Reflection.PortableExecutable.PEReader(file);
+    var md = System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(pe);
+    var used = md.TypeReferences.Select(t => md.GetTypeReference(t))
+        .Where(t => md.GetString(t.Namespace) == "Simitone.Client.Packs").Select(t => md.GetString(t.Name)).Distinct().ToList();
+    Check("uses only the first pack API (" + string.Join(", ", used) + ")", used.All(allowed.Contains));
+    Check("implements none of the later pack calls", typeof(LifeStagesPack).GetMethod("OnLotSaved") == null && !typeof(LifeStagesPack).GetMethods().Any(m => m.Name == "OnLotLoaded"));
+}
 
 // ---- the stages ----
 {
@@ -69,8 +82,8 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
 // ---- the clock ----
 {
     DayWatch.Moment[] Feed(params int[] hours) { var w = new DayWatch(); return hours.Select(w.Feed).ToArray(); }
-    Check("midnight is a day", Feed(22, 23, 23, 0, 0, 1).SequenceEqual(new[] { DayWatch.Moment.None, DayWatch.Moment.Hour, DayWatch.Moment.None, DayWatch.Moment.Midnight, DayWatch.Moment.None, DayWatch.Moment.Hour }));
-    Check("six in the evening is birthdays", Feed(17, 18, 19)[1] == DayWatch.Moment.Birthdays);
+    Check("midnight is a day", Feed(22, 23, 23, 0, 0, 1).SequenceEqual(new[] { DayWatch.Moment.None, DayWatch.Moment.Evening, DayWatch.Moment.None, DayWatch.Moment.Midnight, DayWatch.Moment.None, DayWatch.Moment.Hour }));
+    Check("birthdays can happen at six and at each hour of the evening after, and at no other", Feed(16, 17, 18, 19, 20, 21, 22, 23).Skip(1).SequenceEqual(new[] { DayWatch.Moment.Hour, DayWatch.Moment.Evening, DayWatch.Moment.Evening, DayWatch.Moment.Evening, DayWatch.Moment.Evening, DayWatch.Moment.Evening, DayWatch.Moment.Evening }) && Feed(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17).Skip(1).All(x => x == DayWatch.Moment.Hour));
     Check("a lot that loads at midnight has not lived a day", Feed(0)[0] == DayWatch.Moment.None);
     Check("a clock that jumps has not lived a day", Feed(14, 0)[1] == DayWatch.Moment.None && Feed(9, 18)[1] == DayWatch.Moment.None);
 }
@@ -94,6 +107,15 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     Check("another neighbourhood has its own", Ledger.Read("sample.lifestages", other).Sims.Count == 0 && Ledger.PathFor("sample.lifestages", hood) != Ledger.PathFor("sample.lifestages", other));
     Check("the file is beside the saves, not in them", Ledger.PathFor("sample.lifestages", hood).Replace('\\', '/').Contains("/LocalHouse/PackData/sample.lifestages/"));
 
+    // a setting is kept at once, and days played but not saved are not kept with it
+    var playing = Ledger.Read("sample.lifestages", hood);
+    playing.Find(0x1234abcd).Days = 7; playing.Meet(99, 9); playing.Settings.AdultDays = 40;
+    Check("settings written", playing.WriteSettings("sample.lifestages", hood));
+    var kept = Ledger.Read("sample.lifestages", hood);
+    Check("a changed setting is kept at once", kept.Settings.AdultDays == 40 && kept.Settings.TeenDays == 20);
+    Check("without keeping days that were not saved", kept.Find(0x1234abcd).Days == 5 && kept.Find(99) == null && kept.Sims.Count == 4);
+    Check("the days still in play are untouched", playing.Find(0x1234abcd).Days == 7 && playing.Find(99) != null);
+
     File.WriteAllText(Ledger.PathFor("sample.lifestages", hood), "{ \"Settings\": { \"ChildDays\": -4, \"AdultDays\": 5000000 }, \"Sims\": { \"00000001\": { \"Stage\": 2, \"Days\": -9 }, \"00000002\": { \"Stage\": 77, \"Days\": 1 }, \"00000003\": null } }");
     var mended = Ledger.Read("sample.lifestages", hood);
     Check("a damaged file is mended", mended.Settings.ChildDays == 1 && mended.Settings.AdultDays == Settings.LongestStage && mended.Sims.Count == 1 && mended.Find(1).Days == 0 && mended.Find(1).Stage == Stage.Adult);
@@ -105,10 +127,10 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
 // ---- the body a child grows into (names shaped like the game's) ----
 {
     var heads = new[] { "C001FA_Annie", "C002FA_Bea", "C003FA_NoTexture" };
-    var bodies = new[] { "B001FAFit_01", "B002FAFat_02", "B003FASkn_03", "B004FAFit_OnlyDark", "odd" };
+    var bodies = new[] { "B001FAFit_01", "B002FAFat_02", "B003FASkn_03", "B004FAFit_OnlyDark", "odd", "B900FACop_Uniform", "B001FAFit_01" };
     var textures = new[] {
         "C001FAlgt_Annie.bmp", "C001FAdrk_Annie.bmp", "C002FAlgt_Bea.bmp",
-        "B001FAFitlgt_01.bmp", "B002FAFatlgt_02.bmp", "B003FASknlgt_03.bmp", "B004FAFitdrk_OnlyDark.bmp", "B001FAFitdrk_01.bmp",
+        "B900FACoplgt_Uniform.bmp", "B001FAFitlgt_01.bmp", "B002FAFatlgt_02.bmp", "B003FASknlgt_03.bmp", "B004FAFitdrk_OnlyDark.bmp", "B001FAFitdrk_01.bmp",
         "huaolgt.bmp", "huaodrk.bmp" };
     var random = new Random(1);
     var all = Enumerable.Range(0, 200).Select(i => Body.ChooseAdult(true, "lgt", heads, bodies, textures, random)).ToList();
@@ -121,6 +143,9 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     var dark = Body.ChooseAdult(true, "drk", heads, bodies, textures, random);
     Check("a dark-skinned woman gets what there is for her", dark != null && dark[2].StartsWith("C001FA_Annie") && dark[14] == "drk");
     Check("nothing to wear: no growing up", Body.ChooseAdult(true, "med", heads, bodies, textures, random) == null && Body.ChooseAdult(false, "lgt", new string[0], new string[0], textures, random) == null);
+    Check("a costume or uniform is not an everyday body", Body.BuildOf("B900FACop_Uniform") == null && Body.BuildOf("odd") == null && Body.BuildOf("b001mafit_01") == "fit" && Body.BuildOf("B002FAFat_02") == "Fat");
+    var lower = Body.ChooseAdult(false, "lgt", new[] { "c010ma_bob" }, new[] { "b010mafit_01" }, new[] { "C010MALGT_BOB.BMP", "B010MAFITLGT_01.BMP" }, random);
+    Check("names are matched whatever their case", lower != null && lower[12] == "male" && lower[17] == "HmLO,HAND=huaolgt");
     Check("skin colour, from the strings or else the person data", Body.SkinColour("MED", 0) == "med" && Body.SkinColour("", 2) == "drk" && Body.SkinColour(null, 9) == "drk" && Body.SkinColour("purple", -3) == "lgt");
 }
 
@@ -159,7 +184,7 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
 {
     var s = new Settings();
     const int W = 300;
-    var teen = AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 3 }, s, true, W);
+    var teen = AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 3 }, s, true, 12, W);
     Check("a teen on day 4: " + teen.Title + " / " + teen.Counter + " / " + teen.Status, teen.Title == "Teen" && teen.Counter == "Day 4 of 15" && teen.Status == "12 days until adult" && teen.Note == "");
     Check("the bar has the four stages, in order, across its whole width", teen.Segments.Select(x => x.Stage).SequenceEqual(new[] { Stage.Child, Stage.Teen, Stage.Adult, Stage.Elder }) && teen.Segments[0].X == 0 && teen.Segments.Last().X + teen.Segments.Last().Width == W);
     Check("segments do not touch or overlap", Enumerable.Range(1, 3).All(i => teen.Segments[i].X == teen.Segments[i - 1].X + teen.Segments[i - 1].Width + AgeView.Gap));
@@ -167,21 +192,25 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     Check("what is lived is filled: childhood whole, 3 of 15 teen days, nothing after", teen.Segments[0].Fill == 1 && Math.Abs(teen.Segments[1].Fill - 0.2f) < 0.001f && teen.Segments[2].Fill == 0 && teen.Segments[3].Fill == 0);
     Check("only the Sim's own stage is marked", teen.Segments.Count(x => x.Current) == 1 && teen.Segments[1].Current);
 
-    Check("one day left is one day", AgeView.For(new SimAge() { Stage = Stage.Child, Days = 7 }, s, true, W).Status == "1 day until teen");
-    var due = AgeView.For(new SimAge() { Stage = Stage.Adult, Days = 29 }, s, true, W);
+    Check("one day left is one day", AgeView.For(new SimAge() { Stage = Stage.Child, Days = 7 }, s, true, 12, W).Status == "1 day until teen");
+    var due = AgeView.For(new SimAge() { Stage = Stage.Adult, Days = 29 }, s, true, 12, W);
     Check("a Sim who is due: " + due.Status, due.Status == "Becomes an elder at 6 this evening" && due.Counter == "Day 29 of 29" && due.Segments[2].Fill == 1);
-    var elder = AgeView.For(new SimAge() { Stage = Stage.Elder, Days = 40 }, s, true, W);
+    var elder = AgeView.For(new SimAge() { Stage = Stage.Elder, Days = 40 }, s, true, 12, W);
+    Check("when a Sim who is due moves on is said truthfully",
+        AgeView.For(new SimAge() { Stage = Stage.Child, Days = 8 }, s, true, 20, W).Status == "Becomes a teen within the hour" &&
+        AgeView.For(new SimAge() { Stage = Stage.Child, Days = 8 }, s, false, 12, W).Status == "Becomes a teen once back home" &&
+        AgeView.For(new SimAge() { Stage = Stage.Child, Days = 8 }, new Settings() { Ageing = false }, true, 12, W).Status == "Becomes a teen once ageing is on");
     Check("an elder: " + elder.Counter + " / " + elder.Status, elder.Title == "Elder" && elder.Counter == "Day 41" && elder.Status == "The last stage of life" && elder.Segments.All(x => x.Fill == 1));
-    Check("away from home, and with ageing off, it says so", AgeView.For(new SimAge(), s, false, W).Note == "Days only count at home." && AgeView.For(new SimAge(), new Settings() { Ageing = false }, true, W).Note == "Ageing is off.");
+    Check("away from home, and with ageing off, it says so", AgeView.For(new SimAge(), s, false, 12, W).Note == "Days only count at home." && AgeView.For(new SimAge(), new Settings() { Ageing = false }, true, 12, W).Note == "Ageing is off.");
 
     var noTeens = new Settings() { Teens = false };
-    var child = AgeView.For(new SimAge() { Stage = Stage.Child, Days = 2 }, noTeens, true, W);
+    var child = AgeView.For(new SimAge() { Stage = Stage.Child, Days = 2 }, noTeens, true, 12, W);
     Check("without teens the bar has three stages and a child grows into an adult", child.Segments.Count == 3 && child.Status == "6 days until adult");
-    Check("a teen from before still has a place on it", AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 2 }, noTeens, true, W).Segments.Count == 4);
-    Check("the display changes when a day passes, and not otherwise", teen.Key != AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 4 }, s, true, W).Key && teen.Key == AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 3 }, s, true, W).Key);
+    Check("a teen from before still has a place on it", AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 2 }, noTeens, true, 12, W).Segments.Count == 4);
+    Check("the display changes when a day passes, and not otherwise", teen.Key != AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 4 }, s, true, 12, W).Key && teen.Key == AgeView.For(new SimAge() { Stage = Stage.Teen, Days = 3 }, s, true, 12, W).Key);
     var none = AgeView.Unaged();
     Check("a Sim who does not age has words and no bar", none.Segments.Count == 0 && none.Title == "Does not age");
-    Check("a very narrow bar still holds together", AgeView.For(new SimAge(), s, true, 40).Segments.All(x => x.Width > 0));
+    Check("a very narrow bar still holds together", AgeView.For(new SimAge(), s, true, 12, 40).Segments.All(x => x.Width > 0));
 
     int Ink(Stage st) => Figures.Mask(st).Count(b => b > 127);
     foreach (Stage st in Enum.GetValues(typeof(Stage)))
@@ -201,7 +230,7 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
         Directory.CreateDirectory(args[at + 1]);
         foreach (Stage st in Enum.GetValues(typeof(Stage)))
             File.WriteAllBytes(Path.Combine(args[at + 1], Stages.Name(st) + ".pgm"), System.Text.Encoding.ASCII.GetBytes("P5\n" + Figures.Width + " " + Figures.Height(st) + "\n255\n").Concat(Figures.Mask(st)).ToArray());
-        var views = new[] { AgeView.For(new SimAge() { Stage = Stage.Child, Days = 5 }, s, true, W), teen, due, elder, AgeView.For(new SimAge() { Stage = Stage.Adult, Days = 10 }, s, false, W), none };
+        var views = new[] { AgeView.For(new SimAge() { Stage = Stage.Child, Days = 5 }, s, true, 12, W), teen, due, elder, AgeView.For(new SimAge() { Stage = Stage.Adult, Days = 10 }, s, false, 12, W), none };
         File.WriteAllLines(Path.Combine(args[at + 1], "views.txt"), views.Select(v => v.Key));
     }
 }

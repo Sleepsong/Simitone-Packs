@@ -39,17 +39,19 @@ namespace LifeStages
 
             //as Create a Sim does: a head or body can be worn if it has a texture in this skin colour
             var headChoices = heads.Distinct()
-                .Select(x => new { Mesh = x, Tex = RemoveExt(texnames.FirstOrDefault(y => y.StartsWith(ExtractID(x, skin)))) })
+                .Select(x => new { Mesh = x, Tex = RemoveExt(texnames.FirstOrDefault(y => y.StartsWith(ExtractID(x, skin), StringComparison.OrdinalIgnoreCase))) })
                 .Where(x => x.Tex != null).ToList();
+            //the game files other things with its bodies (costumes, uniforms). only the three builds are everyday
+            //bodies, and only they have the naked and underwear bodies an adult also needs
             var bodyChoices = bodies.Distinct()
                 .Where(x => BuildOf(x) != null)
-                .Select(x => new { Mesh = x, Tex = RemoveExt(texnames.FirstOrDefault(y => y.StartsWith(ExtractID(x, skin)))) })
+                .Select(x => new { Mesh = x, Tex = RemoveExt(texnames.FirstOrDefault(y => y.StartsWith(ExtractID(x, skin), StringComparison.OrdinalIgnoreCase))) })
                 .Where(x => x.Tex != null).ToList();
             if (headChoices.Count == 0 || bodyChoices.Count == 0) return null;
 
             var head = headChoices[random.Next(headChoices.Count)];
             var body = bodyChoices[random.Next(bodyChoices.Count)];
-            var hands = (RemoveExt(texnames.FirstOrDefault(y => RemoveExt(y) == "huao" + FindHG(body.Tex))) ?? "huao" + skin).Substring(4);
+            var hands = (RemoveExt(texnames.FirstOrDefault(y => string.Equals(RemoveExt(y), "huao" + FindHG(body.Tex), StringComparison.OrdinalIgnoreCase))) ?? "huao" + skin).Substring(4);
 
             //everything else an adult has (naked, underwear, the outfits expansions add), as for a new Sim
             var strings = new SimTemplateCreateInfo(sex + "a" + BuildOf(body.Mesh), skin).BodyStringReplace;
@@ -64,11 +66,18 @@ namespace LifeStages
             return strings;
         }
 
-        /// <summary>The build in a body's name: "fat", "fit" or "skn", the three letters before its first underscore.</summary>
+        public static readonly string[] Builds = { "fat", "fit", "skn" };
+
+        /// <summary>
+        /// The build in a body's name: "fat", "fit" or "skn", the three letters before its first underscore, as the
+        /// name spells them. Null for a body that is none of the three.
+        /// </summary>
         public static string BuildOf(string body)
         {
             var ind = body.IndexOf('_');
-            return ind < 3 ? null : body.Substring(ind - 3, 3);
+            if (ind < 3) return null;
+            var build = body.Substring(ind - 3, 3);
+            return Builds.Contains(build.ToLowerInvariant()) ? build : null;
         }
 
         /// <summary>The skin colour in a Sim's body strings, or the one its person data names.</summary>

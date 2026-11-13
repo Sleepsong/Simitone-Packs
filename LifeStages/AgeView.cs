@@ -49,8 +49,9 @@ namespace LifeStages
 
         /// <summary>For a Sim of the played household.</summary>
         /// <param name="atHome">Whether the household is on its own lot, where days count.</param>
+        /// <param name="hour">The hour on the lot's clock, 0 to 23.</param>
         /// <param name="width">The width of the bar, in pixels.</param>
-        public static AgeView For(SimAge sim, Settings settings, bool atHome, int width)
+        public static AgeView For(SimAge sim, Settings settings, bool atHome, int hour, int width)
         {
             var view = new AgeView();
             var name = Stages.Name(sim.Stage);
@@ -67,8 +68,8 @@ namespace LifeStages
             {
                 view.Counter = "Day " + Math.Min(sim.Days + 1, length) + " of " + length;
                 var left = length - sim.Days;
-                if (left <= 0) view.Status = "Becomes " + Article(next.Value) + " at 6 this evening";
-                else view.Status = left + (left == 1 ? " day until " : " days until ") + Stages.Name(next.Value);
+                if (left > 0) view.Status = left + (left == 1 ? " day until " : " days until ") + Stages.Name(next.Value);
+                else view.Status = "Becomes " + Article(next.Value) + " " + When(settings, atHome, hour);
             }
             if (!settings.Ageing) view.Note = "Ageing is off.";
             else if (!atHome) view.Note = "Days only count at home.";
@@ -98,6 +99,14 @@ namespace LifeStages
                 view.Segments.Add(segment);
             }
             return view;
+        }
+
+        /// <summary>When a Sim who has lived a stage out will move on: birthdays are in the evening, at home.</summary>
+        public static string When(Settings settings, bool atHome, int hour)
+        {
+            if (!settings.Ageing) return "once ageing is on";
+            if (!atHome) return "once back home";
+            return hour < DayWatch.EveningHour ? "at 6 this evening" : "within the hour";
         }
 
         /// <summary>A stage's days, whether or not teens are switched on.</summary>

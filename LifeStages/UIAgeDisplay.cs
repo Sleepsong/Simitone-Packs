@@ -87,7 +87,7 @@ namespace LifeStages
             var selected = Game.SelectedAvatar;
             if (selected == null) return new AgeView();
             if (!Life.Household(vm).Contains(selected)) return AgeView.Unaged();
-            return AgeView.For(Life.RecordOf(selected), ledger.Settings, Life.AtHome(vm), BarWidth);
+            return AgeView.For(Life.RecordOf(selected), ledger.Settings, Life.AtHome(vm), vm.Context.Clock.Hours, BarWidth);
         }
 
         public override void Draw(UISpriteBatch batch)

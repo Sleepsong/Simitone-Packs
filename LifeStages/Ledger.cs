@@ -19,8 +19,10 @@ namespace LifeStages
     /// The pack's own file for a neighbourhood: every Sim it has met, with their stage and days, and the player's
     /// settings. It is kept beside Simitone's saves and not inside them, so the game's files stay as they were.
     ///
-    /// It is written only when the game saves, and read again whenever the game loads a neighbourhood. So it always
-    /// matches the saved game: leave a lot without saving, and the days played there are forgotten with it.
+    /// The Sims' ages are written only when the game saves, and read again when the game loads a neighbourhood or a
+    /// lot is left. So they match the saved game: leave a lot without saving, and the days played there are
+    /// forgotten with it. The settings are the player's choices and not part of the game played, so they are
+    /// written as soon as they are changed (WriteSettings).
     /// </summary>
     public class Ledger
     {
@@ -84,6 +86,17 @@ namespace LifeStages
                 Log.Write("Could not read the ages kept for " + userPath + " (" + e.Message + "). Starting afresh.");
             }
             return new Ledger();
+        }
+
+        /// <summary>
+        /// Keep the settings now, without keeping days that have been played and not saved: the file's Sims stay as
+        /// the last save left them.
+        /// </summary>
+        public bool WriteSettings(string packId, string userPath)
+        {
+            var saved = Read(packId, userPath);
+            saved.Settings = Settings;
+            return saved.Write(packId, userPath);
         }
 
         public bool Write(string packId, string userPath)
