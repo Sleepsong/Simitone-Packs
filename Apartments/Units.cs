@@ -45,6 +45,7 @@ namespace Apartments
     ///   rate=1                      rent, in simoleons for each tile each day (0: no rent)
     ///   unit=4:1,10,12;1,14,12      a household's apartment: one tile inside each of its rooms (floor,x,y)
     ///   rent=4:7215,0               a household's rent: the day it was last worked out, and what is owed
+    ///   needs=1a2b3c4d:0,0,...      the needs a Sim went home with (the Sim's number, then its sixteen motives)
     ///
     /// An apartment is kept as a tile in each room, not as the engine's room numbers: those change whenever a wall is
     /// built or knocked down. Whatever room the tile is in now is the household's.
@@ -57,6 +58,8 @@ namespace Apartments
         public int Rate = DefaultRate;
         public Dictionary<int, List<Tile>> Units = new Dictionary<int, List<Tile>>();
         public Dictionary<int, RentAccount> Rent = new Dictionary<int, RentAccount>();
+        /// <summary>The needs each Sim went home with (by the Sim's own number), for when they are next put on the lot.</summary>
+        public Dictionary<uint, short[]> Needs = new Dictionary<uint, short[]>();
 
         public RentAccount AccountOf(int family)
         {
@@ -92,6 +95,10 @@ namespace Apartments
             {
                 text.Append("rent=").Append(rent.Key).Append(':').Append(rent.Value.Day).Append(',').Append(rent.Value.Owed).Append('\n');
             }
+            foreach (var needs in Needs.OrderBy(x => x.Key))
+            {
+                text.Append("needs=").Append(needs.Key.ToString("x8")).Append(':').Append(string.Join(",", needs.Value)).Append('\n');
+            }
             return Encoding.UTF8.GetBytes(text.ToString());
         }
 
@@ -125,6 +132,12 @@ namespace Apartments
                                     tiles.Add(new Tile(sbyte.Parse(n[0]), short.Parse(n[1]), short.Parse(n[2])));
                                 }
                                 file.Units[int.Parse(parts[0])] = tiles;
+                                break;
+                            }
+                        case "needs":
+                            {
+                                var parts = value.Split(':');
+                                file.Needs[Convert.ToUInt32(parts[0], 16)] = parts[1].Split(',').Select(short.Parse).ToArray();
                                 break;
                             }
                         case "rent":

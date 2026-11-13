@@ -1,7 +1,7 @@
 {
   "id": "sample.apartments",
   "name": "Apartments (prototype)",
-  "version": "0.3",
+  "version": "0.4",
   "author": "Simitone",
   "description": "Several households on one lot: you play one, and the others live there as neighbours you can see. Give each its rooms, and pay rent on yours. A prototype, with its own window (Options > Apartments, or F9), that also records how the game treats the unplayed households. Back up your UserData first.",
   "minSimitoneVersion": "0.8.22",

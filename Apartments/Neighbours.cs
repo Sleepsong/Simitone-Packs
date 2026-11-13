@@ -4,6 +4,7 @@ If a copy of the MPL was not distributed with this file, You can obtain one at
 http://mozilla.org/MPL/2.0/.
 */
 
+using FSO.Content;
 using FSO.Files.Formats.IFF.Chunks;
 using FSO.LotView.Model;
 using FSO.SimAntics;
@@ -17,55 +18,83 @@ using System.Runtime.CompilerServices;
 
 namespace Apartments
 {
-    /// <summary>How the households that are not played are presented to the game's scripts.</summary>
-    public enum Treatment
+    /// <summary>How often a neighbour comes out of their apartment.</summary>
+    public enum Outings
     {
-        /// <summary>As visitors (person type 1): what the game makes of any Sim who is not in the played family.</summary>
-        Visitor,
-        /// <summary>As family (person type 0), though their family number is not the played one's. An experiment.</summary>
-        Family
+        Never,
+        Sometimes,
+        Often
     }
 
     /// <summary>
-    /// The households that live on the lot but are not being played: putting them on the lot, keeping them there, and
-    /// writing down what the game does with them.
+    /// The households that live on the lot but are not being played.
+    ///
+    /// They are at home, and home is off stage: while a neighbour is in their apartment they are not on the lot at all,
+    /// and the apartment is dimmed. Now and then one comes out. They appear in their apartment, walk to somewhere
+    /// shared, spend a while there as any visiting Sim would, then walk home and are gone again.
+    ///
+    /// The first version kept every neighbour on the lot the whole time. The game took them for visitors who had just
+    /// arrived: each walked to the front of the lot, rang the bell, waited, gave up and left, and was put back to do it
+    /// again. A Sim who is already marked as greeted does none of that, so a neighbour who comes out is marked so.
+    ///
+    /// A Sim's skills, job and the rest live on the Sim itself while it is on a lot, and Simitone saves them with the
+    /// lot. So before a neighbour goes off stage they are written to the Sim's record in the neighbourhood, which is
+    /// where a Sim put on a lot gets them from.
     /// </summary>
     public static class Neighbours
     {
-        // ---- settings (console: apt keep / needs / treat / watch). they last until the game closes ----
+        // ---- settings (the window's Testing page, or the console). they last until the game closes ----
 
-        /// <summary>Put a neighbour back when the game sends them off the lot.</summary>
-        public static bool KeepHome = true;
-        /// <summary>Neighbours' needs never fall below this (-100 to 100), so an unplayed household cannot starve. Null to leave them alone.</summary>
+        public static Outings ComeOut = Outings.Sometimes;
+        /// <summary>A neighbour's needs never fall below this while they are out (-100 to 100). Null to leave them alone.</summary>
         public static int? NeedsFloor = 50;
-        public static Treatment Treat = Treatment.Visitor;
         /// <summary>Write down what each neighbour is doing whenever it changes.</summary>
         public static bool Watch = true;
+        /// <summary>Dim the apartments of the households that are not played.</summary>
+        public static bool Dim = true;
 
         private const int WatchEvery = 90; //ticks: about 3 seconds at normal speed
+
+        //all in game minutes
+        private const int FirstHour = 8, LastHour = 22;           //neighbours come out between these hours
+        private const int OutingShortest = 45, OutingLongest = 120;
+        private const int WalkHomeLimit = 30;                     //after this long walking home, they are simply taken in
+        private const int MostOutAtOnce = 2;
+
+        //what the game calls a visitor who has been let in. (worked out from play: a neighbour with this stayed where
+        //they were; one without it went to ring the bell)
+        private const short Greeted = 1;
 
         private static readonly VMMotive[] Needs = {
             VMMotive.Energy, VMMotive.Comfort, VMMotive.Hunger, VMMotive.Hygiene, VMMotive.Bladder, VMMotive.Social, VMMotive.Fun
         };
 
-        private class Seen
+        private static readonly Random Dice = new Random();
+
+        /// <summary>A neighbour who is out of their apartment.</summary>
+        private class Outing
         {
-            public bool Present;
-            public string Doing;
+            public uint Guid;
+            public int Family;
             public string Name;
-            public int Returned;
+            public long Ends;            //when they turn for home
+            public long HomewardSince = -1;
+            public string Doing;
         }
 
         private class LotState
         {
             public int House;
             public int Ticks;
-            public Dictionary<uint, Seen> Sims = new Dictionary<uint, Seen>();
             /// <summary>The pack's file for the lot, as it will be written when the lot is saved.</summary>
             public LotFile File;
             /// <summary>Whose each room is, as of the last look.</summary>
             public Dictionary<ushort, int> RoomOwners = new Dictionary<ushort, int>();
+            /// <summary>The rooms to draw dimmed (by the room their light is worked out with).</summary>
+            public HashSet<ushort> DimRooms = new HashSet<ushort>();
             public HashSet<Tile> ReportedLost = new HashSet<Tile>();
+            public Dictionary<uint, Outing> Out = new Dictionary<uint, Outing>();
+            public long NextOuting = -1;
         }
 
         /// <summary>Lots being played that are shared. A lot that is not here costs one lookup a tick.</summary>
@@ -111,7 +140,7 @@ namespace Apartments
 
         private static uint GuidOf(VMAvatar avatar) => avatar.Object.OBJ.GUID;
 
-        private static Dictionary<uint, VMAvatar> AvatarsByGuid(VM vm)
+        public static Dictionary<uint, VMAvatar> AvatarsByGuid(VM vm)
         {
             var result = new Dictionary<uint, VMAvatar>();
             foreach (var entity in vm.Entities)
@@ -128,20 +157,34 @@ namespace Apartments
             return Others(vm).Any(x => x.FamilyGUIDs.Contains(guid));
         }
 
+        /// <summary>The game's clock as one number of minutes that only goes up.</summary>
+        private static long Now(VM vm)
+        {
+            var clock = vm.Context.Clock;
+            return (long)Units.Today(clock) * 1440 + clock.Hours * 60 + clock.Minutes;
+        }
+
         // ---- putting everyone in place ----
 
         /// <summary>
-        /// Make the lot agree with who lives there: every member of the other households is on it, and each Sim is
-        /// marked as played or not. Safe to call again at any time.
+        /// Make the lot agree with who lives there. The played household is on the lot, in its apartment if it was just
+        /// put there. Everyone else is at home, off stage. Safe to call again at any time.
         /// </summary>
-        public static void Reconcile(VM vm, string why)
+        /// <param name="alreadyThere">The Sims who were on the lot before the game put the played family's missing members on it (null if not known).</param>
+        public static void Reconcile(VM vm, string why, HashSet<uint> alreadyThere = null)
         {
             var house = HomeHouse(vm);
             if (house == 0) return;
             var others = Others(vm);
             if (others.Count == 0)
             {
-                Lots.Remove(vm);
+                if (Lots.TryGetValue(vm, out var gone))
+                {
+                    //the last neighbours moved out: nothing is dimmed any more
+                    gone.DimRooms.Clear();
+                    Lots.Remove(vm);
+                    Relight(vm);
+                }
                 return;
             }
             var state = Lots.GetValue(vm, x => new LotState());
@@ -158,61 +201,62 @@ namespace Apartments
             }
             state.RoomOwners = Units.RoomOwners(vm, state.File);
             var present = AvatarsByGuid(vm);
-            AptLog.Write("--- House " + house + " (" + why + "). Played: " + Residency.NameOf(played) + ". Neighbours: " + string.Join(", ", others.Select(Residency.NameOf)) + ". Treated as " + Treat.ToString().ToLowerInvariant() + "s.");
+            AptLog.Write("--- House " + house + " (" + why + "). Played: " + Residency.NameOf(played) + ". Neighbours: " + string.Join(", ", others.Select(Residency.NameOf)) + ".");
 
-            //the played family: the game put any missing members on the lot itself. those who were neighbours until now are still marked as such
             foreach (var guid in played.FamilyGUIDs)
             {
                 if (!present.TryGetValue(guid, out var sim)) continue;
+                state.Out.Remove(guid);
                 Mark(vm, sim, played, true);
+                if (alreadyThere != null && !alreadyThere.Contains(guid))
+                {
+                    //the game has just put them by the mailbox. they were at home: that is where they are
+                    RestoreNeeds(state, sim);
+                    if (PlaceAtHome(vm, sim, played)) AptLog.Write("  " + sim.Name + " is at home, in their apartment.");
+                }
             }
 
+            //anyone else who lives here and is standing on the lot goes in (the household played until now, a neighbour
+            //who was out when the lot was saved, or neighbours from when they were kept on the lot all the time)
             foreach (var family in others)
             {
                 foreach (var guid in family.FamilyGUIDs)
                 {
-                    if (!present.TryGetValue(guid, out var sim))
-                    {
-                        sim = Spawn(vm, guid, family);
-                        if (sim == null) continue;
-                        AptLog.Write("  Put " + sim.Name + " of " + Residency.NameOf(family) + " on the lot.");
-                    }
-                    Mark(vm, sim, family, false);
-                    Remember(state, sim);
+                    if (!present.TryGetValue(guid, out var sim)) continue;
+                    if (state.Out.ContainsKey(guid)) continue; //out on purpose, just now
+                    GoOffStage(vm, state, sim, family, "went in");
                 }
             }
+
+            SetDimRooms(vm, state);
+            if (state.NextOuting < 0) ScheduleOuting(vm, state);
         }
 
-        /// <summary>Put one Sim on the lot, by the mailbox, as the game does for a played family's missing members.</summary>
-        private static VMAvatar Spawn(VM vm, uint guid, FAMI family)
+        /// <summary>Put one Sim on the lot: in their apartment if they have one, or else by the mailbox, as the game does.</summary>
+        private static VMAvatar Spawn(VM vm, LotState state, uint guid, FAMI family)
         {
-            try
+            var group = vm.Context.CreateObjectInstance(guid, LotTilePos.OUT_OF_WORLD, Direction.NORTH);
+            var sim = group?.Objects?.FirstOrDefault() as VMAvatar;
+            if (sim == null)
             {
-                var group = vm.Context.CreateObjectInstance(guid, LotTilePos.OUT_OF_WORLD, Direction.NORTH);
-                var sim = group?.Objects?.FirstOrDefault() as VMAvatar;
-                if (sim == null)
-                {
-                    AptLog.Write("  Could not create Sim " + guid.ToString("x8") + " of " + Residency.NameOf(family) + " (is its file missing?).");
-                    return null;
-                }
-                sim.SetPersonData(VMPersonDataVariable.TS1FamilyNumber, (short)family.ChunkID);
-                if (!PlaceAtHome(vm, sim, family))
-                {
-                    //no apartment yet, or no free spot in it: by the mailbox, as the game does
-                    var mailbox = vm.Entities.FirstOrDefault(x => x.Object.OBJ.GUID == 0xEF121974 || x.Object.OBJ.GUID == 0x1D95C9B0);
-                    if (mailbox == null || !VMFindLocationFor.FindLocationFor(sim, mailbox, vm.Context, VMPlaceRequestFlags.Default))
-                    {
-                        AptLog.Write("  No room by the mailbox for " + sim.Name + ".");
-                    }
-                }
-                vm.Scheduler.RescheduleInterrupt(sim);
-                return sim;
-            }
-            catch (Exception e)
-            {
-                AptLog.Write("  Could not put Sim " + guid.ToString("x8") + " on the lot: " + e.Message);
+                AptLog.Write("  Could not create Sim " + guid.ToString("x8") + " of " + Residency.NameOf(family) + " (is its file missing?).");
                 return null;
             }
+            sim.SetPersonData(VMPersonDataVariable.TS1FamilyNumber, (short)family.ChunkID);
+            if (!PlaceAtHome(vm, sim, family))
+            {
+                //no apartment yet, or no free spot in it
+                var mailbox = vm.Entities.FirstOrDefault(x => x.Object.OBJ.GUID == 0xEF121974 || x.Object.OBJ.GUID == 0x1D95C9B0);
+                if (mailbox == null || !VMFindLocationFor.FindLocationFor(sim, mailbox, vm.Context, VMPlaceRequestFlags.Default))
+                {
+                    AptLog.Write("  Nowhere to put " + sim.Name + ": no apartment, and no room by the mailbox.");
+                    sim.Delete(true, vm.Context);
+                    return null;
+                }
+            }
+            RestoreNeeds(state, sim);
+            vm.Scheduler.RescheduleInterrupt(sim);
+            return sim;
         }
 
         /// <summary>Stand a Sim in their household's apartment: on a free tile of one of its rooms, near the tile that marks it.</summary>
@@ -244,11 +288,12 @@ namespace Apartments
         /// <summary>Tell the game's scripts what this Sim is. A Sim whose kind changes starts their script again, since it was in the middle of being the other kind.</summary>
         private static void Mark(VM vm, VMAvatar sim, FAMI family, bool isPlayed)
         {
-            short type = (short)((isPlayed || Treat == Treatment.Family) ? 0 : 1);
+            short type = (short)(isPlayed ? 0 : 1);
             var was = sim.GetPersonData(VMPersonDataVariable.PersonType);
-            if (was > 1) return; //one of the game's own characters (a maid, a pet's type...): leave it be
+            if (was > 1) return; //one of the game's own characters: leave it be
             sim.SetPersonData(VMPersonDataVariable.TS1FamilyNumber, (short)family.ChunkID);
             sim.AvatarState.Permissions = isPlayed ? VMTSOAvatarPermissions.Owner : VMTSOAvatarPermissions.Visitor;
+            if (!isPlayed) sim.SetPersonData(VMPersonDataVariable.GreetStatus, Greeted);
             if (was == type) return;
             sim.SetPersonData(VMPersonDataVariable.PersonType, type);
             try
@@ -259,29 +304,204 @@ namespace Apartments
             {
                 AptLog.Write("  Could not restart " + sim.Name + "'s script: " + e.Message);
             }
+            if (!isPlayed) sim.SetPersonData(VMPersonDataVariable.GreetStatus, Greeted);
             AptLog.Write("  " + sim.Name + " of " + Residency.NameOf(family) + ": person type " + was + " -> " + type + (isPlayed ? " (now played)" : " (now a neighbour)") + ".");
         }
 
-        /// <summary>Take a household's Sims off the lot (it has moved out).</summary>
+        // ---- on and off stage ----
+
+        /// <summary>
+        /// A neighbour goes home, which is off the lot. What they have become while on it (skills, job, personality,
+        /// needs) is kept for when they are next put on a lot.
+        /// </summary>
+        private static void GoOffStage(VM vm, LotState state, VMAvatar sim, FAMI family, string how)
+        {
+            var guid = GuidOf(sim);
+            var name = sim.Name;
+            Keep(state, sim, family);
+            sim.Delete(true, vm.Context);
+            state.Out.Remove(guid);
+            AptLog.Write("  " + name + " of " + Residency.NameOf(family) + " " + how + ".");
+        }
+
+        /// <summary>Write a Sim's own data back to their record in the neighbourhood, and their needs to the pack's file.</summary>
+        private static void Keep(LotState state, VMAvatar sim, FAMI family)
+        {
+            var needs = new short[16];
+            for (int i = 0; i < needs.Length; i++) needs[i] = sim.GetMotiveData((VMMotive)i);
+            state.File.Needs[GuidOf(sim)] = needs;
+
+            var hood = Content.Get().Neighborhood;
+            var id = hood.GetNeighborIDForGUID(GuidOf(sim));
+            var record = (id == null) ? null : hood.GetNeighborByID(id.Value);
+            if (record?.PersonData == null) return;
+            //the record holds the first 88 values, and a Sim put on a lot takes exactly those from it
+            var count = Math.Min(record.PersonData.Length, 88);
+            for (int i = 0; i < count; i++) record.PersonData[i] = sim.GetPersonData((VMPersonDataVariable)i);
+            //what they were in the middle of does not go with them
+            Set(record.PersonData, VMPersonDataVariable.Posture, 0);
+            Set(record.PersonData, VMPersonDataVariable.PersonType, 0);
+            Set(record.PersonData, VMPersonDataVariable.GreetStatus, 0);
+            Set(record.PersonData, VMPersonDataVariable.TS1FamilyNumber, (short)family.ChunkID);
+        }
+
+        private static void Set(short[] data, VMPersonDataVariable index, short value)
+        {
+            if ((int)index < data.Length) data[(int)index] = value;
+        }
+
+        /// <summary>Give a Sim who has just been put on the lot the needs they went home with.</summary>
+        private static void RestoreNeeds(LotState state, VMAvatar sim)
+        {
+            if (state.File == null || !state.File.Needs.TryGetValue(GuidOf(sim), out var needs)) return;
+            foreach (var need in Needs)
+            {
+                if ((int)need < needs.Length) sim.SetMotiveData(need, needs[(int)need]);
+            }
+        }
+
+        /// <summary>Take a household's Sims off the lot for good (it has moved out).</summary>
         public static int RemoveFromLot(VM vm, FAMI family)
         {
+            Lots.TryGetValue(vm, out var state);
             var count = 0;
             foreach (var pair in AvatarsByGuid(vm))
             {
                 if (!family.FamilyGUIDs.Contains(pair.Key)) continue;
+                if (state?.File != null) Keep(state, pair.Value, family);
                 pair.Value.Delete(true, vm.Context);
                 count++;
             }
-            if (Lots.TryGetValue(vm, out var state))
+            if (state != null)
             {
-                foreach (var guid in family.FamilyGUIDs) state.Sims.Remove(guid);
+                foreach (var guid in family.FamilyGUIDs) state.Out.Remove(guid);
             }
             return count;
         }
 
-        // ---- watching ----
+        // ---- coming out ----
 
-        private static string Describe(VM vm, VMAvatar sim, LotState state, FAMI family)
+        private static void ScheduleOuting(VM vm, LotState state)
+        {
+            //on average, one neighbour comes out every three hours of the game's day, or every 45 minutes
+            var every = (ComeOut == Outings.Often) ? 45 : 180;
+            state.NextOuting = Now(vm) + every / 2 + Dice.Next(every);
+        }
+
+        /// <summary>The neighbours who are out of their apartments, by name.</summary>
+        public static List<string> OutNow(VM vm, FAMI family = null)
+        {
+            if (!Lots.TryGetValue(vm, out var state)) return new List<string>();
+            return state.Out.Values.Where(x => family == null || x.Family == family.ChunkID).Select(x => x.Name).ToList();
+        }
+
+        /// <summary>Bring a neighbour out now (one of this household, or anyone). Returns what happened, for the player.</summary>
+        public static string BringOut(VM vm, FAMI family = null)
+        {
+            if (!Lots.TryGetValue(vm, out var state)) return "Only one household lives here.";
+            var present = AvatarsByGuid(vm);
+            var choices = new List<Tuple<FAMI, uint>>();
+            foreach (var other in Others(vm))
+            {
+                if (family != null && other.ChunkID != family.ChunkID) continue;
+                foreach (var guid in other.FamilyGUIDs)
+                {
+                    if (!present.ContainsKey(guid)) choices.Add(Tuple.Create(other, guid));
+                }
+            }
+            if (choices.Count == 0) return "Everyone who could come out already has.";
+            var pick = choices[Dice.Next(choices.Count)];
+            var sim = StartOuting(vm, state, pick.Item1, pick.Item2);
+            return (sim == null) ? "They could not be brought out. The log says why." : (sim.Name + " of " + Residency.NameOf(pick.Item1) + " has come out.");
+        }
+
+        /// <summary>Send every neighbour who is out back home. Returns what happened, for the player.</summary>
+        public static string SendHome(VM vm)
+        {
+            if (!Lots.TryGetValue(vm, out var state) || state.Out.Count == 0) return "No neighbours are out.";
+            var now = Now(vm);
+            foreach (var outing in state.Out.Values) outing.Ends = Math.Min(outing.Ends, now);
+            return "The neighbours who are out are heading home.";
+        }
+
+        private static VMAvatar StartOuting(VM vm, LotState state, FAMI family, uint guid)
+        {
+            var sim = Spawn(vm, state, guid, family);
+            if (sim == null) return null;
+            var outing = new Outing() { Guid = guid, Family = family.ChunkID, Name = sim.Name };
+            outing.Ends = Now(vm) + OutingShortest + Dice.Next(OutingLongest - OutingShortest + 1);
+            state.Out[guid] = outing;
+            Mark(vm, sim, family, false);
+
+            var where = SharedSpot(vm, state);
+            var walking = where != null && WalkTo(vm, sim, where.Value);
+            AptLog.Write(sim.Name + " of " + Residency.NameOf(family) + " came out for " + (outing.Ends - Now(vm)) + " minutes"
+                + (where == null ? ". There is nowhere shared to walk to." : (walking ? ", walking to floor " + where.Value.Level + ", tile " + where.Value.X + "," + where.Value.Y + "." : ". They could not be told where to walk, so they are left to themselves.")));
+            return sim;
+        }
+
+        /// <summary>Somewhere a neighbour can go: a tile in an indoor room that is nobody's apartment, or else outdoors near the mailbox.</summary>
+        private static Tile? SharedSpot(VM vm, LotState state)
+        {
+            var arch = vm.Context.Architecture;
+            for (int attempt = 0; attempt < 300; attempt++)
+            {
+                var tile = new Tile((sbyte)(1 + Dice.Next(Math.Max(1, arch.Stories))), (short)Dice.Next(arch.Width), (short)Dice.Next(arch.Height));
+                var room = Units.IndoorRoomAt(vm, tile.ToPos());
+                if (room == 0 || state.RoomOwners.ContainsKey(room)) continue;
+                if (vm.Context.RoomInfo[room].Room.Area < 4) continue;
+                return tile;
+            }
+            var mailbox = vm.Entities.FirstOrDefault(x => x.Object.OBJ.GUID == 0xEF121974 || x.Object.OBJ.GUID == 0x1D95C9B0);
+            if (mailbox == null || mailbox.Position == LotTilePos.OUT_OF_WORLD) return null;
+            return new Tile(mailbox.Position.Level, (short)(mailbox.Position.TileX - 2 + Dice.Next(5)), (short)(mailbox.Position.TileY - 2 + Dice.Next(5)));
+        }
+
+        private static Tile? HomeSpot(VM vm, LotState state, int family)
+        {
+            if (!state.File.Units.TryGetValue(family, out var unit)) return null;
+            foreach (var tile in unit)
+            {
+                if (Units.IndoorRoomAt(vm, tile.ToPos()) != 0) return tile;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Have a Sim walk to a tile, the way the player's "go here" does it: the game's own go-here marker is put on
+        /// the tile, and the Sim is given its first interaction.
+        /// </summary>
+        private static bool WalkTo(VM vm, VMAvatar sim, Tile tile)
+        {
+            const uint GoHereMarker = 0x000007C4;
+            try
+            {
+                var marker = vm.Context.CreateObjectInstance(GoHereMarker, tile.ToPos(), Direction.NORTH)?.Objects?.FirstOrDefault();
+                if (marker == null) return false;
+                if (marker.Position == LotTilePos.OUT_OF_WORLD)
+                {
+                    marker.Delete(true, vm.Context);
+                    return false;
+                }
+                var menu = marker.GetPieMenu(vm, sim, true, false);
+                if (menu == null || menu.Count == 0)
+                {
+                    marker.Delete(true, vm.Context);
+                    return false;
+                }
+                marker.PushUserInteraction(menu[0].ID, sim, vm.Context, false, new short[] { menu[0].Param0, 0, 0, 0 });
+                return true;
+            }
+            catch (Exception e)
+            {
+                AptLog.Write("  Could not send " + sim.Name + " walking: " + e.Message);
+                return false;
+            }
+        }
+
+        // ---- every few seconds ----
+
+        private static string Describe(VM vm, VMAvatar sim, LotState state, int family)
         {
             string doing = "idle";
             try
@@ -301,19 +521,11 @@ namespace Apartments
                 if (state.File != null && state.File.Units.Count > 0)
                 {
                     if (!state.RoomOwners.TryGetValue(room, out var owner)) where += ", shared space";
-                    else if (owner == family.ChunkID) where += ", their own apartment";
+                    else if (owner == family) where += ", their own apartment";
                     else where += ", THE APARTMENT OF " + Residency.NameOf(Residency.Residents(state.House).FirstOrDefault(x => x.ChunkID == owner));
                 }
             }
-            return doing + " [" + where + ", type " + sim.GetPersonData(VMPersonDataVariable.PersonType)
-                + ", greeted " + sim.GetPersonData(VMPersonDataVariable.GreetStatus) + "]";
-        }
-
-        private static void Remember(LotState state, VMAvatar sim)
-        {
-            if (!state.Sims.TryGetValue(GuidOf(sim), out var seen)) state.Sims[GuidOf(sim)] = seen = new Seen();
-            seen.Present = true;
-            seen.Name = sim.Name;
+            return doing + " [" + where + ", greeted " + sim.GetPersonData(VMPersonDataVariable.GreetStatus) + "]";
         }
 
         /// <summary>After every tick of a lot. Does nothing on a lot that is not shared, and little on one that is.</summary>
@@ -323,51 +535,156 @@ namespace Apartments
             if (++state.Ticks % WatchEvery != 0) return;
             if (HomeHouse(vm) != state.House) return;
 
-            state.RoomOwners = Units.RoomOwners(vm, state.File);
+            var owners = Units.RoomOwners(vm, state.File);
+            var changed = owners.Count != state.RoomOwners.Count || owners.Any(x => !state.RoomOwners.TryGetValue(x.Key, out var was) || was != x.Value);
+            state.RoomOwners = owners;
+            if (changed) SetDimRooms(vm, state);
             ReportLostRooms(vm, state);
             CollectRent(vm, state);
+            LookAfterOutings(vm, state);
+        }
 
+        private static void LookAfterOutings(VM vm, LotState state)
+        {
+            var now = Now(vm);
             var present = AvatarsByGuid(vm);
-            foreach (var family in Others(vm))
+            var others = Others(vm);
+
+            foreach (var outing in state.Out.Values.ToList())
             {
-                foreach (var guid in family.FamilyGUIDs)
+                var family = others.FirstOrDefault(x => x.ChunkID == outing.Family);
+                if (family == null || !present.TryGetValue(outing.Guid, out var sim))
                 {
-                    if (!state.Sims.TryGetValue(guid, out var seen)) state.Sims[guid] = seen = new Seen();
-                    if (present.TryGetValue(guid, out var sim))
+                    //the game took them off the lot itself (a visitor who decided to leave)
+                    state.Out.Remove(outing.Guid);
+                    AptLog.Write(outing.Name + " left the lot by themselves. Last seen: " + (outing.Doing ?? "(not seen)"));
+                    continue;
+                }
+                TopUp(sim);
+                if (sim.GetPersonData(VMPersonDataVariable.GreetStatus) != Greeted) sim.SetPersonData(VMPersonDataVariable.GreetStatus, Greeted);
+                if (Watch)
+                {
+                    var doing = Describe(vm, sim, state, outing.Family);
+                    if (doing != outing.Doing)
                     {
-                        seen.Present = true;
-                        seen.Name = sim.Name;
-                        TopUp(sim);
-                        if (!Watch) continue;
-                        var doing = Describe(vm, sim, state, family);
-                        if (doing != seen.Doing)
-                        {
-                            seen.Doing = doing;
-                            AptLog.Write(sim.Name + ": " + doing);
-                        }
-                    }
-                    else
-                    {
-                        if (seen.Present)
-                        {
-                            seen.Present = false;
-                            AptLog.Write((seen.Name ?? guid.ToString("x8")) + " of " + Residency.NameOf(family) + " is no longer on the lot. Last seen: " + (seen.Doing ?? "(not seen)"));
-                        }
-                        if (!KeepHome) continue;
-                        sim = Spawn(vm, guid, family);
-                        if (sim == null) continue;
-                        Mark(vm, sim, family, false);
-                        seen.Present = true;
-                        seen.Name = sim.Name;
-                        seen.Doing = null;
-                        seen.Returned++;
-                        AptLog.Write("  Brought " + sim.Name + " back (" + seen.Returned + " time" + (seen.Returned == 1 ? "" : "s") + " so far).");
+                        outing.Doing = doing;
+                        AptLog.Write(sim.Name + ": " + doing);
                     }
                 }
+
+                if (now < outing.Ends) continue;
+                var room = (sim.Position == LotTilePos.OUT_OF_WORLD) ? (ushort)0 : vm.Context.GetObjectRoom(sim);
+                var atHome = state.RoomOwners.TryGetValue(room, out var owner) && owner == outing.Family;
+                if (atHome)
+                {
+                    GoOffStage(vm, state, sim, family, "went home");
+                }
+                else if (outing.HomewardSince < 0)
+                {
+                    outing.HomewardSince = now;
+                    var home = HomeSpot(vm, state, outing.Family);
+                    if (home == null || !WalkTo(vm, sim, home.Value))
+                    {
+                        //no apartment to walk to (or no way to be told to): they are simply home
+                        GoOffStage(vm, state, sim, family, (home == null) ? "went home (they have no apartment to walk to)" : "went home (they could not be told to walk there)");
+                    }
+                    else AptLog.Write(sim.Name + " is walking home.");
+                }
+                else if (now - outing.HomewardSince > WalkHomeLimit)
+                {
+                    GoOffStage(vm, state, sim, family, "went home (they had not got there after " + WalkHomeLimit + " minutes of walking)");
+                }
+            }
+
+            //a neighbour who lives here but is on the lot without being out (the game let one in some other way) is left alone
+
+            if (ComeOut == Outings.Never) return;
+            if (state.NextOuting < 0) ScheduleOuting(vm, state);
+            if (now < state.NextOuting) return;
+            ScheduleOuting(vm, state);
+            var hour = vm.Context.Clock.Hours;
+            if (hour < FirstHour || hour >= LastHour || state.Out.Count >= MostOutAtOnce) return;
+            Guarded("bringing a neighbour out", () => BringOut(vm));
+        }
+
+        private static void Guarded(string doing, Action action)
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception e)
+            {
+                AptLog.Write("Something went wrong while " + doing + ": " + e);
             }
         }
 
-        // ---- apartments ----
+        /// <summary>A neighbour does not progress: while they are out their needs are held up, so nobody collapses in the hall.</summary>
+        private static void TopUp(VMAvatar sim)
+        {
+            if (NeedsFloor == null) return;
+            var floor = (short)NeedsFloor.Value;
+            foreach (var need in Needs)
+            {
+                if (sim.GetMotiveData(need) < floor) sim.SetMotiveData(need, floor);
+            }
+        }
+
+        // ---- dimmed apartments ----
+
+        /// <summary>Work out which rooms are drawn dimmed, and light the lot again if that has changed.</summary>
+        private static void SetDimRooms(VM vm, LotState state)
+        {
+            var dim = new HashSet<ushort>();
+            var played = vm.TS1State?.CurrentFamily?.ChunkID ?? 0;
+            var rooms = vm.Context.RoomInfo;
+            if (Dim && rooms != null)
+            {
+                foreach (var pair in state.RoomOwners)
+                {
+                    if (pair.Value == played || pair.Key >= rooms.Length) continue;
+                    dim.Add(rooms[pair.Key].Room.LightBaseRoom);
+                }
+            }
+            if (dim.SetEquals(state.DimRooms)) return;
+            state.DimRooms = dim;
+            Relight(vm);
+        }
+
+        /// <summary>The Dim setting changed: light the lot being played again.</summary>
+        public static void DimChanged(VM vm)
+        {
+            if (vm != null && Lots.TryGetValue(vm, out var state)) SetDimRooms(vm, state);
+        }
+
+        private static void Relight(VM vm)
+        {
+            if (vm.Context?.RoomInfo == null) return;
+            Guarded("lighting the lot again", () => vm.Context.RefreshAllLighting());
+        }
+
+        /// <summary>
+        /// The engine has just worked out a room's light. If the room is part of an apartment that is not the played
+        /// household's, turn it down: nobody is seen to be home.
+        /// </summary>
+        public static void AfterRoomLit(VMContext context, ushort room)
+        {
+            var vm = context?.VM;
+            if (vm == null || !Lots.TryGetValue(vm, out var state) || state.DimRooms.Count == 0) return;
+            var rooms = context.RoomInfo;
+            if (rooms == null || room == 0 || room >= rooms.Length) return;
+            var lit = rooms[room].Room.LightBaseRoom;
+            if (!state.DimRooms.Contains(lit) || lit >= rooms.Length) return;
+            var light = rooms[lit].Light;
+            if (light == null) return;
+            light.Lights.Clear();
+            light.AmbientLight = Math.Min(light.AmbientLight, DimAmbient);
+            light.OutsideLight = Math.Min(light.OutsideLight, DimOutside);
+        }
+
+        //how light a dimmed apartment is left (of 100): enough to see it is furnished, not enough to look lived in
+        private const ushort DimAmbient = 10;
+        private const ushort DimOutside = 30;
 
         /// <summary>Say so, once, when a wall coming down (or anything else) leaves part of an apartment marking no room.</summary>
         private static void ReportLostRooms(VM vm, LotState state)
@@ -382,6 +699,8 @@ namespace Apartments
                 }
             }
         }
+
+        // ---- rent ----
 
         /// <summary>Called when rent is taken, with a message for the player if it could not all be paid.</summary>
         public static Action<VM, string> OnRentShortfall;
@@ -414,17 +733,6 @@ namespace Apartments
             AptLog.Write("Rent: " + Residency.NameOf(played) + " paid " + paid + " (" + days + " day" + (days == 1 ? "" : "s") + " at " + Units.DailyRent(area, file.Rate)
                 + " a day for " + area + " tiles" + (owed > 0 ? "; " + owed + " still owed" : "") + "). Money now " + budget + ".");
             if (owed > 0) OnRentShortfall?.Invoke(vm, "The rent could not be paid in full. " + owed + " simoleons are owed, and will be taken when there is money.");
-        }
-
-        /// <summary>An unplayed household does not progress: its needs are held up, so nobody starves or collapses while you play another.</summary>
-        private static void TopUp(VMAvatar sim)
-        {
-            if (NeedsFloor == null) return;
-            var floor = (short)NeedsFloor.Value;
-            foreach (var need in Needs)
-            {
-                if (sim.GetMotiveData(need) < floor) sim.SetMotiveData(need, floor);
-            }
         }
     }
 }

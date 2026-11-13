@@ -21,7 +21,7 @@ foreach (var m in h.GetPatchedMethods()) {
     Console.WriteLine($"patched {m.DeclaringType.Name}.{m.Name}: prefixes={info.Prefixes.Count} postfixes={info.Postfixes.Count}");
 }
 // the two ways into the Apartments window are optional to the pack, but should fit the Simitone this is built against
-foreach (var needed in new[] { "TS1GameScreen.Save", "UILotControl.Update", "UIMainPanel.AddPacksButton" }) {
+foreach (var needed in new[] { "TS1GameScreen.Save", "VMContext.RefreshLighting", "UILotControl.Update", "UIMainPanel.AddPacksButton" }) {
     if (!h.GetPatchedMethods().Any(m => m.DeclaringType.Name + "." + m.Name == needed)) { Console.WriteLine("FAILED: the patch on " + needed + " did not attach"); return 1; }
 }
 // the per-tick hook must be harmless on a VM it knows nothing about
@@ -85,7 +85,9 @@ Check("townie/empty families are not households", !Residency.IsHousehold(townie)
 var lf = new LotFile() { Played = 4, Rate = 3 };
 lf.UnitOf(4).Add(new Tile(1, 10, 12)); lf.UnitOf(4).Add(new Tile(2, 14, 12)); lf.UnitOf(3).Add(new Tile(1, 30, 31));
 lf.AccountOf(4).Day = 718921; lf.AccountOf(4).Owed = 55;
+lf.Needs[0x1a2b3c4d] = new short[] { 0, 0, 0, 10, 0, -40, 55, 100, -100, 7, 0, 0, 0, 0, 30, 60 };
 var back = LotFile.Parse(lf.ToBytes());
+Check("lot file: a Sim's needs", back.Needs.Count == 1 && back.Needs[0x1a2b3c4d].SequenceEqual(lf.Needs[0x1a2b3c4d]));
 Check("lot file: played and rate", back.Played == 4 && back.Rate == 3);
 Check("lot file: units", back.Units[4].Count == 2 && back.Units[4][1].Equals(new Tile(2, 14, 12)) && back.Units[3][0].Equals(new Tile(1, 30, 31)));
 Check("lot file: rent account", back.Rent[4].Day == 718921 && back.Rent[4].Owed == 55);

@@ -44,12 +44,13 @@ namespace Apartments
     ///  1. A neighbourhood has loaded: point the game's one-family-per-house table at the played household of each
     ///     shared house.
     ///  2. The game moves a house's family out: if others live there, the house is not empty.
-    ///  3. The game has checked the played family is on the lot: put the other households on it too, and mark who
-    ///     is played.
-    ///  4. The lot ticks: hold the neighbours' needs up, bring back any the game sent away, and write down what
-    ///     they do.
+    ///  3. The game has checked the played family is on the lot: put its members in their apartment, and send
+    ///     everyone else who lives here home, off stage.
+    ///  4. The lot ticks: now and then bring a neighbour out for a while and walk them home again, take the rent,
+    ///     and write down what the neighbours do.
     ///  5. The game takes or gives money: write down who caused it (it always goes to the played household).
     ///  6. The lot is saved: keep the pack's file for the lot with it.
+    ///  7. A room's light has been worked out: turn it down if it is another household's apartment.
     ///
     /// This is a prototype whose first purpose is to find out what the game's scripts make of Sims who live on a lot
     /// without being played. Everything it learns goes to Apartments.log. It has no apartments yet: no units, doors,
@@ -120,12 +121,14 @@ namespace Apartments
             // 2
             harmony.Patch(Find(typeof(TS1NeighborhoodProvider), "MoveOut"), postfix: Mine(nameof(AfterMoveOut)));
             // 3
-            harmony.Patch(Find(typeof(VMTS1LotState), "VerifyFamily"), postfix: Mine(nameof(AfterVerifyFamily)));
+            harmony.Patch(Find(typeof(VMTS1LotState), "VerifyFamily"), prefix: Mine(nameof(BeforeVerifyFamily)), postfix: Mine(nameof(AfterVerifyFamily)));
             // 4
             harmony.Patch(Find(typeof(VM), "Tick"), postfix: Mine(nameof(AfterTick)));
             // 5
             harmony.Patch(Find(typeof(VMTS1Budget), "Execute"), prefix: Mine(nameof(BeforeBudget)), postfix: Mine(nameof(AfterBudget)));
 
+            // 7
+            harmony.Patch(Find(typeof(VMContext), "RefreshLighting"), postfix: Mine(nameof(AfterRoomLit)));
             // 6. (only calls Simitone makes in every version are relied on, so the pack looks for a save itself)
             harmony.Patch(Find(typeof(TS1GameScreen), "Save"), postfix: Mine(nameof(AfterSave)));
 
@@ -206,9 +209,17 @@ namespace Apartments
 
         // ---- 3 ----
 
-        public static void AfterVerifyFamily(VM vm)
+        public static void BeforeVerifyFamily(VM vm, out HashSet<uint> __state)
         {
-            Guard("putting the households on the lot", () => Neighbours.Reconcile(vm, "family checked"));
+            //who is on the lot before the game adds the played family's missing members: the rest are new arrivals
+            HashSet<uint> there = null;
+            Guard("looking at who is on the lot", () => there = new HashSet<uint>(Neighbours.AvatarsByGuid(vm).Keys));
+            __state = there;
+        }
+
+        public static void AfterVerifyFamily(VM vm, HashSet<uint> __state)
+        {
+            Guard("putting the households in their places", () => Neighbours.Reconcile(vm, "family checked", __state));
         }
 
         // ---- 4 ----
@@ -216,6 +227,13 @@ namespace Apartments
         public static void AfterTick(VM __instance)
         {
             if (__instance.TS1) Guard("looking after the neighbours", () => Neighbours.AfterTick(__instance));
+        }
+
+        // ---- 7 ----
+
+        public static void AfterRoomLit(VMContext __instance, ushort room)
+        {
+            Guard("dimming an apartment", () => Neighbours.AfterRoomLit(__instance, room));
         }
 
         // ---- 6 ----
@@ -279,9 +297,11 @@ namespace Apartments
             "apt unclaim - the room your Sim is in is shared again\n" +
             "apt units - each household's apartment and rent\n" +
             "apt rent <simoleons per tile per day>|off - the rent on this lot\n" +
-            "apt keep on|off - bring neighbours back when the game sends them away\n" +
-            "apt needs <-100 to 100>|off - neighbours' needs never fall below this\n" +
-            "apt treat visitor|family - what the game's scripts are told neighbours are\n" +
+            "apt outings never|sometimes|often - how often a neighbour comes out of their apartment\n" +
+            "apt out - bring a neighbour out now\n" +
+            "apt home - send the neighbours who are out back home\n" +
+            "apt dim on|off - dim the other households' apartments\n" +
+            "apt needs <-100 to 100>|off - neighbours' needs never fall below this while they are out\n" +
             "apt watch on|off - write down what neighbours do\n" +
             "apt log - where the record is kept";
 
@@ -302,9 +322,19 @@ namespace Apartments
                 case "log":
                     Actions.Say("Apartments", "The record is kept in:\n" + AptLog.FilePath);
                     return true;
-                case "keep":
-                    if (!OnOff(rest, out var keep)) return false;
-                    Actions.SetKeep(keep);
+                case "outings":
+                    if (!Enum.TryParse<Outings>(rest, true, out var often) || !Enum.IsDefined(typeof(Outings), often)) return false;
+                    Actions.SetOutings(often);
+                    return true;
+                case "out":
+                    Actions.Say("Apartments", Actions.BringOut());
+                    return true;
+                case "home":
+                    Actions.Say("Apartments", Actions.SendHome());
+                    return true;
+                case "dim":
+                    if (!OnOff(rest, out var dim)) return false;
+                    Actions.SetDim(dim);
                     return true;
                 case "watch":
                     if (!OnOff(rest, out var watch)) return false;
@@ -314,10 +344,6 @@ namespace Apartments
                     if (rest.ToLowerInvariant() == "off") Actions.SetNeeds(null);
                     else if (int.TryParse(rest, out var floor) && floor >= -100 && floor <= 100) Actions.SetNeeds(floor);
                     else return false;
-                    return true;
-                case "treat":
-                    if (!Enum.TryParse<Treatment>(rest, true, out var treat) || !Enum.IsDefined(typeof(Treatment), treat)) return false;
-                    Actions.SetTreat(treat);
                     return true;
                 case "families":
                     var homeless = Residency.Homeless();

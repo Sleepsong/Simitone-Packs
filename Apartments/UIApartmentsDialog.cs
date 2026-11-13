@@ -185,6 +185,11 @@ namespace Apartments
                 var mine = Actions.IsPlayed(vm, family);
                 var sims = family.FamilyGUIDs.Length;
                 var detail = sims + " Sim" + (sims == 1 ? "" : "s") + ", " + family.Budget + " simoleons. Apartment: " + Actions.UnitText(vm, file, family) + ".";
+                if (!mine)
+                {
+                    var outNow = Neighbours.OutNow(vm, family);
+                    detail += (outNow.Count == 0) ? " At home." : (" Out now: " + string.Join(", ", outNow) + ".");
+                }
                 var row = new Row(Residency.NameOf(family) + (mine ? "  -  you are playing them" : ""), detail);
                 var target = family;
                 if (mine) row.Button("Add this room", () => Do(() => Actions.Claim(target)), true, file == null);
@@ -217,7 +222,8 @@ namespace Apartments
             alert = new UIMobileAlert(new UIAlertOptions()
             {
                 Title = name,
-                Message = "Play: save the lot, then play this household. Yours become neighbours.\n\n"
+                Message = "Play: save the lot, then play this household. Yours go home, and become neighbours.\n\n"
+                    + "Bring out: one of them comes out of their apartment now.\n\n"
                     + "Give this room: the room your Sim is standing in becomes part of their apartment.\n\n"
                     + "Move out: they go back to the family bin. Their things stay.",
                 Buttons = new UIAlertButton[]
@@ -229,6 +235,7 @@ namespace Apartments
                         if (problem == null) CloseMe(); //the lot is about to be replaced
                         else Do(() => problem);
                     }, "Play"),
+                    new UIAlertButton(UIAlertButtonType.OK, (b) => { alert.Close(); Do(() => Actions.BringOut(family)); }, "Bring out"),
                     new UIAlertButton(UIAlertButtonType.OK, (b) => { alert.Close(); Do(() => Actions.Claim(family)); }, "Give this room"),
                     new UIAlertButton(UIAlertButtonType.No, (b) => { alert.Close(); Do(() => Actions.MoveOut(family)); }, "Move out"),
                     new UIAlertButton(UIAlertButtonType.Cancel, (b) => { alert.Close(); }, "Cancel"),
@@ -270,21 +277,28 @@ namespace Apartments
         private List<Row> TestingRows()
         {
             var rows = new List<Row>();
-            var keep = Neighbours.KeepHome;
-            rows.Add(new Row("Bring neighbours back", "When the game sends a neighbour off the lot, put them back in their apartment.")
-                .Button(keep ? "On" : "Off", () => Do(() => { Actions.SetKeep(!keep); return null; }), keep));
+            var often = Neighbours.ComeOut;
+            var next = (often == Outings.Never) ? Outings.Sometimes : (often == Outings.Sometimes) ? Outings.Often : Outings.Never;
+            rows.Add(new Row("Neighbours come out", often == Outings.Never ? "Neighbours stay in their apartments unless you bring one out."
+                    : ("A neighbour comes out about every " + (often == Outings.Often ? "45 minutes" : "three hours") + " of the game's day, between 8 in the morning and 10 at night, and goes home after an hour or two."))
+                .Button(often.ToString(), () => Do(() => { Actions.SetOutings(next); return null; }), often != Outings.Never));
+
+            var vm = Actions.Screen?.vm;
+            var out_ = (vm == null) ? new List<string>() : Neighbours.OutNow(vm);
+            rows.Add(new Row("Out now: " + (out_.Count == 0 ? "nobody" : string.Join(", ", out_)), "Bring a neighbour out of their apartment now, or send the ones who are out back home.")
+                .Button("Bring out", () => Do(() => Actions.BringOut()), true, false, 190)
+                .Button("Send home", () => Do(Actions.SendHome), false, out_.Count == 0, 190));
+
+            var dim = Neighbours.Dim;
+            rows.Add(new Row("Dim the other apartments", "The apartments of households you are not playing are drawn dark: nobody is seen to be home.")
+                .Button(dim ? "On" : "Off", () => Do(() => { Actions.SetDim(!dim); return null; }), dim));
 
             var needs = Neighbours.NeedsFloor;
-            rows.Add(new Row("Hold neighbours' needs up", needs == null ? "Neighbours' needs are left to fall." : ("Neighbours' needs never fall below " + needs + " (of -100 to 100), so nobody starves while you play another household."))
+            rows.Add(new Row("Hold neighbours' needs up", needs == null ? "Neighbours' needs are left to fall while they are out." : ("While a neighbour is out, their needs never fall below " + needs + " (of -100 to 100)."))
                 .Button(needs != null ? "On" : "Off", () => Do(() => { Actions.SetNeeds(needs == null ? 50 : (int?)null); return null; }), needs != null));
 
-            var treat = Neighbours.Treat;
-            rows.Add(new Row("The game is told neighbours are", treat == Treatment.Visitor ? "Visitors: what the game makes of any Sim who is not in the family being played."
-                    : "Family: as if they were in the family being played. An experiment.")
-                .Button(treat == Treatment.Visitor ? "Visitors" : "Family", () => Do(() => { Actions.SetTreat(treat == Treatment.Visitor ? Treatment.Family : Treatment.Visitor); return null; })));
-
             var watch = Neighbours.Watch;
-            rows.Add(new Row("Write down what neighbours do", "A line in the log each time a neighbour starts doing something else, or moves to another room.")
+            rows.Add(new Row("Write down what neighbours do", "A line in the log each time a neighbour who is out starts doing something else, or moves to another room.")
                 .Button(watch ? "On" : "Off", () => Do(() => { Actions.SetWatch(!watch); return null; }), watch));
 
             rows.Add(new Row("The log", "These switches last until the game closes. Everything is written to:\n" + AptLog.FilePath));

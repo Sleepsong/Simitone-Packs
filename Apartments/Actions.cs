@@ -141,7 +141,7 @@ namespace Apartments
             family.HouseNumber = house; //its own record names the house. the game's table still names the played household
             AptLog.Write(Residency.NameOf(family) + " moved into house " + house + ".");
             Neighbours.Reconcile(vm, "moved in");
-            return Residency.NameOf(family) + " now live here too. They are by the mailbox. " + KeepNote;
+            return Residency.NameOf(family) + " now live here too. They are at home; give them an apartment, and one of them will come out now and then. " + KeepNote;
         }
 
         public static string MoveOut(FAMI family)
@@ -238,10 +238,31 @@ namespace Apartments
 
         // ---- settings for trying things out. they last until the game closes ----
 
-        public static void SetKeep(bool on)
+        public static void SetOutings(Outings often)
         {
-            Neighbours.KeepHome = on;
-            AptLog.Write("Setting: keep " + (on ? "on" : "off"));
+            Neighbours.ComeOut = often;
+            AptLog.Write("Setting: outings " + often.ToString().ToLowerInvariant());
+        }
+
+        public static void SetDim(bool on)
+        {
+            Neighbours.Dim = on;
+            AptLog.Write("Setting: dim " + (on ? "on" : "off"));
+            Neighbours.DimChanged(Screen?.vm);
+        }
+
+        /// <summary>Bring a neighbour out of their apartment now (one of this household's, or anyone).</summary>
+        public static string BringOut(FAMI family = null)
+        {
+            var vm = SharedLot(out _, out _, out var problem);
+            return (vm == null) ? problem : Neighbours.BringOut(vm, family);
+        }
+
+        /// <summary>Send the neighbours who are out back home.</summary>
+        public static string SendHome()
+        {
+            var vm = SharedLot(out _, out _, out var problem);
+            return (vm == null) ? problem : Neighbours.SendHome(vm);
         }
 
         public static void SetWatch(bool on)
@@ -254,14 +275,6 @@ namespace Apartments
         {
             Neighbours.NeedsFloor = floor;
             AptLog.Write("Setting: needs " + (floor?.ToString() ?? "off"));
-        }
-
-        public static void SetTreat(Treatment treat)
-        {
-            Neighbours.Treat = treat;
-            AptLog.Write("Setting: treat " + treat.ToString().ToLowerInvariant());
-            var vm = Screen?.vm;
-            if (vm != null) Neighbours.Reconcile(vm, "treatment changed");
         }
 
         // ---- telling the player ----
