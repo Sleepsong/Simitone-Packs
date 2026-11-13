@@ -13,6 +13,7 @@ using FSO.LotView.Model;
 using FSO.SimAntics.Entities;
 using FSO.SimAntics.Model;
 using System.IO;
+using System.Linq;
 using FSO.SimAntics;
 using FSO.SimAntics.Engine;
 using HarmonyLib;
@@ -45,11 +46,58 @@ namespace Driveways
             var graphic = AccessTools.Method(typeof(VMGameObject), "RefreshGraphic") ?? throw new Exception("VMGameObject.RefreshGraphic was not found: this pack was made for a different version of Simitone");
             harmony.Patch(graphic, postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterGraphic)));
             VMDrive.OnMessage = ShowMessage;
-            PackManager.RegisterCommand("driveways", args => (args.Length > 0 && args[0].ToLowerInvariant() == "cars") ? ReportCars() : Report());
+            Settings.Load();
+            PackManager.RegisterCommand("driveways", Command);
         }
 
         /// <summary>
-        /// The "driveways" console command (Ctrl+Shift+C): says where the pack thinks the road is on this lot, and
+        /// The console command (Ctrl+Shift+C):
+        ///   driveways                 what the pack makes of this lot (and writes driveways-report.txt)
+        ///   driveways cars            lists the game's vehicles in driveways-cars.txt
+        ///   driveways floors          lists the game's floors in driveways-floors.txt
+        ///   driveways floor <words>   paints driveways with the floor whose name has those words; "tarmac" for the road's; nothing for the pack's choice
+        ///   driveways reverse         turns the cars round as they drive along the road, if they drive backwards
+        /// </summary>
+        private static bool Command(string[] args)
+        {
+            if (args.Length == 0) return Report();
+            switch (args[0].ToLowerInvariant())
+            {
+                case "cars": return ReportCars();
+                case "floors": return ReportFloors();
+                case "floor":
+                    Settings.Floor = string.Join(" ", args, 1, args.Length - 1);
+                    Settings.Save();
+                    DrivewayLook.Repaint();
+                    Show("Driveways", "The driveway's look: " + DrivewayLook.Describe());
+                    return true;
+                case "reverse":
+                    Settings.ReverseCars = !Settings.ReverseCars;
+                    Settings.Save();
+                    Show("Driveways", Settings.ReverseCars ? "Cars now drive along the road with their lead tile at the back." : "Cars now drive along the road with their lead tile at the front.");
+                    return true;
+                default: return false;
+            }
+        }
+
+        private static bool ReportFloors()
+        {
+            string message;
+            try
+            {
+                var file = System.IO.Path.Combine(FSOEnvironment.UserDir, "driveways-floors.txt");
+                var floors = DrivewayLook.Floors();
+                File.WriteAllLines(file, new[] { $"{floors.Count} floors the game sells. To paint driveways with one: driveways floor <words from its name>", "" }
+                    .Concat(floors.Select(f => $"{f.Name}  (number {f.ID}, {f.Price})")));
+                message = $"The game's {floors.Count} floors are listed in " + file + "\n\nThe driveway's look now: " + DrivewayLook.Describe();
+            }
+            catch (Exception e) { message = "The list could not be written: " + e.Message; }
+            Show("Driveways", message);
+            return true;
+        }
+
+        /// <summary>
+        /// "driveways": says where the pack thinks the road is: says where the pack thinks the road is on this lot, and
         /// whether each car on it can be driven. For finding out why a car will not go.
         /// </summary>
         private static bool Report()
@@ -104,9 +152,23 @@ namespace Driveways
             return true;
         }
 
-        public static void BeforeMove(VMMultitileGroup __instance, ref LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags)
+        /// <summary>
+        /// Before the game moves an object: a driveway being put down is snapped to the road, and a car being put down
+        /// anywhere but on a driveway is refused (the move is not made, and the game is told it cannot go there).
+        /// </summary>
+        public static bool BeforeMove(VMMultitileGroup __instance, ref LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags, ref VMPlacementResult __result)
         {
-            VMDrive.SnapDriveway(__instance, ref pos, ref direction, context, flags);
+            try
+            {
+                VMDrive.SnapDriveway(__instance, ref pos, ref direction, context, flags);
+                if (!VMDrive.CarMayGo(__instance, pos, ref direction, context, flags))
+                {
+                    __result = new VMPlacementResult(VMPlacementError.NotAllowedOnTerrain);
+                    return false;
+                }
+            }
+            catch (Exception) { } //(never let this stop an object being moved)
+            return true;
         }
 
         public static void AfterTick(VM __instance)

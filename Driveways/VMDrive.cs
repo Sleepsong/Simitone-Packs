@@ -117,7 +117,9 @@ namespace Driveways
 
         private const VMMovementFlags Movable = VMMovementFlags.SimsCanMove | VMMovementFlags.PlayersCanMove | VMMovementFlags.PlayersCanDelete;
 
-        private static bool IsDriveway(VMEntity obj) { var guid = GUIDOf(obj); return guid == Shared.DrivewayGUID || guid == Shared.OldDrivewayGUID || guid == Shared.OldTileGUID; }
+        public static bool IsDrivewayGUID(uint guid) => guid == Shared.DrivewayGUID || guid == Shared.OldTileGUID || Shared.OldDriveways.Any(o => o.GUID == guid);
+        public static bool IsCarGUID(uint guid) => Shared.Cars.Any(c => c.GUID == guid);
+        private static bool IsDriveway(VMEntity obj) => IsDrivewayGUID(GUIDOf(obj));
 
         //the lots whose objects have been looked over since they loaded
         private static ConditionalWeakTable<VM, object> Repaired = new ConditionalWeakTable<VM, object>();
@@ -132,7 +134,7 @@ namespace Driveways
             Repaired.Add(vm, new object());
             foreach (var obj in vm.Entities)
             {
-                if (!(obj is VMGameObject) || !(IsDriveway(obj) || GUIDOf(obj) == Shared.CarGUID)) continue;
+                if (!(obj is VMGameObject) || !(IsDriveway(obj) || IsCarGUID(GUIDOf(obj)) || GUIDOf(obj) == Shared.OldCarGUID)) continue;
                 var flags = (VMMovementFlags)obj.GetValue(VMStackObjectVariable.MovementFlags);
                 if ((flags & Movable) != Movable) obj.SetValue(VMStackObjectVariable.MovementFlags, (short)(flags | Movable));
             }
@@ -142,7 +144,7 @@ namespace Driveways
 
         private static VMMultitileGroup CarOf(VMEntity obj)
         {
-            if (obj == null || !(obj is VMGameObject) || GUIDOf(obj) != Shared.CarGUID) return null;
+            if (obj == null || !(obj is VMGameObject) || !IsCarGUID(GUIDOf(obj))) return null;
             return obj.MultitileGroup;
         }
 
@@ -321,6 +323,52 @@ namespace Driveways
         /// The Sims 2: it follows the cursor along the road and nowhere else. Called before the game moves any object;
         /// changes where a driveway is being moved to. Only the player's own placing is touched, never a lot loading.
         /// </summary>
+        /// <summary>
+        /// A car the player is holding or putting down can only go on a driveway: every tile of it on driveway, clear
+        /// of the pavement, and lengthways along the driveway (it is turned to point at the road if it is held
+        /// across). Returns false, with why, where it cannot go; changes the direction it is being given.
+        /// </summary>
+        public static bool CarMayGo(VMMultitileGroup group, LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags)
+        {
+            if ((flags & VMPlaceRequestFlags.UserBuildableLimit) == 0 || pos == LotTilePos.OUT_OF_WORLD || group.Objects.Count == 0) return true;
+            if (!IsCarGUID(GUIDOf(group.Objects[0]))) return true;
+            var vm = context.VM;
+            if (vm == null || !vm.TS1) return true;
+            if (pos.Level != 1) return false;
+            var heading = HeadingOf(direction);
+            if (heading == -1) return false;
+
+            var road = FindRoad(vm, out _);
+            if (road != null)
+            {
+                //lengthways to the road: one held across it is turned to face it
+                bool nosePointsAcross = road.Value.AlongX ? (heading % 2 == 0) : (heading % 2 == 1);
+                if (!nosePointsAcross)
+                {
+                    var arch = context.Architecture;
+                    int across = road.Value.AlongX ? arch.Height : arch.Width;
+                    bool roadAtHighEdge = (across - 1 - road.Value.Last) <= road.Value.First;
+                    heading = road.Value.AlongX ? (roadAtHighEdge ? 2 : 0) : (roadAtHighEdge ? 1 : 3);
+                    direction = Directions[heading];
+                }
+            }
+            for (int x = 0; x < Shared.CarWidth; x++)
+                for (int y = 0; y < Shared.CarLength; y++)
+                {
+                    var off = DrivePlan.Rotate(x, y, heading);
+                    int tx = pos.TileX + (int)Math.Round(off.X), ty = pos.TileY + (int)Math.Round(off.Y);
+                    if (road != null)
+                    {
+                        //not on the pavement, the verge or the road
+                        int line = road.Value.AlongX ? ty : tx;
+                        if (line >= road.Value.StripFirst && line <= road.Value.StripLast) return false;
+                    }
+                    var here = context.ObjectQueries.GetObjectsAt(LotTilePos.FromBigTile((short)tx, (short)ty, 1));
+                    if (here == null || !here.Any(o => o != null && o is VMGameObject && IsDriveway(o))) return false;
+                }
+            return true;
+        }
+
         public static void SnapDriveway(VMMultitileGroup group, ref LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags)
         {
             if ((flags & VMPlaceRequestFlags.UserBuildableLimit) == 0 || pos == LotTilePos.OUT_OF_WORLD || group.Objects.Count == 0) return;
@@ -371,7 +419,7 @@ namespace Driveways
             lines.Add("The driveway's look: " + DrivewayLook.Describe());
             lines.Add("The car's look: " + CarLook.Describe());
 
-            var cars = vm.Entities.Where(e => e is VMGameObject && GUIDOf(e) == Shared.CarGUID).Select(e => e.MultitileGroup).Distinct().ToList();
+            var cars = vm.Entities.Where(e => e is VMGameObject && IsCarGUID(GUIDOf(e))).Select(e => e.MultitileGroup).Distinct().ToList();
             if (cars.Count == 0) lines.Add("No cars on this lot.");
             foreach (var car in cars)
             {
@@ -429,7 +477,7 @@ namespace Driveways
             var road = FindRoad(vm, out _);
             if (road == null) return new DrivePlan { Problem = RouteProblem.NoRoad };
 
-            var plan = DrivePlan.Make(pos.x / 16f, pos.y / 16f, heading, Shared.CarWidth, Shared.CarLength, road.Value, arch.Width, arch.Height);
+            var plan = DrivePlan.Make(pos.x / 16f, pos.y / 16f, heading, Shared.CarWidth, Shared.CarLength, road.Value, arch.Width, arch.Height, Settings.ReverseCars);
             if (plan.Problem != RouteProblem.None) return plan;
 
             if (plan.Corridor.Count > 0)
@@ -543,58 +591,147 @@ namespace Driveways
         }
     }
 
+    /// <summary>What the player has chosen, kept in driveways.cfg in Simitone's user directory.</summary>
+    public static class Settings
+    {
+        /// <summary>Words from the name of the floor the driveway is painted with. Empty for the pack's own choice.</summary>
+        public static string Floor = "";
+        /// <summary>The game's cars have their front at the other end from the pack's guess: drive them the other way round.</summary>
+        public static bool ReverseCars;
+
+        private static string File => System.IO.Path.Combine(FSO.Common.FSOEnvironment.UserDir, "driveways.cfg");
+
+        public static void Load()
+        {
+            try
+            {
+                if (!System.IO.File.Exists(File)) return;
+                foreach (var line in System.IO.File.ReadAllLines(File))
+                {
+                    var split = line.IndexOf('=');
+                    if (split < 0) continue;
+                    var key = line.Substring(0, split).Trim().ToLowerInvariant(); var value = line.Substring(split + 1).Trim();
+                    if (key == "floor") Floor = value;
+                    else if (key == "reversecars") ReverseCars = value == "1";
+                }
+            }
+            catch (Exception) { }
+        }
+
+        public static void Save()
+        {
+            try { System.IO.File.WriteAllLines(File, new[] { "floor=" + Floor, "reversecars=" + (ReverseCars ? "1" : "0") }); }
+            catch (Exception) { }
+        }
+    }
+
     /// <summary>
-    /// The driveway's look: the game's own pavement. The pack's object file gives the driveway only its shape; here
-    /// its tiles are given pictures painted with the pavement floor tile from the player's game (see FloorDress).
+    /// The driveway's look: one of the game's own floors. The pack's object file gives the driveway only its shape;
+    /// here its tiles are given pictures painted with a floor tile from the player's game (see FloorDress).
+    ///
+    /// Which floor: the one the player chose with "driveways floor", else the first the game sells whose name has
+    /// one of the Preferred words in it, else the road's own tarmac. Never the pavement's: a driveway that looks
+    /// like the pavement it crosses does not look like a driveway.
     /// </summary>
     public static class DrivewayLook
     {
+        /// <summary>Words to look for in a floor's name, best first, when the player has not chosen.</summary>
+        private static readonly string[] Preferred = { "concrete", "cement", "asphalt", "tarmac", "blacktop", "gravel", "paver", "paving", "flagstone", "cobble" };
+        /// <summary>The road's tarmac, among the game's built-in floors: what a driveway is painted with when nothing better is found.</summary>
+        private const ushort Tarmac = 9;
+
         private static bool Looked;
         private static string Outcome = "not looked for yet.";
-        //the painted drawing groups, by the id of the plain one each stands in for; the file is held so they stay loaded
+        //the painted drawing groups, each numbered FloorDress.IDOffset above the plain one it stands in for; held so they stay loaded
         private static FSO.Files.Formats.IFF.IffFile Dressed;
+        //every driveway tile dressed so far, so they can be painted again when the floor is changed
+        private static List<WeakReference<VMGameObject>> Tiles = new List<WeakReference<VMGameObject>>();
 
         public static string Describe() => Looked ? Outcome : "not looked for yet (no driveway has been drawn).";
 
-        private static bool IsDrivewayTile(VMGameObject obj)
+        private static bool IsDrivewayTile(VMGameObject obj) => VMDrive.IsDrivewayGUID((obj.MasterDefinition ?? obj.Object.OBJ).GUID);
+
+        /// <summary>The floors the game sells: each one's number and name.</summary>
+        public static List<(ushort ID, string Name, int Price)> Floors()
         {
-            var guid = (obj.MasterDefinition ?? obj.Object.OBJ).GUID;
-            return guid == Shared.DrivewayGUID || guid == Shared.OldDrivewayGUID || guid == Shared.OldTileGUID;
+            var provider = FSO.Content.Content.Get().WorldFloors;
+            return provider.Entries.Values.Select(e => ((ushort)e.ID, e.Name ?? "", e.Price)).OrderBy(e => e.Item2).ToList();
+        }
+
+        /// <summary>A floor tile's near sprite and palette, from a floor file of the game's.</summary>
+        private static FloorDress.Tile Read(FSO.Files.Formats.IFF.IffFile file, ushort sprite)
+        {
+            var spr = file?.Get<FSO.Files.Formats.IFF.Chunks.SPR2>(sprite);
+            if (spr == null || spr.Frames.Length == 0) return null;
+            var frame = spr.Frames[0];
+            frame.DecodeIfRequired(false);
+            if (frame.PixelData == null || frame.Width < 8 || frame.Height < 4 || frame.PixelData.Length < frame.Width * frame.Height) return null;
+            var palette = (file.Get<FSO.Files.Formats.IFF.Chunks.PALT>(frame.PaletteID) ?? file.Get<FSO.Files.Formats.IFF.Chunks.PALT>((ushort)spr.DefaultPaletteID))?.Colors;
+            //(no palette to be found: the colours the tile uses will do)
+            if (palette == null) palette = frame.PixelData.Where(c => c.A != 0).Select(c => new Color(c.R, c.G, c.B)).Distinct().Take(255).ToArray();
+            return new FloorDress.Tile { Pixels = (Color[])frame.PixelData.Clone(), Width = frame.Width, Height = frame.Height, Palette = palette };
         }
 
         private static void Look(FSO.Files.Formats.IFF.IffFile packFile)
         {
             Looked = true;
+            Dressed = null;
             try
             {
-                //the game's built-in floors: floor n's near sprite is sprite n + 512 (as the engine's floor provider reads them)
-                var path = System.IO.Path.Combine(FSO.Content.Content.Get().TS1BasePath, "GameData/floors.iff");
-                var floors = new FSO.Files.Formats.IFF.IffFile(path);
-                var sprite = floors.Get<FSO.Files.Formats.IFF.Chunks.SPR2>((ushort)(VMDrive.PavementFloor + 512));
-                if (sprite == null || sprite.Frames.Length == 0) { Outcome = $"the pack's plain grey: the game's floors have no tile {VMDrive.PavementFloor}."; return; }
-                var frame = sprite.Frames[0];
-                frame.DecodeIfRequired(false);
-                if (frame.PixelData == null || frame.Width < 8 || frame.Height < 4) { Outcome = "the pack's plain grey: the pavement tile could not be read."; return; }
+                var content = FSO.Content.Content.Get();
+                FloorDress.Tile tile = null;
+                string what = null;
 
-                var palette = (floors.Get<FSO.Files.Formats.IFF.Chunks.PALT>(frame.PaletteID) ?? floors.Get<FSO.Files.Formats.IFF.Chunks.PALT>((ushort)sprite.DefaultPaletteID))?.Colors;
-                if (palette == null)
+                //a floor the game sells: the player's choice, or the first with a preferred word in its name
+                var floors = Floors();
+                var wanted = Settings.Floor.Trim().ToLowerInvariant();
+                (ushort ID, string Name, int Price)? pick = null;
+                if (wanted != "" && wanted != "tarmac")
                 {
-                    //no palette to be found: the colours the tile uses will do
-                    palette = frame.PixelData.Where(c => c.A != 0).Select(c => new Color(c.R, c.G, c.B)).Distinct().Take(255).ToArray();
+                    var words = wanted.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    var matches = floors.Where(f => words.All(w => f.Name.ToLowerInvariant().Contains(w))).ToList();
+                    if (matches.Count > 0) pick = matches.OrderBy(f => f.Name.Length).First();
                 }
-                var tile = new FloorDress.Tile { Pixels = (Color[])frame.PixelData.Clone(), Width = frame.Width, Height = frame.Height, Palette = palette };
+                else if (wanted == "")
+                {
+                    foreach (var word in Preferred)
+                    {
+                        var matches = floors.Where(f => f.Name.ToLowerInvariant().Contains(word)).ToList();
+                        if (matches.Count > 0) { pick = matches.OrderBy(f => f.Name.Length).First(); break; }
+                    }
+                }
+                if (pick != null)
+                {
+                    //(a floor file holds its tile three times, for the three zooms: sprite 513 is the near one)
+                    var provider = content.WorldFloors;
+                    var file = provider.Floors.Get(provider.Entries[pick.Value.ID].FileName);
+                    tile = Read(file, 513);
+                    if (tile != null) what = $"the game's floor \"{pick.Value.Name}\"";
+                }
+                if (tile == null)
+                {
+                    //the game's built-in floors: floor n's near sprite is sprite n + 512 (as the engine's floor provider reads them)
+                    var floorsFile = new FSO.Files.Formats.IFF.IffFile(System.IO.Path.Combine(content.TS1BasePath, "GameData/floors.iff"));
+                    tile = Read(floorsFile, (ushort)(Tarmac + 512));
+                    if (tile != null) what = "the road's tarmac" + (wanted != "" && wanted != "tarmac" ? $" (no floor named \"{Settings.Floor}\" was found)" : "");
+                }
+                if (tile == null) { Outcome = "the pack's plain grey: no floor tile could be read from the game."; return; }
 
-                var groups = packFile.List<FSO.Files.Formats.IFF.Chunks.OBJD>()
-                    .Where(o => o.NumGraphics > 0 && (o.MasterID == 0 ? o.GUID == Shared.OldTileGUID : true) && !(o.GUID >= Shared.CarGUID && o.GUID < Shared.CarGUID + 0x10))
-                    .Select(o => o.BaseGraphicID).ToList();
+                var groups = packFile.List<FSO.Files.Formats.IFF.Chunks.OBJD>().Where(o => o.NumGraphics > 0 && VMDrive.IsDrivewayGUID(o.MasterID == 0 ? o.GUID : MasterOf(packFile, o)))
+                    .Select(o => o.BaseGraphicID).Distinct().ToList();
                 Dressed = FloorDress.Build(packFile, groups, tile);
-                Outcome = $"painted with the game's pavement, floor tile {VMDrive.PavementFloor} ({frame.Width} by {frame.Height}), on {groups.Count} tiles.";
+                Outcome = $"painted with {what} ({tile.Width} by {tile.Height}). \"driveways floors\" lists the floors it could be; \"driveways floor <words from a name>\" picks one, and \"driveways floor tarmac\" the road's.";
             }
             catch (Exception e)
             {
                 Dressed = null;
-                Outcome = "the pack's plain grey: painting it with the game's pavement failed (" + e.Message + ").";
+                Outcome = "the pack's plain grey: painting it with a floor of the game's failed (" + e.Message + ").";
             }
+        }
+
+        private static uint MasterOf(FSO.Files.Formats.IFF.IffFile file, FSO.Files.Formats.IFF.Chunks.OBJD tile)
+        {
+            return file.List<FSO.Files.Formats.IFF.Chunks.OBJD>().FirstOrDefault(o => o.MasterID == tile.MasterID && o.SubIndex == -1)?.GUID ?? 0;
         }
 
         /// <summary>
@@ -604,20 +741,40 @@ namespace Driveways
         {
             if (!VM.UseWorld || !IsDrivewayTile(obj)) return;
             if (!Looked) Look(obj.Object.OBJ.ChunkParent);
-            if (Dressed == null) return;
+            lock (Tiles)
+            {
+                Tiles.RemoveAll(t => !t.TryGetTarget(out _));
+                if (!Tiles.Any(t => t.TryGetTarget(out var known) && known == obj)) Tiles.Add(new WeakReference<VMGameObject>(obj));
+            }
+            Paint(obj);
+        }
+
+        private static void Paint(VMGameObject obj)
+        {
+            if (Dressed == null || !(obj.WorldUI is ObjectComponent picture)) return;
             var painted = Dressed.Get<FSO.Files.Formats.IFF.Chunks.DGRP>((ushort)(obj.Object.OBJ.BaseGraphicID + FloorDress.IDOffset));
-            if (painted != null && obj.WorldUI is ObjectComponent picture) picture.DGRP = painted;
+            if (painted != null) picture.DGRP = painted;
+        }
+
+        /// <summary>The player has chosen another floor: paint every driveway again.</summary>
+        public static void Repaint()
+        {
+            List<VMGameObject> tiles;
+            lock (Tiles) tiles = Tiles.Select(t => t.TryGetTarget(out var obj) ? obj : null).Where(o => o != null && !o.Dead).ToList();
+            if (tiles.Count == 0) { Looked = false; return; }
+            Look(tiles[0].Object.OBJ.ChunkParent);
+            foreach (var tile in tiles) { try { Paint(tile); } catch (Exception) { } }
         }
     }
 
     /// <summary>
-    /// The car's look. The pack's own car is a few coloured boxes; The Sims 1 has real cars, the ones that take Sims
-    /// to work. This borrows one's pictures: each tile of the pack's car is drawn with the matching tile of the
-    /// game's car. Only the pictures are borrowed. The game's car object and its scripts are not used, and nothing
-    /// in the game's files is changed.
+    /// The cars' look. The pack has no car of its own to show: The Sims 1 has real cars, the ones that take Sims to
+    /// work, and each car the pack sells is drawn with one of those. Each tile of the pack's car is given the picture
+    /// of the matching tile of the game's car. Only the pictures are borrowed. The game's car objects and their
+    /// scripts are not used, and nothing in the game's files is changed.
     ///
-    /// It can only borrow from a car laid out on the same tiles as the pack's (Shared.CarWidth by Shared.CarLength).
-    /// The "driveways cars" console command lists what the game has, so the pack can be made to fit.
+    /// Which of the game's cars each is drawn with is in Shared.Cars. The game's cars stand on three tiles by six,
+    /// so the pack's do too. "driveways cars" lists every vehicle the game has.
     /// </summary>
     public static class CarLook
     {
@@ -628,8 +785,9 @@ namespace Driveways
 
         private static bool Looked;
         private static string Outcome = "not looked for yet.";
-        //the drawing group for each tile of the pack's car, by its place (x * 256 + y); held so the game keeps them loaded
-        private static Dictionary<int, FSO.Files.Formats.IFF.Chunks.DGRP> Borrowed;
+        //for each car the pack sells (by its GUID): the drawing group for each of its tiles, by the tile's place (x * 256 + y)
+        private static Dictionary<uint, Dictionary<int, FSO.Files.Formats.IFF.Chunks.DGRP>> Borrowed = new Dictionary<uint, Dictionary<int, FSO.Files.Formats.IFF.Chunks.DGRP>>();
+        //(held so the game keeps them loaded)
         private static List<FSO.Content.GameObject> Held = new List<FSO.Content.GameObject>();
 
         public static string Describe() => Looked ? Outcome : "not looked for yet (no car has been drawn).";
@@ -653,7 +811,7 @@ namespace Driveways
                 var master = group.FirstOrDefault(e => e.SubIndex == -1);
                 var tiles = group.Where(e => e.SubIndex != -1).ToList();
                 if (master == null || tiles.Count < 2) continue;
-                if ((uint)master.ID == Shared.CarGUID) continue; //(the pack's own)
+                if (VMDrive.IsCarGUID((uint)master.ID) || (uint)master.ID == Shared.OldCarGUID) continue; //(the pack's own)
                 var file = System.IO.Path.GetFileNameWithoutExtension((master.FileName ?? "").Replace('\\', '/'));
                 if (!VehicleName.IsMatch(master.Name ?? "") && !VehicleName.IsMatch(file)) continue;
                 result.Add(new Vehicle { File = file, Name = master.Name, GUID = (uint)master.ID, Group = master.Group, Tiles = tiles });
@@ -666,50 +824,51 @@ namespace Driveways
         private static void Look()
         {
             Looked = true;
+            var found = new List<string>(); var missing = new List<string>();
             try
             {
                 var provider = FSO.Content.Content.Get().WorldObjects;
-                var vehicles = FindVehicles();
-                foreach (var vehicle in vehicles)
+                foreach (var model in Shared.Cars)
                 {
-                    var places = vehicle.Tiles.Select(t => PlaceOf(t.SubIndex)).ToList();
-                    if (places.Count != Shared.CarWidth * Shared.CarLength || places.Max(p => p.X) != Shared.CarWidth - 1 || places.Max(p => p.Y) != Shared.CarLength - 1 || places.Distinct().Count() != places.Count) continue;
+                    //the game's car, by its master's GUID: its tiles are the other objects of its group in the same file
+                    if (!provider.Entries.TryGetValue(model.GameGUID, out var master)) { missing.Add(model.Name); continue; }
+                    var tiles = provider.Entries.Values.Where(e => e.FileName == master.FileName && e.Group == master.Group && e.SubIndex != -1).ToList();
+                    var places = tiles.Select(t => PlaceOf(t.SubIndex)).ToList();
+                    if (places.Count != Shared.CarWidth * Shared.CarLength || places.Max(p => p.X) != Shared.CarWidth - 1 || places.Max(p => p.Y) != Shared.CarLength - 1 || places.Distinct().Count() != places.Count) { missing.Add(model.Name + " (not on " + Shared.CarWidth + " by " + Shared.CarLength + " tiles)"); continue; }
                     var borrowed = new Dictionary<int, FSO.Files.Formats.IFF.Chunks.DGRP>();
-                    var held = new List<FSO.Content.GameObject>();
-                    foreach (var tile in vehicle.Tiles)
+                    foreach (var tile in tiles)
                     {
                         var obj = provider.Get((uint)tile.ID);
                         var dgrp = obj?.Resource.Get<FSO.Files.Formats.IFF.Chunks.DGRP>(obj.OBJ.BaseGraphicID);
                         if (dgrp == null) break;
                         var place = PlaceOf(tile.SubIndex);
                         borrowed[place.X * 256 + place.Y] = dgrp;
-                        held.Add(obj);
+                        Held.Add(obj);
                     }
-                    if (borrowed.Count != places.Count) continue;
-                    Borrowed = borrowed; Held = held;
-                    Outcome = $"borrowed from the game's \"{vehicle.Name}\" ({vehicle.File}, {vehicle.GUID:X8}).";
-                    return;
+                    if (borrowed.Count != places.Count) { missing.Add(model.Name + " (a tile has no picture)"); continue; }
+                    Borrowed[model.GUID] = borrowed;
+                    found.Add($"{model.Name} from \"{master.Name}\"");
                 }
-                Outcome = $"the pack's own boxes. The game has {vehicles.Count} vehicles the pack can see, none of them on {Shared.CarWidth} by {Shared.CarLength} tiles. Type \"driveways cars\" for the list.";
+                Outcome = (found.Count > 0 ? "borrowed from the game's cars: " + string.Join(", ", found) + "." : "none could be borrowed from the game.")
+                    + (missing.Count > 0 ? " Not in this game, and drawn as grey blocks: " + string.Join(", ", missing) + "." : "");
             }
             catch (Exception e)
             {
-                Borrowed = null;
-                Outcome = "the pack's own boxes: looking for the game's cars failed (" + e.Message + ").";
+                Outcome = "looking for the game's cars failed (" + e.Message + "); those not found are drawn as grey blocks. Found: " + string.Join(", ", found) + ".";
             }
         }
 
         /// <summary>
-        /// Called whenever the game sets an object's picture. For a tile of the pack's car, set the borrowed one in
-        /// its place.
+        /// Called whenever the game sets an object's picture. For a tile of one of the pack's cars, set the game's
+        /// car's tile in its place.
         /// </summary>
         public static void Dress(VMGameObject obj)
         {
-            if (!VM.UseWorld || obj.MasterDefinition == null || obj.MasterDefinition.GUID != Shared.CarGUID) return;
+            if (!VM.UseWorld || obj.MasterDefinition == null || !VMDrive.IsCarGUID(obj.MasterDefinition.GUID)) return;
             if (!Looked) Look();
-            if (Borrowed == null) return;
+            if (!Borrowed.TryGetValue(obj.MasterDefinition.GUID, out var tiles)) return;
             var place = PlaceOf(obj.Object.OBJ.SubIndex);
-            if (Borrowed.TryGetValue(place.X * 256 + place.Y, out var dgrp) && obj.WorldUI is ObjectComponent picture) picture.DGRP = dgrp;
+            if (tiles.TryGetValue(place.X * 256 + place.Y, out var dgrp) && obj.WorldUI is ObjectComponent picture) picture.DGRP = dgrp;
         }
 
         /// <summary>The game's vehicles, for the "driveways cars" console command: each one's name, file and the tiles it stands on.</summary>

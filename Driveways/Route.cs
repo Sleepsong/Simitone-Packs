@@ -320,9 +320,10 @@ namespace Driveways
 
         /// <summary>
         /// Plan a trip. (leadX, leadY) is the middle of the car's lead tile, in tile space; the car is carWidth tiles
-        /// wide and carLength long. The lot is lotWidth by lotHeight tiles.
+        /// wide and carLength long. The lot is lotWidth by lotHeight tiles. noseAtBack is for a car drawn with its front
+        /// at the far end from its lead tile.
         /// </summary>
-        public static DrivePlan Make(float leadX, float leadY, int heading, int carWidth, int carLength, Road road, int lotWidth, int lotHeight)
+        public static DrivePlan Make(float leadX, float leadY, int heading, int carWidth, int carLength, Road road, int lotWidth, int lotHeight, bool noseAtBack = false)
         {
             var plan = new DrivePlan();
             var centre = BodyCentre(leadX, leadY, heading, carWidth, carLength);
@@ -352,7 +353,8 @@ namespace Driveways
             //towards the road, and along it: traffic keeps the house on its right
             (float X, float Y) across = road.AlongX ? (0f, toRoad) : (toRoad, 0f);
             (float X, float Y) travel = (-across.Y, across.X);
-            int travelHeading = HeadingOf(travel);
+            //(a car whose pictures have their front at the lead tile's far end is turned round to drive along the road)
+            int travelHeading = (HeadingOf(travel) + (noseAtBack ? 2 : 0)) % 4;
             float travelSign = road.AlongX ? travel.X : travel.Y;
 
             float reach = Math.Abs(lane - cAcross);

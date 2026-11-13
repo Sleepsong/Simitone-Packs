@@ -12,31 +12,46 @@ namespace Driveways
     /// </summary>
     public static class Shared
     {
-        /// <summary>The driveway as it is bought, and the first of its tiles. Tile n has DrivewayPartGUID + n.</summary>
-        public const uint DrivewayGUID = 0x7D21A040;
-        public const uint DrivewayPartGUID = 0x7D21A041;
+        /// <summary>The driveway as it is bought. Its tiles have the GUIDs after it, one each.</summary>
+        public const uint DrivewayGUID = 0x7D21A100;
+        public const uint DrivewayPartGUID = DrivewayGUID + 1;
         /// <summary>
-        /// The driveway's size in tiles. Facing north its lead tile is the north west one and it runs south, where its
-        /// last DrivewayCrossing rows cross the pavement and the verge to the road: the very last is the apron at the kerb.
+        /// The driveway's size in tiles, after The Sims 2's. Facing north its lead tile is the north west one and it
+        /// runs south, where its last rows cross the pavement and the verge to the road.
         /// </summary>
-        public const int DrivewayWidth = 3;
-        public const int DrivewayLength = 8;
-        public const int DrivewayCrossing = 2;
+        public const int DrivewayWidth = 5;
+        public const int DrivewayLength = 9;
 
-        /// <summary>Driveways from earlier versions, no longer sold: one tile (0.1), and two tiles by four (0.2 to 0.4).</summary>
+        /// <summary>A car's size in tiles: that of The Sims 1's own cars. Facing north, its lead tile is the front left one.</summary>
+        public const int CarWidth = 3;
+        public const int CarLength = 6;
+
+        /// <summary>
+        /// A car the pack sells: its own object (the master's GUID; its tiles have the GUIDs after it), and the car of
+        /// the game's whose pictures it is drawn with (that car's master GUID, as the game's own files give it).
+        /// </summary>
+        public class CarModel
+        {
+            public string Name, Description;
+            public uint GUID, GameGUID;
+            public int Price;
+        }
+
+        public static readonly CarModel[] Cars =
+        {
+            new CarModel { Name = "Sedan", Description = "A sensible car, the one the carpool drives.", GUID = 0x7D21B000, GameGUID = 0xDB6DEDB2, Price = 3500 },
+            new CarModel { Name = "Junker", Description = "It runs. Mostly.", GUID = 0x7D21B040, GameGUID = 0x4B71ECDA, Price = 900 },
+            new CarModel { Name = "Pickup Truck", Description = "For hauling things, or looking as if you might.", GUID = 0x7D21B080, GameGUID = 0xCD0876E1, Price = 2800 },
+            new CarModel { Name = "SUV", Description = "Room for the whole household.", GUID = 0x7D21B0C0, GameGUID = 0x1D3DEC63, Price = 5200 },
+            new CarModel { Name = "Town Car", Description = "For arriving in.", GUID = 0x7D21B100, GameGUID = 0xBC3AEC18, Price = 7500 },
+            new CarModel { Name = "Bentley", Description = "For when the career has gone very well indeed.", GUID = 0x7D21B140, GameGUID = 0x17ACEC22, Price = 12000 },
+        };
+
+        /// <summary>What earlier versions sold, no longer sold but still loaded: one driveway tile (0.1), driveways (0.2 to 0.4, 0.5 to 0.6), a car (0.1 to 0.6).</summary>
         public const uint OldTileGUID = 0x7D21A001;
-        public const uint OldDrivewayGUID = 0x7D21A020;
-        public const uint OldDrivewayPartGUID = 0x7D21A021;
-        public const int OldDrivewayWidth = 2;
-        public const int OldDrivewayLength = 4;
-
-        /// <summary>The car as it is bought, and the first of its tiles. Tile n has CarPartGUID + n.</summary>
-        public const uint CarGUID = 0x7D21A010;
-        public const uint CarPartGUID = 0x7D21A011;
-
-        /// <summary>The car's size in tiles. Facing north, its lead tile is the front left one.</summary>
-        public const int CarWidth = 2;
-        public const int CarLength = 4;
+        public static readonly (uint GUID, int Width, int Length)[] OldDriveways = { (0x7D21A020, 2, 4), (0x7D21A040, 3, 8) };
+        public const uint OldCarGUID = 0x7D21A010;
+        public const int OldCarWidth = 2, OldCarLength = 4;
 
         /// <summary>
         /// The SimAntics primitive this pack adds. The objects' scripts are one or two instructions long and call it

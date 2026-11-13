@@ -1,19 +1,23 @@
 # Driveways
 
-A **driveway** and a **car your Sims can drive**, in the spirit of The Sims 2 Nightlife, for The Sims 1.
+A **driveway** and **cars your Sims can drive**, in the spirit of The Sims 2 Nightlife, for The Sims 1.
+The cars are the game's own, and the driveway is paved with one of the game's own floors: the pack
+brings no pictures of its own.
 
-**This is a first stage.** The objects have been placed in the game; driving itself has had little
-testing. Expect to find things to fix. The `driveways` console command (below) is there to help with that.
+**This is a first stage.** Driving and snapping the driveway to the road work in the game. The cars'
+look, putting cars only on driveways and the choice of floor are new in 0.7 and have not been seen in
+the game yet.
 
 ## Using it
 
 The objects are in buy mode under **Decorative > Other**.
 
-1. Pick up the **Driveway**. It is three tiles wide, paved with the game's own pavement, and after The
-   Sims 2's it joins your garden to the road: it runs across the pavement and the verge to the tarmac.
-   It can only go there, and slides along the road with the cursor.
-2. Put the **Runabout** on the driveway, clear of the pavement, with its front or its back towards the
-   road.
+1. Pick up the **Driveway**. It is five tiles wide, after The Sims 2's, and joins your garden to the
+   road: it runs across the pavement and the verge to the tarmac. It can only go there, and slides
+   along the road with the cursor.
+2. Buy a car: **Sedan**, **Junker**, **Pickup Truck**, **SUV**, **Town Car** or **Bentley**. Each is drawn
+   with one of the game's own cars. A car can only be put down on a driveway, on the garden side of the
+   pavement, and is turned to point along it.
 3. Click the car and choose **Go for a Drive**. Any adult of the household can.
 
 The Sim walks to the car, the car pulls out along the driveway, turns onto the road and drives off the
@@ -25,19 +29,43 @@ If the car cannot be driven, a message says why:
 
 | Message | What to do |
 |---|---|
-| The car needs a driveway under it, all the way to the road | Park the car on the Driveway, all of it. Further back from the road than that, every tile it would pass over needs driveway too |
+| The car needs a driveway under it, all the way to the road | Park the car on the Driveway, all of it |
 | Something is in the way between the car and the road | Move the object, wall or fence that is on the driveway |
-| The car has to be parked with its front or its back towards the road | Turn it a quarter turn |
 | There is no road on this lot to drive on | The pack did not recognise this lot's road. Run `driveways` and report what it says |
 
-### The `driveways` command
+### What the driveway is paved with
 
-Open the console (Ctrl+Shift+C) and type `driveways`. It shows where the pack thinks the road is on this
-lot, which floor tiles the part of the lot you cannot build on is made of, and whether each car on the
-lot can be driven right now. It also writes all of that, with two maps of the lot, to
-`driveways-report.txt` in Simitone's user directory (next to `config.ini`).
+The pack has no texture of its own. The driveway is painted with one of the floors from your game: the
+first one the game sells with "concrete", "cement", "asphalt", "gravel" or the like in its name, or
+else the road's own tarmac. Never the pavement's. To choose:
+
+| Console command | |
+|---|---|
+| `driveways floors` | Lists every floor the game sells in `driveways-floors.txt` |
+| `driveways floor <words from a name>` | Paints driveways with that floor, at once, and remembers it |
+| `driveways floor tarmac` | The road's tarmac |
+| `driveways floor` | Back to the pack's own choice |
+
+### Other console commands
+
+Open the console with Ctrl+Shift+C. The files are written to Simitone's user directory, next to
+`config.ini`.
+
+| | |
+|---|---|
+| `driveways` | Where the pack thinks the road is on this lot, what the driveway and the cars are drawn with, and whether each car can be driven now. Also written, with maps of the lot, to `driveways-report.txt` |
+| `driveways cars` | Lists the game's vehicles in `driveways-cars.txt` |
+| `driveways reverse` | If the cars drive along the road backwards, this turns them round. It is remembered |
 
 ## Changes
+
+- **0.7**: real cars. The game's own cars stand on three tiles by six, so the pack's now do, and there
+  are six to buy, each drawn with one of the game's: the carpool's sedan, the junker, the pickup truck,
+  the SUV, the town car and the Bentley. The box car is gone. A car can only be put down on a driveway.
+  The driveway is five tiles by nine, and is no longer paved like the pavement: it takes a floor the
+  game sells (see above), or the road's tarmac, and you can choose which. Driveways and the car from
+  earlier versions stay on lots that have them, as plain shapes, but are not sold and that car cannot
+  be driven.
 
 - **0.6**: the driveway has no texture of the pack's own any more. It is painted, when the game runs,
   with the pavement floor tile out of your own copy of The Sims, so it matches the pavement it crosses.
@@ -79,40 +107,40 @@ lot can be driven right now. It also writes all of that, with two maps of the lo
   Sim beside it.
 - **The car turns in quarter turns.** It has four pictures, like every Sims 1 object, so it snaps round
   the corner onto the road.
+- **Which end of a car is its front is a guess.** If they drive along the road backwards, `driveways
+  reverse` turns them round.
 - **Nothing gets run over.** The car checks that the driveway is clear before it sets off. A Sim who
   walks onto the driveway afterwards is driven through.
 - **The road is found by its floor tiles.** Tarmac is tile 9 (and 10 and 11, the line down the
   middle), in a strip along one side of the lot; the pavement, tile 12, marks where the garden starts.
-  These were read off one lot in the game. A lot that paves its road differently will not be found.
-- **A car parked across the pavement blocks it.** The driveway crosses the pavement; park the car on
-  the garden part.
-- **The car may still be boxes.** The pack borrows the pictures of one of the game's own cars, but only
-  from one laid out on the same tiles as its own. Which cars the game has, and how they are laid out,
-  is not yet known: `driveways cars` writes the list to `driveways-cars.txt`.
+  A lot that paves its road differently will not be found.
+- **A car needs its own game car.** A car whose game car is not in your game (from an expansion you do
+  not have) shows as grey blocks. The `driveways` report says which were found.
+- **Floors are found by their names in English.**
 
 ## How it is made
 
 | | |
 |---|---|
-| `pack/driveways/content/Downloads/Driveways.iff` | The objects. Written by `generator`, and committed, since it is data |
-| `generator/` | Writes that file, then reads it back and checks it. The car and the driveway are lists of boxes; the generator traces rays against them to draw each sprite and its depth, with the camera maths the engine uses to rebuild a 3D model from a sprite. The car covers eight tiles, and each tile gets its slice |
-| `FloorDress.cs` | Paints the driveway. The object file gives each driveway tile its shape and depth in one plain colour; this makes a second set of sprites in memory, each pixel coloured from the place on the game's pavement tile that it lies over. Nothing of the game's is copied into the pack |
-| `VMDrive.cs` | A new SimAntics primitive, number 200. The objects' scripts are one or two instructions that call it: to set an object up, to say whether the car is parked, and to drive |
+| `pack/driveways/content/Downloads/Driveways.iff` | The objects: what they are, and almost nothing of what they look like. Written by `generator`, and committed, since it is data |
+| `generator/` | Writes that file, then reads it back and checks it. Every tile of a driveway or a car is its own object; all the driveway's share one flat grey square and all the cars' one grey block, drawn by tracing rays with the camera maths the engine uses to rebuild a 3D model from a sprite |
+| `FloorDress.cs` | Paints the driveway. It makes a second set of sprites in memory, the shape and depth of the grey square, each pixel coloured from the place on a floor tile of the game's that it lies over. Nothing of the game's is copied into the pack |
+| `VMDrive.cs` | A new SimAntics primitive, number 200. The objects' scripts are one or two instructions that call it: to set an object up, to say whether the car is parked, and to drive. Also where a driveway and a car may be put, and what each is drawn with: the floor for the driveway, and the game's cars' tiles for the cars |
 | `Route.cs` | Where the car goes: finding the road, the way out and back, and how fast. Plain numbers, nothing from the engine |
 | `tests/` | Checks `Route.cs` |
-| `DrivewaysPack.cs` | Adds the primitive and the console command, and three Harmony patches: one on the game's tick so a car is never left hidden if its drive is cut short, one that snaps a driveway to the road as it is moved, and one that gives the car a real car's pictures |
-| `Shared.cs` | The ids and sizes the object file and the code must agree on. Compiled into both |
+| `DrivewaysPack.cs` | Adds the primitive and the console commands, and three Harmony patches: on the game's tick, so a car is never left hidden if its drive is cut short; before an object is moved, to snap a driveway to the road and keep cars on driveways; and when an object's picture is set, to give driveways and cars theirs |
+| `Shared.cs` | The ids and sizes the object file and the code must agree on, and the cars: which of the game's each is drawn with. Compiled into both |
 
-To write the object file again, and look at what it drew:
+To write the object file again, and see a driveway painted with a made-up test tile:
 
 ```bash
 dotnet run --project Driveways/generator -- Driveways/pack/driveways/content/Downloads previews
 dotnet run --project Driveways/tests
 ```
 
-The second folder is optional. It gets `.ppm` pictures of the car from each side, next to its depth.
+The second folder is optional. It gets `driveway.ppm`.
 
 ## What comes next
 
-Roughly in order: watch it run and fix what that shows; real art; Sims getting in and out; the car
+Roughly in order: Sims getting in and out; the car
 taking a Sim to work in place of the carpool; driving to community lots.

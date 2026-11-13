@@ -204,7 +204,7 @@ List<Pose> Run(Path path, out int ticks, out float fastest, out float slowest)
 
 // ---- snapping a driveway to the road ----
 
-const int DW = 3, DL = 8; //the driveway, in tiles
+const int DW = 5, DL = 9; //the driveway, in tiles
 //the tiles a driveway covers from its lead tile, as the engine lays a multi-tile object out, and its apron (the far end)
 (List<(int X, int Y)> All, List<(int X, int Y)> Apron) Covers((int X, int Y, int Heading) place)
 {
@@ -222,22 +222,22 @@ const int DW = 3, DL = 8; //the driveway, in tiles
 {
     var south = new Road { AlongX = true, First = 57, Last = 63, VergeFirst = 55, VergeLast = 63 };
     var a = Covers(DrivewaySnap.Place(south, 20, 10, DW, DL, Lot, Lot));
-    Check(a.All.Min(t => t.Y) == 49 && a.All.Max(t => t.Y) == 56 && a.All.Min(t => t.X) == 19 && a.All.Max(t => t.X) == 21, "snap, south road: up to the tarmac, centred on the cursor's column");
+    Check(a.All.Min(t => t.Y) == 48 && a.All.Max(t => t.Y) == 56 && a.All.Min(t => t.X) == 18 && a.All.Max(t => t.X) == 22, "snap, south road: up to the tarmac, centred on the cursor's column");
     Check(a.Apron.All(t => t.Y == 56), "snap, south road: the apron is at the road");
     var b = Covers(DrivewaySnap.Place(south, 63, 40, DW, DL, Lot, Lot));
-    Check(b.All.Max(t => t.X) == 63 && b.All.Min(t => t.X) == 61, "snap, south road: kept on the lot");
+    Check(b.All.Max(t => t.X) == 63 && b.All.Min(t => t.X) == 59, "snap, south road: kept on the lot");
 
     var north = new Road { AlongX = true, First = 0, Last = 6, VergeFirst = 0, VergeLast = 8 };
     var c = Covers(DrivewaySnap.Place(north, 20, 40, DW, DL, Lot, Lot));
-    Check(c.All.Min(t => t.Y) == 7 && c.All.Max(t => t.Y) == 14 && c.All.Min(t => t.X) == 19 && c.All.Max(t => t.X) == 21 && c.Apron.All(t => t.Y == 7), "snap, north road: up to the tarmac, apron at the road");
+    Check(c.All.Min(t => t.Y) == 7 && c.All.Max(t => t.Y) == 15 && c.All.Min(t => t.X) == 18 && c.All.Max(t => t.X) == 22 && c.Apron.All(t => t.Y == 7), "snap, north road: up to the tarmac, its far end at the road");
 
     var east = new Road { AlongX = false, First = 57, Last = 63, VergeFirst = 55, VergeLast = 63 };
     var d = Covers(DrivewaySnap.Place(east, 5, 30, DW, DL, Lot, Lot));
-    Check(d.All.Min(t => t.X) == 49 && d.All.Max(t => t.X) == 56 && d.All.Min(t => t.Y) == 29 && d.All.Max(t => t.Y) == 31 && d.Apron.All(t => t.X == 56), "snap, east road: on its side up to the tarmac, apron at the road");
+    Check(d.All.Min(t => t.X) == 48 && d.All.Max(t => t.X) == 56 && d.All.Min(t => t.Y) == 28 && d.All.Max(t => t.Y) == 32 && d.Apron.All(t => t.X == 56), "snap, east road: on its side up to the tarmac, its far end at the road");
 
     var west = new Road { AlongX = false, First = 0, Last = 6, VergeFirst = 0, VergeLast = 8 };
     var e = Covers(DrivewaySnap.Place(west, 40, 30, DW, DL, Lot, Lot));
-    Check(e.All.Min(t => t.X) == 7 && e.All.Max(t => t.X) == 14 && e.All.Min(t => t.Y) == 29 && e.All.Max(t => t.Y) == 31 && e.Apron.All(t => t.X == 7), "snap, west road: on its side up to the tarmac, apron at the road");
+    Check(e.All.Min(t => t.X) == 7 && e.All.Max(t => t.X) == 15 && e.All.Min(t => t.Y) == 28 && e.All.Max(t => t.Y) == 32 && e.Apron.All(t => t.X == 7), "snap, west road: on its side up to the tarmac, its far end at the road");
     Check(e.All.Distinct().Count() == DW * DL, "snap: a driveway's tiles are all different");
 
     //a car on a snapped driveway, back from the pavement, nose to the road: what it passes over is all driveway
@@ -270,8 +270,18 @@ const int DW = 3, DL = 8; //the driveway, in tiles
     Check(road.StripFirst == 41 && road.StripLast == 51, "real lot: with the pavement and the verge, columns 41 to 51");
 
     var cover = Covers(DrivewaySnap.Place(road, 10, 25, DW, DL, Real, Real));
-    Check(cover.All.Min(t => t.X) == 35 && cover.All.Max(t => t.X) == 42 && cover.All.Min(t => t.Y) == 24 && cover.All.Max(t => t.Y) == 26, "real lot: a driveway runs from column 35 across the pavement and verge to the tarmac");
-    Check(cover.Apron.All(t => t.X == 42), "real lot: its apron is on the verge, against the tarmac");
+    Check(cover.All.Min(t => t.X) == 34 && cover.All.Max(t => t.X) == 42 && cover.All.Min(t => t.Y) == 23 && cover.All.Max(t => t.Y) == 27, "real lot: a driveway runs from column 34 across the pavement and verge to the tarmac");
+    Check(cover.Apron.All(t => t.X == 42), "real lot: its far end is on the verge, against the tarmac");
+
+    //one of the game's cars, three tiles by six, on the garden part of it, nose to the road
+    var big = DrivePlan.Make(40.5f, 24.5f, 1, 3, 6, road, Real, Real); //body columns 35..40, rows 24..26
+    Check(big.Problem == RouteProblem.None && big.Corridor.Count == 18 && big.Corridor.All(t => cover.All.Contains(t)), "real lot: a three by six car on the driveway passes over driveway only");
+    var bigLane = big.Out.Legs[1].X;
+    Check(bigLane - 1.5f >= 43 && bigLane + 1.5f <= 46.5f, $"real lot: the three wide car keeps to the near half of the road ({bigLane})");
+    //a car whose front is at its far end is turned round on the road, and not on the driveway
+    var turned = DrivePlan.Make(40.5f, 24.5f, 1, 3, 6, road, Real, Real, true);
+    Check(turned.Out.Legs[0].Heading == 1 && turned.Out.Legs[1].Heading == 0 && big.Out.Legs[1].Heading == 2 && turned.Back.Legs[0].Heading == 0 && turned.Back.Legs[1].Heading == 1, "a car drawn back to front is turned round on the road only");
+    Check(Near(turned.Out.Legs[1].X, big.Out.Legs[1].X) && Near(turned.Out.Legs[1].DY, big.Out.Legs[1].DY), "...and still goes the same way");
 
     //a car on it, nose to the road (facing east): its lead tile is the front left, the north east corner
     var plan = DrivePlan.Make(40.5f, 25.5f, 1, W, L, road, Real, Real); //body columns 37..40, rows 25..26
