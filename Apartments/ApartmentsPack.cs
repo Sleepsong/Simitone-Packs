@@ -185,7 +185,7 @@ namespace Apartments
 
         public static void AfterLotControlUpdate(UpdateState state)
         {
-            if (state?.NewKeys != null && state.NewKeys.Contains(Keys.F9)) UIApartmentsDialog.Open();
+            if (state?.NewKeys != null && state.NewKeys.Contains(Keys.F9)) Guard("opening the Apartments window", () => UIApartmentsDialog.Open());
         }
 
         /// <summary>Simitone has just put its Packs button in the Options panel. Put an Apartments button after it, made the same way.</summary>
@@ -210,7 +210,7 @@ namespace Apartments
                 //the pack has no artwork of its own: the Packs button's picture, under its own name
                 var button = new UICatButton(Content.Get().CustomUI.Get("opt_packs.png").Get(GameFacade.GraphicsDevice));
                 button.Position = new Vector2(buttonX - 50, 16);
-                button.OnButtonClick += (btn) => UIApartmentsDialog.Open();
+                button.OnButtonClick += (btn) => Guard("opening the Apartments window", () => UIApartmentsDialog.Open());
 
                 GameFacade.Screens.Tween.To(label, 0.5f, new Dictionary<string, float>() { { "X", labelX } }, TweenQuad.EaseOut);
                 GameFacade.Screens.Tween.To(button, 0.5f, new Dictionary<string, float>() { { "X", buttonX } }, TweenQuad.EaseOut);
@@ -341,7 +341,7 @@ namespace Apartments
         {
             if (args.Length == 0)
             {
-                UIApartmentsDialog.Open();
+                Guard("opening the Apartments window", () => UIApartmentsDialog.Open());
                 return true;
             }
             var verb = args[0].ToLowerInvariant();

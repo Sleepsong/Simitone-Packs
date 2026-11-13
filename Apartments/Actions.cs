@@ -394,30 +394,10 @@ namespace Apartments
             });
         }
 
-        /// <summary>
-        /// Ask the player to choose one of several things, each a button, with Cancel last. The game's own message
-        /// box lays the buttons out, in rows if there are many.
-        /// </summary>
+        /// <summary>Ask the player to choose one of several things, each a button, with Cancel last.</summary>
         public static void Choose(string title, string message, IEnumerable<KeyValuePair<string, Action>> choices, Action cancelled = null)
         {
-            UIMobileAlert alert = null;
-            var buttons = new List<UIAlertButton>();
-            foreach (var choice in choices)
-            {
-                var action = choice.Value;
-                buttons.Add(new UIAlertButton(UIAlertButtonType.OK, (b) =>
-                {
-                    alert.Close();
-                    ApartmentsPack.Guard("doing what was chosen (" + choice.Key + ")", action);
-                }, choice.Key));
-            }
-            buttons.Add(new UIAlertButton(UIAlertButtonType.Cancel, (b) =>
-            {
-                alert.Close();
-                if (cancelled != null) ApartmentsPack.Guard("cancelling", cancelled);
-            }, "Cancel"));
-            alert = new UIMobileAlert(new UIAlertOptions() { Title = title, Message = message, Buttons = buttons.ToArray() });
-            UIScreen.GlobalShowDialog(alert, true);
+            UIChoiceDialog.Show(title, message, choices, cancelled);
         }
 
         public static KeyValuePair<string, Action> Choice(string text, Action action) => new KeyValuePair<string, Action>(text, action);

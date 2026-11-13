@@ -140,6 +140,14 @@ Residency.WritePlayed(20, 10, neigh);
 Check("the pack keeps its files where Simitone's own helper would", PackStore.PathFor("sample.apartments", neigh.GetHousePath(20)).Replace('\\', '/').Contains("/LocalHouse/PackData/sample.apartments/House20-"));
 Check("writing nothing removes the file", PackStore.Write("sample.apartments", neigh.GetHousePath(20), null) && PackStore.Read("sample.apartments", neigh.GetHousePath(20)) == null);
 
+// ---- the question dialog's layout ----
+Check("a short message is one line", UIChoiceDialog.LinesOf("Which apartment?", 800, 15) == 1);
+Check("each paragraph is at least a line, blank ones too", UIChoiceDialog.LinesOf("one\n\nthree", 800, 15) == 3);
+Check("a long paragraph wraps", UIChoiceDialog.LinesOf(new string('x', 400), 800, 15) >= 4);
+Check("no message still leaves a line", UIChoiceDialog.LinesOf(null, 800, 15) == 1);
+Check("three buttons fit across 865", UIChoiceDialog.Columns(865, 275, 20) == 3);
+Check("a narrow screen still has one column", UIChoiceDialog.Columns(200, 275, 20) == 1);
+
 // ---- rent ----
 var clock = new FSO.SimAntics.VMClock() { Year = 1997, Month = 6, DayOfMonth = 30 };
 var d1 = Units.Today(clock); clock.Month = 7; clock.DayOfMonth = 1;

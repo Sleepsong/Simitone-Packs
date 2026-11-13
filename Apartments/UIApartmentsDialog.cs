@@ -145,7 +145,15 @@ namespace Apartments
             btn.Caption = text;
             btn.Width = width;
             btn.Position = pos;
-            btn.OnButtonClick += (b) => onClick();
+            //nothing a button does may take the game down: what goes wrong is logged, and shown along the bottom
+            btn.OnButtonClick += (b) =>
+            {
+                if (!ApartmentsPack.Guard("doing what a button in the Apartments window asked (" + text + ")", onClick))
+                {
+                    Message = "That went wrong. The log says how.";
+                    ApartmentsPack.Guard("showing the window again", Refresh);
+                }
+            };
             Body.Add(btn);
             return btn;
         }

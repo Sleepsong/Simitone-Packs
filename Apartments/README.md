@@ -226,6 +226,8 @@ It uses only what every Simitone with code packs has, so it does not need the ne
 - `Residency.cs` is who lives where.
 - `Units.cs` is the apartments, the rent, and what the pack's file for a lot says.
 - `Hood.cs` is apartment buildings on the neighbourhood screen.
+- `UIChoiceDialog.cs` is a question with a button for each answer. The game's own message box takes
+  only one button of each kind, so the pack has its own.
 - `UIRoomPicker.cs` is choosing a room by clicking in it: one of the lot's own tools, like the wall
   tool.
 - `PackStore.cs` is where that file is kept.
