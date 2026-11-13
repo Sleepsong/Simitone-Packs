@@ -172,22 +172,22 @@ namespace Driveways
         {
             int across = road.AlongX ? lotHeight : lotWidth, along = road.AlongX ? lotWidth : lotHeight;
             bool roadAtHighEdge = (across - 1 - road.Last) <= road.First;
-            //the lowest column (or row) it covers along the road
-            int low = Math.Max(0, Math.Min((road.AlongX ? x : y) - width / 2, along - width));
-            if (road.AlongX)
-            {
-                //road to the south: facing north, columns low.., rows from the lead tile down to the road
-                if (roadAtHighEdge) return (low, road.First - length, 0);
-                //road to the north: facing south, the lead tile is the south east corner
-                return (low + width - 1, road.Last + length, 2);
-            }
-            else
-            {
-                //road to the east: facing west, the lead tile is the south west corner
-                if (roadAtHighEdge) return (road.First - length, low + width - 1, 3);
-                //road to the west: facing east, the lead tile is the north east corner
-                return (road.Last + length, low, 1);
-            }
+            //which way it faces, and how far its lead tile is from the road
+            int heading = road.AlongX ? (roadAtHighEdge ? 0 : 2) : (roadAtHighEdge ? 3 : 1);
+            int leadAcross = roadAtHighEdge ? road.First - length : road.Last + length;
+            //its lead tile is at its low end along the road when it faces north or east, at its high end otherwise
+            bool leadIsLow = heading == 0 || heading == 1;
+
+            // When the player puts the driveway down, the game asks for it to be placed where it already is: at the
+            // lead tile this gave last time. That must give the same place again, not centre it a second time. A
+            // position already on the line the lead tile runs along is taken to be the lead tile.
+            int cursorAcross = road.AlongX ? y : x, cursorAlong = road.AlongX ? x : y;
+            int low = (cursorAcross == leadAcross)
+                ? (leadIsLow ? cursorAlong : cursorAlong - (width - 1))
+                : cursorAlong - width / 2;
+            low = Math.Max(0, Math.Min(low, along - width));
+            int leadAlong = leadIsLow ? low : low + width - 1;
+            return road.AlongX ? (leadAlong, leadAcross, heading) : (leadAcross, leadAlong, heading);
         }
     }
 

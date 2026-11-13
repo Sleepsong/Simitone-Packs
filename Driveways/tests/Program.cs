@@ -240,6 +240,22 @@ const int DW = 5, DL = 9; //the driveway, in tiles
     Check(e.All.Min(t => t.X) == 7 && e.All.Max(t => t.X) == 15 && e.All.Min(t => t.Y) == 28 && e.All.Max(t => t.Y) == 32 && e.Apron.All(t => t.X == 7), "snap, west road: on its side up to the tarmac, its far end at the road");
     Check(e.All.Distinct().Count() == DW * DL, "snap: a driveway's tiles are all different");
 
+    //putting it down: the game asks again with the place it was given, and must get the same place
+    foreach (var (name, r) in new[] { ("south", south), ("north", north), ("east", east), ("west", west) })
+    {
+        bool same = true;
+        for (int cx = 0; cx < Lot; cx += 3)
+            for (int cy = 0; cy < Lot; cy += 3)
+            {
+                var first = DrivewaySnap.Place(r, cx, cy, DW, DL, Lot, Lot);
+                var again = DrivewaySnap.Place(r, first.X, first.Y, DW, DL, Lot, Lot);
+                if (again != first) same = false;
+                var tiles = Covers(first).All;
+                if (tiles.Any(t => t.X < 0 || t.Y < 0 || t.X >= Lot || t.Y >= Lot)) same = false;
+            }
+        Check(same, $"snap, {name} road: placed again where it is, it stays there, and is always on the lot");
+    }
+
     //a car on a snapped driveway, back from the pavement, nose to the road: what it passes over is all driveway
     var plan = DrivePlan.Make(20.5f, 50.5f, 0, W, L, south, Lot, Lot); //body columns 20..21, rows 50..53
     Check(plan.Problem == RouteProblem.None && plan.Corridor.All(t => a.All.Contains(t)), "snap: a car on the driveway passes over driveway only");

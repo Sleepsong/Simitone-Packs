@@ -60,6 +60,11 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 
 ## Changes
 
+- **0.9**: a driveway no longer jumps sideways as it is put down. (The game places an object where it
+  is already being held; the pack took that for the cursor and centred the driveway on it a second
+  time.) A car held sideways to the driveway is turned to face the road, and turning it a notch now
+  goes between nose to the road and tail to the road.
+
 - **0.8**: the driveway lays real floor under itself, the same floor it is painted with, so it meets the
   road with no strip of grass showing between them. Where it crosses the pavement it is open: the
   pavement runs on across it. Moving or selling the driveway puts back the floor that was there

@@ -429,6 +429,9 @@ namespace Driveways
         /// of the pavement, and lengthways along the driveway (it is turned to point at the road if it is held
         /// across). Returns false, with why, where it cannot go; changes the direction it is being given.
         /// </summary>
+        //the way the car last being held was pointed, and the sideways direction it was asked for when it was turned (-1: none yet)
+        private static int LastCarHeading = -1, LastAcrossHeading = -1;
+
         public static bool CarMayGo(VMMultitileGroup group, LotTilePos pos, ref Direction direction, VMContext context, VMPlaceRequestFlags flags)
         {
             if ((flags & VMPlaceRequestFlags.UserBuildableLimit) == 0 || pos == LotTilePos.OUT_OF_WORLD || group.Objects.Count == 0) return true;
@@ -442,16 +445,25 @@ namespace Driveways
             var road = FindRoad(vm, out _);
             if (road != null)
             {
-                //lengthways to the road: one held across it is turned to face it
+                //lengthways to the road. one held across it is turned: the first time to face the road, and after
+                //that (the player has turned it a notch) to face the other way from last time, so turning it
+                //goes between nose to the road and tail to the road
                 bool nosePointsAcross = road.Value.AlongX ? (heading % 2 == 0) : (heading % 2 == 1);
                 if (!nosePointsAcross)
                 {
-                    var arch = context.Architecture;
-                    int across = road.Value.AlongX ? arch.Height : arch.Width;
-                    bool roadAtHighEdge = (across - 1 - road.Value.Last) <= road.Value.First;
-                    heading = road.Value.AlongX ? (roadAtHighEdge ? 2 : 0) : (roadAtHighEdge ? 1 : 3);
+                    if (LastCarHeading != -1 && LastAcrossHeading != heading) heading = (LastCarHeading + 2) % 4;
+                    else if (LastCarHeading != -1) heading = LastCarHeading;
+                    else
+                    {
+                        var arch = context.Architecture;
+                        int across = road.Value.AlongX ? arch.Height : arch.Width;
+                        bool roadAtHighEdge = (across - 1 - road.Value.Last) <= road.Value.First;
+                        heading = road.Value.AlongX ? (roadAtHighEdge ? 2 : 0) : (roadAtHighEdge ? 1 : 3);
+                    }
+                    LastAcrossHeading = HeadingOf(direction);
                     direction = Directions[heading];
                 }
+                LastCarHeading = heading;
             }
             for (int x = 0; x < Shared.CarWidth; x++)
                 for (int y = 0; y < Shared.CarLength; y++)
