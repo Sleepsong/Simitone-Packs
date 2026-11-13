@@ -76,6 +76,9 @@ namespace Apartments
                 Actions.Say("Apartments", "Open this while you are on a lot.");
                 return;
             }
+            //the window coming back ends whatever was being shown on the lot
+            UIPickPanel.Close();
+            Neighbours.Show(Actions.Screen.vm, false);
             if (Current == null)
             {
                 Current = new UIApartmentsDialog();
@@ -230,6 +233,7 @@ namespace Apartments
         {
             Actions.Choose(Residency.NameOf(family),
                 "Play: save the lot, then play this household. Yours go home, and become neighbours.\n\n"
+                + "Knock: the Sim you are playing goes to their door, to be asked in. (Clicking the door does the same.)\n\n"
                 + "Bring out: one of them comes out of their apartment now.\n\n"
                 + "Move out: they go back to the family bin. Their things stay.",
                 new[]
@@ -240,6 +244,7 @@ namespace Apartments
                         if (problem == null) CloseMe(); //the lot is about to be replaced
                         else Do(() => problem);
                     }),
+                    Actions.Choice("Knock", () => Do(() => Actions.Knock(family))),
                     Actions.Choice("Bring out", () => Do(() => Actions.BringOut(family))),
                     Actions.Choice("Move out", () => Do(() => Actions.MoveOut(family))),
                 });
@@ -282,8 +287,21 @@ namespace Apartments
                     else PickRoom(made, false);
                 }, true));
 
+            rows.Add(new Row("Which rooms are whose", "Plan: a plan of the lot, each apartment in its own colour. On the lot: the apartments are lit and the shared rooms darkened, until you open this window again.")
+                .Button("Plan", () =>
+                {
+                    var level = Actions.Screen?.LotControl?.World?.State?.Level ?? (sbyte)1;
+                    CloseMe();
+                    UIMapDialog.Show(vm, level, () => Open(Tab.Apartments));
+                }, true, false, 190)
+                .Button("On the lot", () =>
+                {
+                    CloseMe();
+                    Neighbours.Show(vm, true);
+                }, false, false, 190));
+
             var rate = file.Rate;
-            rows.Add(new Row("Rent: " + (rate == 0 ? "none" : rate + " a tile a day"), Actions.RentLine(file))
+            rows.Add(new Row("Rent: " + (rate == 0 ? "none" : rate + " a tile a day"), Actions.RentLine(file) + " Moving in costs " + Units.DepositDays + " days' rent.")
                 .Button("-", () => Do(() => Actions.SetRent(rate - 1)), false, rate <= 0, SmallButton)
                 .Button("+", () => Do(() => Actions.SetRent(rate + 1)), false, rate >= Actions.MostRent, SmallButton));
 
@@ -325,30 +343,34 @@ namespace Apartments
                 choices);
         }
 
-        private static bool PickHintShown;
-
-        /// <summary>Put the window away and let the player click in a room, then come back and say how it went.</summary>
+        /// <summary>
+        /// Put the window away and let the player click in rooms, one after another, until Esc. Meanwhile the lot
+        /// itself shows which rooms are the apartment's (they are lit, and the rest darkened), and a small plan in
+        /// the corner shows the same and says how each click went.
+        /// </summary>
         private void PickRoom(Apartment apartment, bool remove)
         {
+            var vm = Actions.Screen?.vm;
             CloseMe();
-            Action begin = () =>
+            if (vm == null) return;
+            var changes = 0;
+            var started = UIRoomPicker.Begin(
+                pos =>
+                {
+                    var result = remove ? Actions.RemoveRoom(pos) : Actions.AddRoom(apartment, pos);
+                    changes++;
+                    Neighbours.Show(vm, true, apartment);
+                    UIPickPanel.Say(result);
+                },
+                () => Open(Tab.Apartments, changes == 0 ? "No room was chosen." : "Finished choosing rooms for " + apartment.Name + ". Save the lot to keep this."),
+                true);
+            if (!started)
             {
-                var started = UIRoomPicker.Begin(
-                    pos => Open(Tab.Apartments, remove ? Actions.RemoveRoom(pos) : Actions.AddRoom(apartment, pos)),
-                    () => Open(Tab.Apartments, "No room was chosen."));
-                if (!started) Open(Tab.Apartments, "There is no lot to choose a room on.");
-            };
-            if (PickHintShown)
-            {
-                begin();
+                Open(Tab.Apartments, "There is no lot to choose a room on.");
                 return;
             }
-            PickHintShown = true;
-            Actions.Choose(remove ? "Remove a room" : "Add a room",
-                "Click inside a room" + (remove ? " to take it out of its apartment." : (" to add it to " + apartment.Name + "."))
-                + " To choose a room on another floor, change floor first. Esc cancels.\n\nThis window comes back when you have clicked.",
-                new[] { Actions.Choice("OK", begin) },
-                () => Open(Tab.Apartments, "No room was chosen."));
+            Neighbours.Show(vm, true, apartment);
+            UIPickPanel.Open(vm, apartment, remove);
         }
 
         private List<Row> MoveInRows()
@@ -401,7 +423,8 @@ namespace Apartments
             var choices = free.Select(x => Actions.Choice(x.Name, () => go(x))).ToList();
             choices.Add(Actions.Choice("No apartment", () => go(null)));
             Actions.Choose("Which apartment for " + Residency.NameOf(family) + "?",
-                string.Join("\n", free.Select(x => x.Name + ": " + Actions.SizeText(vm, file, x) + ".")), choices);
+                string.Join("\n", free.Select(x => x.Name + ": " + Actions.SizeText(vm, file, x) + ". To move in: " + Units.Deposit(Units.Area(vm, file, x), file.Rate) + "."))
+                + "\n\n" + Residency.NameOf(family) + " have " + family.Budget + " simoleons. Moving in costs " + Units.DepositDays + " days' rent.", choices);
         }
 
         private List<Row> TestingRows()
@@ -422,6 +445,18 @@ namespace Apartments
             var dim = Neighbours.Dim;
             rows.Add(new Row("Dim the other apartments", "The apartments of households you are not playing are drawn dark: nobody is seen to be home.")
                 .Button(dim ? "On" : "Off", () => Do(() => { Actions.SetDim(!dim); return null; }), dim));
+
+            var priv = Doors.Private;
+            rows.Add(new Row("Apartments are private", "A Sim cannot walk into another household's apartment. Yours can knock at the door (click it) and be asked in for " + (Doors.Welcome / 60) + " hours. Off: anyone walks anywhere.")
+                .Button(priv ? "On" : "Off", () => Do(() => { Actions.SetPrivate(!priv); return null; }), priv));
+
+            var showVisitors = Doors.ShowVisitors;
+            rows.Add(new Row("Visitors come to your door", "A visitor waiting to be greeted at the front of the lot walks to your apartment's door and waits there instead.")
+                .Button(showVisitors ? "On" : "Off", () => Do(() => { Actions.SetShowVisitors(!showVisitors); return null; }), showVisitors));
+
+            var mailbox = Neighbours.MovableMailbox;
+            rows.Add(new Row("The mailbox can be moved", "In a building, pick the mailbox up in buy or build mode and put it where the mail should come: a mail room, or the hall.")
+                .Button(mailbox ? "On" : "Off", () => Do(() => { Neighbours.MovableMailbox = !mailbox; AptLog.Write("Setting: movable mailbox " + (!mailbox ? "on" : "off")); return null; }), mailbox));
 
             var needs = Neighbours.NeedsFloor;
             rows.Add(new Row("Hold neighbours' needs up", needs == null ? "Neighbours' needs are left to fall while they are out." : ("While a neighbour is out, their needs never fall below " + needs + " (of -100 to 100)."))

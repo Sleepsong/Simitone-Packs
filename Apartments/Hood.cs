@@ -50,8 +50,11 @@ namespace Apartments
             else if (free.Count > 0)
             {
                 var cheapest = free.Min(x => Units.DailyRent(x.Area, file.Rate));
-                text = "Apartment building: " + Plural(free.Count, "apartment", "apartments") + " free, from " + cheapest + " a day in rent. Nothing to pay to move in.";
-                if (panel.EnterLot != null) panel.EnterLot.Disabled = false;
+                var budget = Content.Get().Neighborhood.GetFamily((ushort)Actions.Screen.MoveInFamily.Value)?.Budget ?? 0;
+                var afford = budget >= cheapest * Units.DepositDays;
+                text = "Apartment building: " + Plural(free.Count, "apartment", "apartments") + " free, from " + cheapest + " a day in rent, with " + Units.DepositDays + " days' rent to pay on moving in."
+                    + (afford ? "" : " This family cannot afford the cheapest.");
+                if (panel.EnterLot != null) panel.EnterLot.Disabled = !afford;
             }
             else
             {
@@ -89,18 +92,24 @@ namespace Apartments
                 Play(screen, house, switcher);
             };
 
-            if (free.Count == 1)
+            Func<Apartment, int> deposit = x => Units.Deposit(x.Area, file.Rate);
+            Func<Apartment, string> line = x => x.Name + ": " + Actions.SavedSizeText(file, x) + ". To move in: " + deposit(x) + (family.Budget < deposit(x) ? " (they cannot afford it)" : "") + ".";
+            var within = free.Where(x => family.Budget >= deposit(x)).ToList();
+            var money = name + " have " + family.Budget + " simoleons. Moving in costs " + Units.DepositDays + " days' rent.";
+            if (within.Count == 0)
+            {
+                Actions.Say("Apartments", string.Join("\n", free.Select(line)) + "\n\n" + money + " They cannot afford any of these.");
+            }
+            else if (free.Count == 1)
             {
                 var only = free[0];
-                Actions.Choose("Move into " + only.Name + "?",
-                    only.Name + " is the apartment that is free: " + Actions.SavedSizeText(file, only) + ".\n\n" + name + " will rent it. There is nothing to pay to move in.",
+                Actions.Choose("Move into " + only.Name + "?", only.Name + " is the apartment that is free.\n" + line(only) + "\n\n" + money,
                     new[] { Actions.Choice("Move in", () => take(only)) });
             }
             else
             {
-                Actions.Choose("Which apartment for " + name + "?",
-                    string.Join("\n", free.Select(x => x.Name + ": " + Actions.SavedSizeText(file, x) + ".")) + "\n\nThere is nothing to pay to move in.",
-                    free.Select(x => Actions.Choice(x.Name, () => take(x))));
+                Actions.Choose("Which apartment for " + name + "?", string.Join("\n", free.Select(line)) + "\n\n" + money,
+                    within.Select(x => Actions.Choice(x.Name, () => take(x))));
             }
             return true;
         }

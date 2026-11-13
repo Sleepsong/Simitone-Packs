@@ -356,6 +356,11 @@ namespace Apartments
 
         public static int DailyRent(int area, int rate) => Math.Max(0, area) * Math.Max(0, rate);
 
+        /// <summary>What a household pays to move into an apartment: two days' rent.</summary>
+        public static int Deposit(int area, int rate) => DailyRent(area, rate) * DepositDays;
+
+        public const int DepositDays = 2;
+
         /// <summary>How many days' rent fall due, given the day it was last worked out. Never negative, and never more than a week at once.</summary>
         public static int DaysDue(int lastDay, int today)
         {

@@ -17,6 +17,8 @@ using FSO.SimAntics.Model.TS1Platform;
 using FSO.SimAntics.Primitives;
 using FSO.Common.Rendering.Framework.IO;
 using FSO.Common.Rendering.Framework.Model;
+using FSO.SimAntics.Model;
+using FSO.SimAntics.NetPlay.Model.Commands;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
@@ -75,6 +77,10 @@ namespace Apartments
                 throw;
             }
             PackManager.RegisterCommand("apt", Command);
+            Doors.OnAnswer = (vm, title, message) =>
+            {
+                if (Actions.Screen?.vm == vm) Actions.Say(title, message);
+            };
             Neighbours.OnRentShortfall = (vm, message) =>
             {
                 if (Actions.Screen?.vm == vm) Actions.Say("Rent", message);
@@ -135,6 +141,19 @@ namespace Apartments
             // 6. (only calls Simitone makes in every version are relied on, so the pack looks for a save itself)
             harmony.Patch(Find(typeof(TS1GameScreen), "Save"), postfix: Mine(nameof(AfterSave)));
 
+            // apartments are private (Doors.cs), and the rest of living in a building. each stands alone: without one,
+            // the pack is as it was before it
+            Optional(() => harmony.Patch(Find(typeof(VMRoutingFrame), "DoRoomRoute"), prefix: Mine(nameof(BeforeRoomRoute))), "keeping Sims out of other households' apartments");
+            Optional(() => harmony.Patch(Find(typeof(VMFindBestAction), "Execute"), prefix: Mine(nameof(BeforeBestAction)), finalizer: Mine(nameof(AfterBestAction))),
+                "keeping Sims from wanting things in apartments they cannot enter");
+            Optional(() =>
+            {
+                harmony.Patch(Find(typeof(VMEntity), "GetPieMenu"), postfix: Mine(nameof(AfterPieMenu)));
+                harmony.Patch(AccessTools.Method(typeof(VMNetInteractionCmd), "Verify", new[] { typeof(VM), typeof(VMAvatar) }) ?? throw new Exception("VMNetInteractionCmd.Verify was not found."), prefix: Mine(nameof(BeforeVerify)));
+                harmony.Patch(AccessTools.Method(typeof(VMNetInteractionCmd), "Execute", new[] { typeof(VM), typeof(VMAvatar) }) ?? throw new Exception("VMNetInteractionCmd.Execute was not found."), prefix: Mine(nameof(BeforeInteraction)));
+            }, "knocking at an apartment's door");
+            Optional(() => harmony.Patch(Find(typeof(VMEntity), "IndividualUserMovable"), postfix: Mine(nameof(AfterUserMovable))), "moving the mailbox in a building");
+
             // the ways into the Apartments window. the pack works without them (the console opens the window too), so
             // a version of Simitone they do not fit costs only that way in
             Optional(() => harmony.Patch(Find(typeof(UILotControl), "Update"), postfix: Mine(nameof(AfterLotControlUpdate))), "the F9 key");
@@ -158,6 +177,93 @@ namespace Apartments
             {
                 AptLog.Write("Could not add " + what + ": " + e.Message + " Use the console instead: apt");
             }
+        }
+
+        // ---- private apartments ----
+
+        public static void BeforeRoomRoute(VMRoutingFrame __instance, HashSet<VMRoomPortal> ___IgnoredRooms)
+        {
+            var vm = __instance.VM;
+            if (!Neighbours.IsShared(vm)) return; //nearly always: this runs for every walk on every lot
+            Guard("closing apartment doors to a Sim", () => Doors.CloseDoors(vm, __instance.Caller, ___IgnoredRooms));
+        }
+
+        /// <summary>
+        /// A Sim is about to choose something to do by themselves, from the lot's list of things that can be chosen.
+        /// For the length of the choice, the list is one without the things in rooms closed to them.
+        /// </summary>
+        public static void BeforeBestAction(VMStackFrame context, out List<VMEntity> __state)
+        {
+            __state = null;
+            var vm = context.VM;
+            if (!Neighbours.IsShared(vm)) return;
+            List<VMEntity> all = vm.Context.ObjectQueries.WithAutonomy, reachable = null;
+            Guard("leaving out what a Sim cannot reach", () => reachable = Doors.Reachable(vm, context.Caller, all));
+            if (reachable == null) return;
+            __state = all;
+            vm.Context.ObjectQueries.WithAutonomy = reachable;
+        }
+
+        /// <summary>The choice is made (or failed): the lot's own list goes back, whatever happened.</summary>
+        public static void AfterBestAction(VMStackFrame context, List<VMEntity> __state)
+        {
+            if (__state != null) context.VM.Context.ObjectQueries.WithAutonomy = __state;
+        }
+
+        // the pie menu. an interaction of the pack's own is marked by a number no object's menu uses, and the parameter
+        // says which. (Open for Business does the same with 254.)
+        private const byte MenuID = 253;
+        private const short ParamKnock = 7701;
+
+        public static void AfterPieMenu(VMEntity __instance, VM vm, VMEntity caller, List<VMPieMenuInteraction> __result)
+        {
+            if (__result == null || !Neighbours.IsShared(vm) || !__instance.Portal) return;
+            Guard("offering to knock at a door", () =>
+            {
+                var apartment = Doors.ApartmentBehind(vm, __instance, out _);
+                if (apartment == null || !Doors.CanKnock(vm, caller, apartment)) return;
+                __result.Add(new VMPieMenuInteraction() { Name = "Knock", ID = MenuID, Param0 = ParamKnock, Callee = __instance });
+            });
+        }
+
+        private static bool IsKnock(VMNetInteractionCmd cmd) => cmd.Interaction == MenuID && !cmd.Global && cmd.Param0 == ParamKnock;
+
+        public static bool BeforeVerify(VMNetInteractionCmd __instance, VM vm, ref bool __result)
+        {
+            if (!IsKnock(__instance)) return true;
+            __result = !__instance.FromNet && Neighbours.IsShared(vm); //the player's own choice only
+            return false;
+        }
+
+        public static bool BeforeInteraction(VMNetInteractionCmd __instance, VM vm, VMAvatar caller, ref bool __result)
+        {
+            if (!IsKnock(__instance)) return true;
+            __result = false;
+            Guard("going to knock at a door", () =>
+            {
+                var door = vm.GetObjectById(__instance.CalleeID);
+                var sim = caller ?? (vm.GetObjectById(__instance.CallerID) as VMAvatar);
+                if (door == null || sim == null) return;
+                var apartment = Doors.ApartmentBehind(vm, door, out var doorstep);
+                if (apartment == null || !Doors.CanKnock(vm, sim, apartment)) return;
+                Doors.GoAndKnock(vm, sim, apartment, doorstep);
+            });
+            return false;
+        }
+
+        // ---- the mailbox ----
+
+        /// <summary>
+        /// The game fixes the mailbox at the front of the lot. A building has a mail room, or a row of boxes in the
+        /// hall, so in a building it can be picked up and put somewhere better (never deleted).
+        /// </summary>
+        public static void AfterUserMovable(VMEntity __instance, VMContext context, bool deleting, ref VMPlacementError __result)
+        {
+            if (deleting || __result == VMPlacementError.Success) return;
+            if (__result != VMPlacementError.CantBePickedup && __result != VMPlacementError.CantBePickedupOutOfBounds) return;
+            var guid = __instance.Object?.OBJ?.GUID ?? 0;
+            if (guid != 0xEF121974 && guid != 0x1D95C9B0) return;
+            if (Neighbours.MovableMailbox && Neighbours.IsShared(context.VM)) __result = VMPlacementError.Success;
         }
 
         // ---- the neighbourhood screen ----

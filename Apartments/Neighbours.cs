@@ -52,6 +52,8 @@ namespace Apartments
         public static bool Watch = true;
         /// <summary>Dim the apartments of the households that are not played.</summary>
         public static bool Dim = true;
+        /// <summary>In a building, the mailbox can be picked up and moved (to a mail room, say).</summary>
+        public static bool MovableMailbox = true;
 
         private const int WatchEvery = 90; //ticks: about 3 seconds at normal speed
 
@@ -72,7 +74,7 @@ namespace Apartments
         private static readonly Random Dice = new Random();
 
         /// <summary>A neighbour who is out of their apartment.</summary>
-        private class Outing
+        internal class Outing
         {
             public uint Guid;
             public int Family;
@@ -82,7 +84,7 @@ namespace Apartments
             public string Doing;
         }
 
-        private class LotState
+        internal class LotState
         {
             public int House;
             public int Ticks;
@@ -95,6 +97,51 @@ namespace Apartments
             public HashSet<Tile> ReportedLost = new HashSet<Tile>();
             public Dictionary<uint, Outing> Out = new Dictionary<uint, Outing>();
             public long NextOuting = -1;
+
+            /// <summary>Which apartment each room is in, as of the last look.</summary>
+            public Dictionary<ushort, Apartment> RoomApts = new Dictionary<ushort, Apartment>();
+            /// <summary>The family numbers of the households that live here, as of the last look.</summary>
+            public HashSet<int> ResidentIds = new HashSet<int>();
+            /// <summary>Apartments the played household has been invited into, and until when (game minutes).</summary>
+            public Dictionary<int, long> Invited = new Dictionary<int, long>();
+            /// <summary>Sims on their way to knock at a door.</summary>
+            public List<Doors.Knock> Knocks = new List<Doors.Knock>();
+            /// <summary>Visitors who have already been shown to the played household's door.</summary>
+            public HashSet<short> ShownToDoor = new HashSet<short>();
+            /// <summary>While apartments are being shown on the lot: the one picked out (null: none is), or not showing at all.</summary>
+            public bool Showing;
+            public Apartment ShowingOne;
+            /// <summary>While showing: what each lit room is (by the room its light is worked out with). 0: shared, 1: the one picked out, 2: another apartment.</summary>
+            public Dictionary<ushort, int> ShowRooms = new Dictionary<ushort, int>();
+        }
+
+        internal static LotState StateOf(VM vm) => (vm != null && Lots.TryGetValue(vm, out var state)) ? state : null;
+
+        internal static long Clock(VM vm) => Now(vm);
+
+        internal static bool Walk(VM vm, VMAvatar sim, Tile tile) => WalkTo(vm, sim, tile);
+
+        /// <summary>A member of this household comes out and stays at home, as a host, until a time (game minutes).</summary>
+        internal static VMAvatar Host(VM vm, LotState state, FAMI family, long until)
+        {
+            var present = AvatarsByGuid(vm);
+            foreach (var guid in family.FamilyGUIDs)
+            {
+                if (present.TryGetValue(guid, out var already))
+                {
+                    if (state.Out.TryGetValue(guid, out var outing)) outing.Ends = Math.Max(outing.Ends, until);
+                    return already;
+                }
+            }
+            foreach (var guid in family.FamilyGUIDs)
+            {
+                var sim = Spawn(vm, state, guid, family);
+                if (sim == null) continue;
+                state.Out[guid] = new Outing() { Guid = guid, Family = family.ChunkID, Name = sim.Name, Ends = until };
+                Mark(vm, sim, family, false);
+                return sim;
+            }
+            return null;
         }
 
         /// <summary>Lots being played that are shared. A lot that is not here costs one lookup a tick.</summary>
@@ -239,6 +286,8 @@ namespace Apartments
             }
             state.House = house;
             state.RoomOwners = Units.RoomOwners(vm, state.File);
+            state.RoomApts = Units.RoomApartments(vm, state.File);
+            state.ResidentIds = new HashSet<int>(Residency.Residents(state.House).Select(x => (int)x.ChunkID));
             var present = AvatarsByGuid(vm);
             AptLog.Write("--- House " + house + " (" + why + "). " + (played == null ? "Nobody is being played. Households: " : ("Played: " + Residency.NameOf(played) + ". Neighbours: "))
                 + (others.Count == 0 ? "none" : string.Join(", ", others.Select(Residency.NameOf))) + ". Apartments: "
@@ -582,7 +631,10 @@ namespace Apartments
             var owners = Units.RoomOwners(vm, state.File);
             var changed = owners.Count != state.RoomOwners.Count || owners.Any(x => !state.RoomOwners.TryGetValue(x.Key, out var was) || was != x.Value);
             state.RoomOwners = owners;
+            state.RoomApts = Units.RoomApartments(vm, state.File);
+            state.ResidentIds = new HashSet<int>(Residency.Residents(state.House).Select(x => (int)x.ChunkID));
             if (changed) SetDimRooms(vm, state);
+            Doors.Look(vm, state);
             ReportLostRooms(vm, state);
             CollectRent(vm, state);
             LookAfterOutings(vm, state);
@@ -685,14 +737,45 @@ namespace Apartments
             var rooms = vm.Context.RoomInfo;
             if (Dim && rooms != null && played != 0) //(with nobody played the building is being laid out: all of it is shown)
             {
+                var now = Now(vm);
                 foreach (var pair in state.RoomOwners)
                 {
                     if (pair.Value == played || pair.Key >= rooms.Length) continue;
+                    //(an apartment the played household has been asked into is lit while they are welcome)
+                    if (state.RoomApts.TryGetValue(pair.Key, out var apartment) && state.Invited.TryGetValue(apartment.Id, out var until) && until > now) continue;
                     dim.Add(rooms[pair.Key].Room.LightBaseRoom);
                 }
             }
             if (dim.SetEquals(state.DimRooms)) return;
             state.DimRooms = dim;
+            Relight(vm);
+        }
+
+        internal static void RefreshDim(VM vm, LotState state) => SetDimRooms(vm, state);
+
+        /// <summary>
+        /// Show the apartments on the lot itself, by light: the one picked out is fully lit, the others are dark, and
+        /// shared rooms are in between. With none picked out, every apartment is lit and shared rooms are darkened.
+        /// </summary>
+        public static void Show(VM vm, bool on, Apartment one = null)
+        {
+            var state = StateOf(vm);
+            if (state == null) return;
+            if (!on && !state.Showing) return;
+            state.Showing = on;
+            state.ShowingOne = on ? one : null;
+            state.ShowRooms.Clear();
+            var rooms = vm.Context.RoomInfo;
+            if (on && rooms != null)
+            {
+                state.RoomApts = Units.RoomApartments(vm, state.File);
+            state.ResidentIds = new HashSet<int>(Residency.Residents(state.House).Select(x => (int)x.ChunkID));
+                foreach (var pair in state.RoomApts)
+                {
+                    if (pair.Key >= rooms.Length) continue;
+                    state.ShowRooms[rooms[pair.Key].Room.LightBaseRoom] = (one == null || pair.Value == one) ? 1 : 2;
+                }
+            }
             Relight(vm);
         }
 
@@ -715,11 +798,31 @@ namespace Apartments
         public static void AfterRoomLit(VMContext context, ushort room)
         {
             var vm = context?.VM;
-            if (vm == null || !Lots.TryGetValue(vm, out var state) || state.DimRooms.Count == 0) return;
+            if (vm == null || !Lots.TryGetValue(vm, out var state) || (state.DimRooms.Count == 0 && !state.Showing)) return;
             var rooms = context.RoomInfo;
             if (rooms == null || room == 0 || room >= rooms.Length) return;
             var lit = rooms[room].Room.LightBaseRoom;
-            if (!state.DimRooms.Contains(lit) || lit >= rooms.Length) return;
+            if (lit >= rooms.Length) return;
+            if (state.Showing)
+            {
+                //apartments are being shown on the lot: light says which rooms are which
+                var shown = rooms[lit].Light;
+                if (shown == null || rooms[lit].Room.IsOutside) return;
+                state.ShowRooms.TryGetValue(lit, out var kind);
+                if (kind == 1)
+                {
+                    shown.AmbientLight = 100;
+                    shown.OutsideLight = 100;
+                }
+                else
+                {
+                    shown.Lights.Clear();
+                    shown.AmbientLight = (ushort)(kind == 2 ? ShowOtherAmbient : ShowSharedAmbient);
+                    shown.OutsideLight = (ushort)(kind == 2 ? ShowOtherOutside : ShowSharedOutside);
+                }
+                return;
+            }
+            if (!state.DimRooms.Contains(lit)) return;
             var light = rooms[lit].Light;
             if (light == null) return;
             light.Lights.Clear();
@@ -730,6 +833,9 @@ namespace Apartments
         //how light a dimmed apartment is left (of 100): enough to see it is furnished, not enough to look lived in
         private const ushort DimAmbient = 10;
         private const ushort DimOutside = 30;
+        //while apartments are shown on the lot: shared rooms are darkened, and apartments other than the one picked out are darker still
+        private const int ShowSharedAmbient = 30, ShowSharedOutside = 45;
+        private const int ShowOtherAmbient = 5, ShowOtherOutside = 12;
 
         /// <summary>Say so, once, when a wall coming down (or anything else) leaves part of an apartment marking no room.</summary>
         private static void ReportLostRooms(VM vm, LotState state)

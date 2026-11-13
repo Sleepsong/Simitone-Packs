@@ -7,7 +7,8 @@ game runs by itself, and you can change which household you play.
 households move into them from the neighbourhood screen; and the played household pays rent on its
 own. The other households are at home, out of sight: their
 apartments are dimmed, and now and then one of them comes out to the shared rooms for a while.
-Nothing stops a Sim walking into someone else's apartment yet, and bills are still the game's own.
+An apartment is private: a Sim who does not live in it cannot walk in, though yours can knock and be
+asked in. Bills are still the game's own.
 Everything the pack sees is written to a log, and each version is built on what the last one's log
 showed.
 
@@ -21,15 +22,18 @@ screen. If the window does not come up or looks wrong, everything still works fr
    build as usual. An apartment is a set of rooms, so give each one walls all the way round.
 2. **Make it an apartment building.** Open the **Apartments** window (below), go to the
    **Apartments** page and press **Make building**.
-3. **Lay out the apartments.** Press **Add** on "New apartment", then click inside a room: it joins
-   the new apartment and the window comes back. **Add room** adds another room to an apartment. To
-   choose a room on another floor, change floor before clicking. Every room you leave out is shared
-   by everyone, and so is outdoors.
+3. **Lay out the apartments.** Press **Add** on "New apartment", then click inside each room that
+   belongs to it, one after another, and press Esc when you have finished. While you choose, the
+   rooms of that apartment are lit and the rest of the building is darkened, and a small plan in the
+   corner of the screen shows the same and says how each click went. **Add room** adds more rooms
+   later. To choose a room on another floor, change floor before clicking. Every room you leave out
+   is shared by everyone, and so is outdoors.
 4. **Save**, and go back to the neighbourhood.
 5. **Move households in.** Choose a family to move in, as usual, and pick the building. Its panel
    says how many apartments are free. After the game's own "move in?" question you are asked which
-   apartment the family takes; when only one is left, you are asked to confirm it. There is nothing
-   to pay to move in: an apartment is rented, not bought.
+   apartment the family takes; when only one is left, you are asked to confirm it. Moving in costs
+   two days' rent, and a family that cannot afford an apartment is not offered it. (An apartment is
+   rented, not bought, so the lot's price is not charged.)
 6. **Play.** Entering a building where several households live asks which one you want to play. The
    others are at home, as neighbours.
 
@@ -48,7 +52,8 @@ It has four pages, chosen with the buttons across its top. What you did, and how
 along the bottom. If the window is taller than the screen, **<** and **>** turn its pages.
 
 **Households** lists everyone who lives on the lot, and which apartment each is in. **Options** on a
-neighbouring household asks what to do with them: **Play** (save, then play that household; yours go
+neighbouring household asks what to do with them: **Knock** (the Sim you are playing goes to their
+door, to be asked in), **Play** (save, then play that household; yours go
 home and become neighbours), **Bring out** (one of them comes out of their apartment now) or **Move
 out** (back to the family bin; their things stay, and their apartment is vacant).
 
@@ -58,7 +63,9 @@ out** (back to the family bin; their things stay, and their apartment is vacant)
 |---|---|
 | **Make building** | Makes this lot an apartment building |
 | **Add** (on "New apartment") | Adds an apartment, then lets you click its first room |
-| **Add room** | Lets you click a room to add to that apartment |
+| **Add room** | Lets you click rooms to add to that apartment, until you press Esc |
+| **Plan** | A plan of the lot, floor by floor, with each apartment in its own colour |
+| **On the lot** | Shows the apartments on the lot itself: they are lit, and the shared rooms darkened, until you open the window again |
 | **More > Remove room** | Lets you click a room to take out of its apartment |
 | **More > Tenant** | Chooses which of the households living here has that apartment, or nobody |
 | **More > Delete** | The apartment is gone, and its rooms are shared |
@@ -70,7 +77,9 @@ You are asked which free apartment it takes. (Into an empty building, move house
 neighbourhood screen.)
 
 **Testing** has the switches for trying things out: how often neighbours come out (never, sometimes,
-often), **Bring out** and **Send home** to do it now, whether the other apartments are dimmed,
+often), **Bring out** and **Send home** to do it now, whether apartments are private, whether
+visitors are shown to your door, whether the mailbox can be moved, whether the other apartments are
+dimmed,
 whether neighbours' needs are held up while they are out, and whether to write down what they do. It
 also says where the log is.
 
@@ -136,7 +145,38 @@ when they next come out or are played.
 Rent is the apartment's floor area times the lot's rate, each game day, taken from the household you
 are playing. A household pays nothing while it is a neighbour. If there is not enough money, what is
 left is owed and is taken when there is money again; money never goes below zero for rent. A
-household with no apartment pays no rent.
+household with no apartment pays no rent. Moving into an apartment costs two days' rent, paid at once.
+
+## Private apartments
+
+An apartment is its household's own. A Sim who does not live there cannot walk into it: no route goes
+through its doors, and a Sim told to use something inside gives up, as for a room with no door. Left
+to themselves, Sims do not even want the things in an apartment they cannot enter.
+
+| Apartment | Who can walk in |
+|---|---|
+| Yours | Your household, your visitors, and the game's own characters (the maid, the repairman, a burglar). Not the neighbours. |
+| A neighbour's | That household only, and yours for three hours after being asked in. |
+| A vacant one | Everyone, so it can be looked round and furnished. |
+
+A Sim who is already inside is never trapped: the way out is always open.
+
+**Knocking.** Click a neighbour's door with one of your Sims and choose **Knock** (or use **Options >
+Knock** on the household, in the window). The Sim walks to the door. Between 8 in the morning and 10
+at night someone answers: one of the household comes to the door, the apartment is lit, and your
+household is welcome for three hours. At night nobody answers. When the welcome is over the
+apartment goes dark again; anyone still inside can walk out, but not back in.
+
+**Visitors.** The game sends a visitor to the front of the lot to wait to be greeted, which in a
+building is the street door. A visitor waiting there is walked to your own apartment's door and
+waits there instead.
+
+**The mailbox.** The game fixes the mailbox at the front of the lot. In a building it can be picked
+up in buy or build mode and put where the mail should come: a mail room, or the hall. It cannot be
+deleted. The mail carrier and the paper go to wherever it stands. There is still one mailbox for the
+building, and what comes is for the household being played.
+
+You can still build and buy anywhere on the lot, including in other households' apartments.
 
 ## What to try, and what to look for
 
@@ -154,25 +194,28 @@ Then send `Apartments.log` (the **Testing** page says where it is). It answers t
 | Does a neighbour who comes out walk to the shared rooms? | `came out for ... minutes, walking to ...`, then the lines for where they are |
 | Do they do anything while out? | A line each time what they are doing changes; all `idle` means they only stand about |
 | Do they walk home when their time is up? | `is walking home`, then `went home`; or `had not got there after 30 minutes` |
-| Do they wander into your apartment? | `THE APARTMENT OF ...` in a neighbour's line |
+| Do neighbours stay out of your apartment now? | No `THE APARTMENT OF ...` in a neighbour's line |
+| Does knocking work? | `is going to knock at ...`, then `knocked at ... answered` |
+| Do visitors come to your door? | `Visitor ... was waiting at the front of the lot, and is walking to the door of ...` |
 | Does your household pay for what they do? | `Money: ... THAT IS A NEIGHBOUR` |
 | What do bills come to, and when? | `Money:` lines naming the mailbox or the bill |
 | Is rent taken once a day, and is the amount right? | `Rent:` lines |
 
 ## What it does not do yet
 
-- **Apartments are not enforced.** Neighbours can walk into yours and use what is in it, and you
-  can build and buy anywhere. Locking doors and keeping build and buy mode to your own apartment
-  come next, once the log shows how neighbours move about.
+- **Building and buying are not kept to your own apartment.** You can change anything on the lot.
 - **Bills are the game's own**: one bill for the whole lot, paid by whoever is played, on top of the
-  rent.
+  rent. There is one mailbox for the building.
 - **One purse at a time.** A neighbouring household's money does not change while you play another.
   If the log shows neighbours spending yours, that is to be fixed, not intended.
 - **Unplayed households do not progress.** They are held as they are: no jobs, no bills, and their
   needs are as they were when they went home. Relationships are the exception. The game keeps those
   for each Sim, so they change as usual.
 - **A dimmed apartment is only dimmed.** You can still look into it, and nothing in it moves.
-- **The dimming is a first guess** at how dark is right, and has not been seen on a screen.
+- **Not yet seen in the game:** private apartments and knocking, visitors being walked to your door,
+  moving the mailbox, the plan of the lot, and the lighting while rooms are chosen. Each has a switch
+  on the Testing page or is only used when you ask for it, and each fails on its own: the log says
+  if one could not be added.
 - Away from home (downtown, on holiday) nothing here applies. The other households stay on the lot.
 
 ## How it works
@@ -226,6 +269,9 @@ It uses only what every Simitone with code packs has, so it does not need the ne
 - `Residency.cs` is who lives where.
 - `Units.cs` is the apartments, the rent, and what the pack's file for a lot says.
 - `Hood.cs` is apartment buildings on the neighbourhood screen.
+- `Doors.cs` is who may walk into which apartment, knocking, and showing visitors to the door. Doors
+  are closed by leaving them out when the engine plans a walk from room to room.
+- `UIApartmentMap.cs` is the plan of the lot: in a window, and in the corner while rooms are chosen.
 - `UIChoiceDialog.cs` is a question with a button for each answer. The game's own message box takes
   only one button of each kind, so the pack has its own.
 - `UIRoomPicker.cs` is choosing a room by clicking in it: one of the lot's own tools, like the wall

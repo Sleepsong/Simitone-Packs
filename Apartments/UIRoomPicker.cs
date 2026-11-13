@@ -28,16 +28,20 @@ namespace Apartments
         private bool Done;
         private Action<LotTilePos> Picked;
         private Action Cancelled;
+        private bool KeepGoing;
 
         public static UIRoomPicker Current;
 
-        /// <summary>Start choosing. Returns false if there is no lot to choose on.</summary>
-        public static bool Begin(Action<LotTilePos> picked, Action cancelled)
+        /// <summary>
+        /// Start choosing. Returns false if there is no lot to choose on. With keepGoing, every click is a choice and
+        /// the tool stays out until Esc (which calls done); without, it is put away after the first.
+        /// </summary>
+        public static bool Begin(Action<LotTilePos> picked, Action done, bool keepGoing = false)
         {
             var lot = Actions.Screen?.LotControl;
             if (lot == null) return false;
             Current?.Finish(false);
-            var picker = new UIRoomPicker() { Lot = lot, WasLive = lot.LiveMode, Picked = picked, Cancelled = cancelled };
+            var picker = new UIRoomPicker() { Lot = lot, WasLive = lot.LiveMode, Picked = picked, Cancelled = done, KeepGoing = keepGoing };
             lot.CustomControl?.Release();
             lot.CustomControl = picker;
             lot.LiveMode = false;
@@ -59,7 +63,7 @@ namespace Apartments
             var at = world.EstTileAtPosWithScroll(new Vector2(MousePosition.X, MousePosition.Y));
             var pos = LotTilePos.FromBigTile((short)Math.Floor(at.X), (short)Math.Floor(at.Y), world.State.Level);
             var picked = Picked;
-            Finish(false);
+            if (!KeepGoing) Finish(false);
             ApartmentsPack.Guard("choosing a room", () => picked?.Invoke(pos));
         }
 

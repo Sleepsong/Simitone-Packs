@@ -244,12 +244,20 @@ namespace Apartments
             if (Played(vm) == null) return "Nobody lives here yet. Move the first household in from the neighbourhood screen: choose the family, then this house.";
             if (family.HouseNumber != 0) return Residency.NameOf(family) + " already have a house.";
             if (apartment != null && !apartment.Vacant) return apartment.Name + " is taken.";
+            var deposit = 0;
+            if (apartment != null)
+            {
+                var file = Neighbours.FileOf(vm);
+                deposit = Units.Deposit(Units.Area(vm, file, apartment), file.Rate);
+                if (family.Budget < deposit) return Residency.NameOf(family) + " cannot afford to move into " + apartment.Name + ": it costs " + deposit + " (" + Units.DepositDays + " days' rent), and they have " + family.Budget + ".";
+                family.Budget -= deposit;
+            }
             family.HouseNumber = house; //its own record names the house. the game's table still names the played household
             AptLog.Write(Residency.NameOf(family) + " moved into house " + house + (apartment == null ? "" : ", " + apartment.Name) + ".");
             Neighbours.Reconcile(vm, "moved in"); //(two households make it a building, if it was not one)
             if (apartment != null) Neighbours.FileOf(vm)?.SetTenant(apartment, family.ChunkID);
             Neighbours.Reconcile(vm, "moved in");
-            return Residency.NameOf(family) + " now live here too, " + (apartment == null ? "with no apartment yet" : "in " + apartment.Name) + ". They are at home, and one of them will come out now and then. " + KeepNote;
+            return Residency.NameOf(family) + " now live here too, " + (apartment == null ? "with no apartment yet" : "in " + apartment.Name + ", for a deposit of " + deposit) + ". They are at home, and one of them will come out now and then. " + KeepNote;
         }
 
         public static string MoveOut(FAMI family)
@@ -307,6 +315,23 @@ namespace Apartments
             return null;
         }
 
+        /// <summary>The Sim being played goes to knock at a neighbouring household's door (the same as clicking the door and choosing Knock).</summary>
+        public static string Knock(FAMI family)
+        {
+            var vm = BuildingLot(out _, out var file, out var problem);
+            if (vm == null) return problem;
+            var sim = Screen?.SelectedAvatar;
+            if (sim == null) return "Choose one of your Sims first.";
+            var apartment = file.ApartmentOf(family.ChunkID);
+            if (apartment == null) return Residency.NameOf(family) + " have no apartment to knock at.";
+            if (!Doors.CanKnock(vm, sim, apartment)) return "Only a Sim of the household you are playing can knock, and not at their own door.";
+            var doors = Doors.DoorsOf(vm, Neighbours.StateOf(vm), apartment);
+            if (doors.Count == 0) return apartment.Name + " has no door to knock at: none of its rooms has a door to anywhere outside it.";
+            var nearest = doors.OrderBy(x => Math.Abs(x.Outside.x - sim.Position.x) + Math.Abs(x.Outside.y - sim.Position.y) + Math.Abs(x.Outside.Level - sim.Position.Level) * 1000).First();
+            Doors.GoAndKnock(vm, sim, apartment, nearest);
+            return sim.Name + " is going to knock at " + apartment.Name + ". You are told what happens when they get there.";
+        }
+
         // ---- the console's way of giving rooms: the room the played Sim is standing in ----
 
         /// <summary>The room the played Sim is in joins a household's apartment (the played one's, if none is given). The household gets an apartment if it has none.</summary>
@@ -361,6 +386,18 @@ namespace Apartments
         {
             var vm = BuildingLot(out _, out _, out var problem);
             return (vm == null) ? problem : Neighbours.SendHome(vm);
+        }
+
+        public static void SetPrivate(bool on)
+        {
+            Doors.Private = on;
+            AptLog.Write("Setting: private " + (on ? "on" : "off"));
+        }
+
+        public static void SetShowVisitors(bool on)
+        {
+            Doors.ShowVisitors = on;
+            AptLog.Write("Setting: visitors to the door " + (on ? "on" : "off"));
         }
 
         public static void SetWatch(bool on)

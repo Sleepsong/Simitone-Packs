@@ -21,7 +21,8 @@ foreach (var m in h.GetPatchedMethods()) {
     Console.WriteLine($"patched {m.DeclaringType.Name}.{m.Name}: prefixes={info.Prefixes.Count} postfixes={info.Postfixes.Count}");
 }
 // the two ways into the Apartments window are optional to the pack, but should fit the Simitone this is built against
-foreach (var needed in new[] { "TS1GameScreen.Save", "VMContext.RefreshLighting", "UILotControl.Update", "UIMainPanel.AddPacksButton", "UIHouseSelectPanel..ctor", "TS1GameScreen.MoveInAndPlay", "TS1GameScreen.PlayHouse" }) {
+foreach (var needed in new[] { "TS1GameScreen.Save", "VMContext.RefreshLighting", "UILotControl.Update", "UIMainPanel.AddPacksButton", "UIHouseSelectPanel..ctor", "TS1GameScreen.MoveInAndPlay", "TS1GameScreen.PlayHouse",
+    "VMRoutingFrame.DoRoomRoute", "VMFindBestAction.Execute", "VMEntity.GetPieMenu", "VMNetInteractionCmd.Verify", "VMNetInteractionCmd.Execute", "VMEntity.IndividualUserMovable" }) {
     if (!h.GetPatchedMethods().Any(m => m.DeclaringType.Name + "." + m.Name == needed)) { Console.WriteLine("FAILED: the patch on " + needed + " did not attach"); return 1; }
 }
 // the per-tick hook must be harmless on a VM it knows nothing about
@@ -120,17 +121,25 @@ var flat2 = plan.Add(); flat2.Tiles.Add(new Tile(1, 9, 5)); flat2.Rooms = 2; fla
 Residency.Save(20, plan, neigh);
 Check("an empty building keeps its file", Residency.Load(20, neigh).Building && Residency.Load(20, neigh).ToLet.Count == 2 && Residency.Residents(20, neigh).Count == 0);
 var first = Fam(10, 0, 1); var second = Fam(11, 0, 2); var third = Fam(12, 0, 1);
+first.Budget = 1000; second.Budget = 79; third.Budget = 5000;
+Check("moving in costs two days' rent", Units.Deposit(35, 2) == 140 && Units.Deposit(20, 2) == 80 && Units.Deposit(20, 0) == 0);
 Residency.MoveIntoApartment(20, first, 2, neigh);
 var after1 = Residency.Load(20, neigh);
 Check("the first family takes the apartment it chose", first.HouseNumber == 20 && after1.ApartmentOf(10).Id == 2 && after1.Played == 10 && neigh.FamilyForHouse[20] == first);
+Check("...and pays the deposit", first.Budget == 1000 - 140);
+var tooPoor = false;
+try { Residency.MoveIntoApartment(20, second, 1, neigh); } catch (InvalidOperationException) { tooPoor = true; }
+Check("a family that cannot afford the deposit does not move in, and pays nothing", tooPoor && second.HouseNumber == 0 && second.Budget == 79 && Residency.Load(20, neigh).ToLet.Count == 1);
+second.Budget = 80;
 Check("...and one apartment is left", after1.ToLet.Count == 1 && after1.ToLet[0].Id == 1);
 Residency.MoveIntoApartment(20, second, 1, neigh);
 var after2 = Residency.Load(20, neigh);
+Check("a family with exactly the deposit can move in, and is left with nothing", second.Budget == 0);
 Check("the second family takes the one left, and is the one played", second.HouseNumber == 20 && after2.ApartmentOf(11).Id == 1 && after2.ApartmentOf(10).Id == 2 && after2.Played == 11 && neigh.FamilyForHouse[20] == second);
 Check("...and the building is full", after2.ToLet.Count == 0 && Residency.Residents(20, neigh).Count == 2);
 var refused = false;
 try { Residency.MoveIntoApartment(20, third, 1, neigh); } catch (InvalidOperationException) { refused = true; }
-Check("a taken apartment cannot be moved into", refused && third.HouseNumber == 0);
+Check("a taken apartment cannot be moved into, and nothing is paid", refused && third.HouseNumber == 0 && third.Budget == 5000);
 neigh.MoveOut(20); // the game evicts the played household (11)
 var after3 = Residency.Load(20, neigh);
 Check("an evicted household's apartment is vacant again, and the other household is played", second.HouseNumber == 0 && after3.Find(1).Vacant && after3.ApartmentOf(10).Id == 2 && after3.Played == 10 && neigh.FamilyForHouse[20] == first);
@@ -139,6 +148,31 @@ Check("with everyone gone the building is still a building, all to let", Residen
 Residency.WritePlayed(20, 10, neigh);
 Check("the pack keeps its files where Simitone's own helper would", PackStore.PathFor("sample.apartments", neigh.GetHousePath(20)).Replace('\\', '/').Contains("/LocalHouse/PackData/sample.apartments/House20-"));
 Check("writing nothing removes the file", PackStore.Write("sample.apartments", neigh.GetHousePath(20), null) && PackStore.Read("sample.apartments", neigh.GetHousePath(20)) == null);
+
+// ---- who may walk into an apartment ----
+{
+    var residents = new System.Collections.Generic.HashSet<int>() { 2, 3, 5 };
+    var mine = new Apartment() { Id = 1, Name = "Mine", Tenant = 2 };
+    var theirs = new Apartment() { Id = 2, Name = "Theirs", Tenant = 3 };
+    var empty = new Apartment() { Id = 3, Name = "Empty", Tenant = 0 };
+    const int played = 2, neighbour = 3, otherNeighbour = 5, guest = 9, npc = 0;
+    Check("a vacant apartment is open to everyone", Doors.MayEnter(played, played, residents, empty, false) && Doors.MayEnter(neighbour, played, residents, empty, false) && Doors.MayEnter(npc, played, residents, empty, false));
+    Check("a household may enter its own apartment", Doors.MayEnter(played, played, residents, mine, false) && Doors.MayEnter(neighbour, played, residents, theirs, false));
+    Check("the played household's guests and the game's own characters may enter its apartment", Doors.MayEnter(guest, played, residents, mine, false) && Doors.MayEnter(npc, played, residents, mine, false));
+    Check("the neighbours may not enter the played household's apartment", !Doors.MayEnter(neighbour, played, residents, mine, false) && !Doors.MayEnter(otherNeighbour, played, residents, mine, false));
+    Check("the played household may not enter a neighbour's apartment uninvited", !Doors.MayEnter(played, played, residents, theirs, false));
+    Check("...but may when asked in", Doors.MayEnter(played, played, residents, theirs, true));
+    Check("an invitation is for the played household only", !Doors.MayEnter(guest, played, residents, theirs, true) && !Doors.MayEnter(npc, played, residents, theirs, true) && !Doors.MayEnter(otherNeighbour, played, residents, theirs, true));
+}
+
+// ---- the plan of the lot ----
+{
+    // a 4 by 2 floor: apartment 0 | apartment 1 | shared | outdoors, twice
+    var cells = UIApartmentMap.Classify(4, 2, (x, y) => x < 2 ? x : -1, (x, y) => x == 3);
+    Check("the plan marks apartments, shared rooms and outdoors", cells.Length == 8 && cells[0] == 2 && cells[1] == 3 && cells[2] == 1 && cells[3] == 0 && cells[4] == 2 && cells[7] == 0);
+    var pf = new LotFile(); var p1 = pf.Add(); var p2 = pf.Add(); var p3 = pf.Add();
+    Check("each apartment has its own colour", UIApartmentMap.ColourOf(pf, p1) != UIApartmentMap.ColourOf(pf, p2) && UIApartmentMap.ColourOf(pf, p2) != UIApartmentMap.ColourOf(pf, p3));
+}
 
 // ---- the question dialog's layout ----
 Check("a short message is one line", UIChoiceDialog.LinesOf("Which apartment?", 800, 15) == 1);

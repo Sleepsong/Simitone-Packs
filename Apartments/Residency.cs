@@ -181,20 +181,23 @@ namespace Apartments
 
         /// <summary>
         /// A household with no house moves into an apartment of a building, from the neighbourhood screen. It becomes
-        /// the household played there. Nothing is paid: an apartment is rented, not bought.
+        /// the household played there. It pays a deposit of two days' rent: an apartment is rented, not bought.
         /// </summary>
         public static void MoveIntoApartment(int house, FAMI family, int apartmentId, TS1NeighborhoodProvider neigh = null)
         {
             var file = Load(house, neigh);
             var apartment = file.Find(apartmentId);
             if (apartment == null || !apartment.ToLet) throw new InvalidOperationException("That apartment is not free.");
+            var deposit = Units.Deposit(apartment.Area, file.Rate);
+            if (family.Budget < deposit) throw new InvalidOperationException("They cannot afford the deposit.");
+            family.Budget -= deposit;
             family.HouseNumber = house;
             file.SetTenant(apartment, family.ChunkID);
             file.Played = family.ChunkID;
             file.AccountOf(family.ChunkID).Day = 0; //rent starts the day they are first played here
             (neigh ?? Neigh).FamilyForHouse[(short)house] = family;
             Save(house, file, neigh);
-            AptLog.Write(NameOf(family) + " moved into " + apartment.Name + " of house " + house + ".");
+            AptLog.Write(NameOf(family) + " moved into " + apartment.Name + " of house " + house + ", paying a deposit of " + deposit + " (money now " + family.Budget + ").");
         }
     }
 }
