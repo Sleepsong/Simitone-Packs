@@ -5,16 +5,16 @@ The cars are the game's own, and the driveway is paved with one of the game's ow
 brings no pictures of its own.
 
 **This is a first stage.** Driving and snapping the driveway to the road work in the game. The cars'
-look, putting cars only on driveways and the choice of floor are new in 0.7 and have not been seen in
-the game yet.
+look works too. The floor under the driveway and the opening for the pavement are new in 0.8 and have
+not been seen in the game yet.
 
 ## Using it
 
 The objects are in buy mode under **Decorative > Other**.
 
 1. Pick up the **Driveway**. It is five tiles wide, after The Sims 2's, and joins your garden to the
-   road: it runs across the pavement and the verge to the tarmac. It can only go there, and slides
-   along the road with the cursor.
+   road: it runs to the tarmac, with the pavement left open across it. It can only go there, and slides
+   along the road with the cursor. It lays floor under itself, and takes it up again when it goes.
 2. Buy a car: **Sedan**, **Junker**, **Pickup Truck**, **SUV**, **Town Car** or **Bentley**. Each is drawn
    with one of the game's own cars. A car can only be put down on a driveway, on the garden side of the
    pavement, and is turned to point along it.
@@ -55,9 +55,16 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 |---|---|
 | `driveways` | Where the pack thinks the road is on this lot, what the driveway and the cars are drawn with, and whether each car can be driven now. Also written, with maps of the lot, to `driveways-report.txt` |
 | `driveways cars` | Lists the game's vehicles in `driveways-cars.txt` |
+| `driveways work` | Writes how the game's carpool works (its menu and scripts) to `driveways-work.txt` |
 | `driveways reverse` | If the cars drive along the road backwards, this turns them round. It is remembered |
 
 ## Changes
+
+- **0.8**: the driveway lays real floor under itself, the same floor it is painted with, so it meets the
+  road with no strip of grass showing between them. Where it crosses the pavement it is open: the
+  pavement runs on across it. Moving or selling the driveway puts back the floor that was there
+  before. Driveways already on a lot are done when the lot next loads. `driveways work` writes out
+  how the game's own carpool works, for the next stage: driving to work.
 
 - **0.7**: real cars. The game's own cars stand on three tiles by six, so the pack's now do, and there
   are six to buy, each drawn with one of the game's: the carpool's sedan, the junker, the pickup truck,
@@ -128,7 +135,7 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 | `VMDrive.cs` | A new SimAntics primitive, number 200. The objects' scripts are one or two instructions that call it: to set an object up, to say whether the car is parked, and to drive. Also where a driveway and a car may be put, and what each is drawn with: the floor for the driveway, and the game's cars' tiles for the cars |
 | `Route.cs` | Where the car goes: finding the road, the way out and back, and how fast. Plain numbers, nothing from the engine |
 | `tests/` | Checks `Route.cs` |
-| `DrivewaysPack.cs` | Adds the primitive and the console commands, and three Harmony patches: on the game's tick, so a car is never left hidden if its drive is cut short; before an object is moved, to snap a driveway to the road and keep cars on driveways; and when an object's picture is set, to give driveways and cars theirs |
+| `DrivewaysPack.cs` | Adds the primitive and the console commands, and Harmony patches: on the game's tick, so a car is never left hidden if its drive is cut short; round an object being moved or deleted, to snap a driveway to the road, keep cars on driveways, and lay and take up the driveway's floor; and when an object's picture is set, to give driveways and cars theirs |
 | `Shared.cs` | The ids and sizes the object file and the code must agree on, and the cars: which of the game's each is drawn with. Compiled into both |
 
 To write the object file again, and see a driveway painted with a made-up test tile:

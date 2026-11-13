@@ -41,7 +41,10 @@ namespace Driveways
             harmony.Patch(tick, postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterTick)));
             //a driveway being put down snaps to the road
             var move = AccessTools.Method(typeof(VMMultitileGroup), "ChangePosition") ?? throw new Exception("VMMultitileGroup.ChangePosition was not found: this pack was made for a different version of Simitone");
-            harmony.Patch(move, prefix: new HarmonyMethod(typeof(DrivewaysPack), nameof(BeforeMove)));
+            harmony.Patch(move, prefix: new HarmonyMethod(typeof(DrivewaysPack), nameof(BeforeMove)), postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterMove)));
+            //a driveway lays real floor under itself, and takes it up again when it goes
+            var delete = AccessTools.Method(typeof(VMEntity), "Delete") ?? throw new Exception("VMEntity.Delete was not found: this pack was made for a different version of Simitone");
+            harmony.Patch(delete, prefix: new HarmonyMethod(typeof(DrivewaysPack), nameof(BeforeDelete)));
             //the driveway is drawn with the game's own pavement, and the car with a real Sims 1 car's pictures when the game has one that fits
             var graphic = AccessTools.Method(typeof(VMGameObject), "RefreshGraphic") ?? throw new Exception("VMGameObject.RefreshGraphic was not found: this pack was made for a different version of Simitone");
             harmony.Patch(graphic, postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterGraphic)));
@@ -55,6 +58,7 @@ namespace Driveways
         ///   driveways                 what the pack makes of this lot (and writes driveways-report.txt)
         ///   driveways cars            lists the game's vehicles in driveways-cars.txt
         ///   driveways floors          lists the game's floors in driveways-floors.txt
+        ///   driveways work            writes how the game's carpool works to driveways-work.txt
         ///   driveways floor <words>   paints driveways with the floor whose name has those words; "tarmac" for the road's; nothing for the pack's choice
         ///   driveways reverse         turns the cars round as they drive along the road, if they drive backwards
         /// </summary>
@@ -65,10 +69,12 @@ namespace Driveways
             {
                 case "cars": return ReportCars();
                 case "floors": return ReportFloors();
+                case "work": return ReportTo("driveways-work.txt", CarLook.ListWork, "How the game's carpool works is written out in ");
                 case "floor":
                     Settings.Floor = string.Join(" ", args, 1, args.Length - 1);
                     Settings.Save();
                     DrivewayLook.Repaint();
+                    try { VMDrive.Relay((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm); } catch (Exception) { }
                     Show("Driveways", "The driveway's look: " + DrivewayLook.Describe());
                     return true;
                 case "reverse":
@@ -78,6 +84,20 @@ namespace Driveways
                     return true;
                 default: return false;
             }
+        }
+
+        private static bool ReportTo(string name, Func<string> what, string says)
+        {
+            string message;
+            try
+            {
+                var file = System.IO.Path.Combine(FSOEnvironment.UserDir, name);
+                File.WriteAllText(file, what());
+                message = says + file;
+            }
+            catch (Exception e) { message = "It could not be written: " + e.Message; }
+            Show("Driveways", message);
+            return true;
         }
 
         private static bool ReportFloors()
@@ -127,6 +147,18 @@ namespace Driveways
             });
         }
 
+        /// <summary>After the game has moved an object, or tried to: a driveway lays its floor where it now is.</summary>
+        public static void AfterMove(VMMultitileGroup __instance, VMContext context)
+        {
+            try { VMDrive.AfterDrivewayMoves(__instance, context); } catch (Exception) { }
+        }
+
+        /// <summary>Before the game deletes an object: a driveway's tile puts back the floor that was under it.</summary>
+        public static void BeforeDelete(VMEntity __instance, VMContext context)
+        {
+            try { if (__instance is VMGameObject && VMDrive.IsDrivewayGUID((__instance.MasterDefinition ?? __instance.Object.OBJ).GUID)) VMDrive.Unpave(__instance, context); } catch (Exception) { }
+        }
+
         public static void AfterGraphic(VMGameObject __instance)
         {
             //(never let a picture stop the game)
@@ -160,6 +192,7 @@ namespace Driveways
         {
             try
             {
+                VMDrive.BeforeDrivewayMoves(__instance, context);
                 VMDrive.SnapDriveway(__instance, ref pos, ref direction, context, flags);
                 if (!VMDrive.CarMayGo(__instance, pos, ref direction, context, flags))
                 {

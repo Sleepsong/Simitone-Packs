@@ -138,6 +138,11 @@ namespace Driveways
                 var flags = (VMMovementFlags)obj.GetValue(VMStackObjectVariable.MovementFlags);
                 if ((flags & Movable) != Movable) obj.SetValue(VMStackObjectVariable.MovementFlags, (short)(flags | Movable));
             }
+            //driveways put down before 0.8 have no floor under them yet, and are not open where they cross the pavement
+            foreach (var group in vm.Entities.Where(e => e is VMGameObject && GUIDOf(e) == Shared.DrivewayGUID).Select(e => e.MultitileGroup).Distinct().ToList())
+            {
+                try { AfterDrivewayMoves(group, vm.Context); } catch (Exception) { }
+            }
         }
 
         private static uint GUIDOf(VMEntity obj) => (obj.MasterDefinition ?? obj.Object.OBJ).GUID;
@@ -312,6 +317,102 @@ namespace Driveways
             //(a lot with no road is looked at again next time: it may not have finished loading)
             if (road != null) Roads.Add(vm, new RoadFound { Road = road, How = how });
             return road;
+        }
+
+        // ---- the floor under a driveway ----
+        //
+        // A driveway is an object, drawn a hair above the ground. Under it the pack lays real floor, the same floor it
+        // is painted with, so that it meets the road and the garden as any floor does, with no ground showing at
+        // the joins. Where it crosses the pavement nothing is laid and that tile of the driveway is hidden, so the
+        // pavement runs on across it. When the driveway is moved or sold, the floor that was there before is put back.
+        //
+        // Each tile of a driveway remembers what it did in its own attributes, which the game saves with it:
+        private const int AttrPaved = 0;     //1 when this tile has laid floor
+        private const int AttrBefore = 1;    //the floor that was there before
+        private const int AttrX = 2, AttrY = 3; //where
+        private const int AttrLaid = 4;      //the floor it laid
+
+        private static bool IsNewDriveway(VMMultitileGroup group) => group.Objects.Count > 0 && GUIDOf(group.Objects[0]) == Shared.DrivewayGUID;
+
+        /// <summary>Put back the floor that was under one tile of a driveway, if it laid any and nobody has changed it since.</summary>
+        public static void Unpave(VMEntity tile, VMContext context)
+        {
+            if (tile.GhostImage || tile.GetAttribute(AttrPaved) != 1) return;
+            tile.SetAttribute(AttrPaved, 0);
+            var arch = context.Architecture;
+            short x = tile.GetAttribute(AttrX), y = tile.GetAttribute(AttrY);
+            if (x < 0 || y < 0 || x >= arch.Width || y >= arch.Height) return;
+            var now = arch.GetFloor(x, y, 1);
+            if (now.Pattern != (ushort)tile.GetAttribute(AttrLaid)) return; //(the player has put another floor there: leave it)
+            now.Pattern = (ushort)tile.GetAttribute(AttrBefore);
+            arch.SetFloor(x, y, 1, now, true);
+        }
+
+        /// <summary>Before a driveway is moved: put back the floor under where it is.</summary>
+        public static void BeforeDrivewayMoves(VMMultitileGroup group, VMContext context)
+        {
+            if (!IsNewDriveway(group) || context?.VM == null || !context.VM.TS1) return;
+            foreach (var tile in group.Objects) Unpave(tile, context);
+        }
+
+        /// <summary>
+        /// After a driveway has been moved (or was not, and is where it was): lay floor under it, and open it where it
+        /// crosses the pavement. One only being held shows the opening and lays nothing.
+        /// </summary>
+        public static void AfterDrivewayMoves(VMMultitileGroup group, VMContext context)
+        {
+            if (!IsNewDriveway(group) || context?.VM == null || !context.VM.TS1) return;
+            var arch = context.Architecture;
+            ushort laying = 0;
+            foreach (var tile in group.Objects)
+            {
+                var pos = tile.Position;
+                if (pos == LotTilePos.OUT_OF_WORLD || pos.Level != 1 || pos.TileX < 0 || pos.TileY < 0 || pos.TileX >= arch.Width || pos.TileY >= arch.Height)
+                {
+                    if (tile.GetValue(VMStackObjectVariable.Hidden) != 0) tile.SetValue(VMStackObjectVariable.Hidden, 0);
+                    continue;
+                }
+                var floor = arch.GetFloor(pos.TileX, pos.TileY, 1);
+                bool paved = tile.GetAttribute(AttrPaved) == 1 && tile.GetAttribute(AttrX) == pos.TileX && tile.GetAttribute(AttrY) == pos.TileY;
+                //the pavement runs on across the driveway
+                bool pavement = floor.Pattern == PavementFloor && !paved;
+                var hide = (short)(pavement ? 1 : 0);
+                if (tile.GetValue(VMStackObjectVariable.Hidden) != hide) tile.SetValue(VMStackObjectVariable.Hidden, hide);
+                if (pavement || paved || tile.GhostImage) continue;
+
+                if (laying == 0)
+                {
+                    laying = DrivewayLook.FloorFor(tile);
+                    if (laying == 0) return; //(no floor of the game's could be found: the driveway is only its object)
+                }
+                if (floor.Pattern == laying) continue; //(already that floor: nothing to lay, and nothing to put back later)
+                tile.SetAttribute(AttrBefore, (short)floor.Pattern);
+                tile.SetAttribute(AttrX, pos.TileX);
+                tile.SetAttribute(AttrY, pos.TileY);
+                tile.SetAttribute(AttrLaid, (short)laying);
+                tile.SetAttribute(AttrPaved, 1);
+                floor.Pattern = laying;
+                arch.SetFloor(pos.TileX, pos.TileY, 1, floor, true);
+            }
+        }
+
+        /// <summary>The player has chosen another floor: lay it under every driveway on the lot in place of the one laid before.</summary>
+        public static void Relay(VM vm)
+        {
+            if (vm == null) return;
+            var arch = vm.Context.Architecture;
+            foreach (var tile in vm.Entities.Where(e => e is VMGameObject && GUIDOf(e) == Shared.DrivewayGUID && e.GetAttribute(AttrPaved) == 1).ToList())
+            {
+                var laying = DrivewayLook.FloorFor(tile);
+                if (laying == 0) return;
+                short x = tile.GetAttribute(AttrX), y = tile.GetAttribute(AttrY);
+                if (x < 0 || y < 0 || x >= arch.Width || y >= arch.Height) continue;
+                var now = arch.GetFloor(x, y, 1);
+                if (now.Pattern != (ushort)tile.GetAttribute(AttrLaid) || now.Pattern == laying) continue;
+                now.Pattern = laying;
+                arch.SetFloor(x, y, 1, now, true);
+                tile.SetAttribute(AttrLaid, (short)laying);
+            }
         }
 
         //for the "driveways" report: how often a driveway has been snapped since the game started, and the last time
@@ -642,6 +743,8 @@ namespace Driveways
 
         private static bool Looked;
         private static string Outcome = "not looked for yet.";
+        //the number of the floor the driveway is painted with, as the lot's own floors are numbered; 0 if none was found
+        private static ushort Pattern;
         //the painted drawing groups, each numbered FloorDress.IDOffset above the plain one it stands in for; held so they stay loaded
         private static FSO.Files.Formats.IFF.IffFile Dressed;
         //every driveway tile dressed so far, so they can be painted again when the floor is changed
@@ -676,9 +779,11 @@ namespace Driveways
         {
             Looked = true;
             Dressed = null;
+            Pattern = 0;
             try
             {
                 var content = FSO.Content.Content.Get();
+                ushort number = 0;
                 FloorDress.Tile tile = null;
                 string what = null;
 
@@ -706,13 +811,14 @@ namespace Driveways
                     var provider = content.WorldFloors;
                     var file = provider.Floors.Get(provider.Entries[pick.Value.ID].FileName);
                     tile = Read(file, 513);
-                    if (tile != null) what = $"the game's floor \"{pick.Value.Name}\"";
+                    if (tile != null) { what = $"the game's floor \"{pick.Value.Name}\""; number = pick.Value.ID; }
                 }
                 if (tile == null)
                 {
                     //the game's built-in floors: floor n's near sprite is sprite n + 512 (as the engine's floor provider reads them)
                     var floorsFile = new FSO.Files.Formats.IFF.IffFile(System.IO.Path.Combine(content.TS1BasePath, "GameData/floors.iff"));
                     tile = Read(floorsFile, (ushort)(Tarmac + 512));
+                    if (tile != null) number = Tarmac;
                     if (tile != null) what = "the road's tarmac" + (wanted != "" && wanted != "tarmac" ? $" (no floor named \"{Settings.Floor}\" was found)" : "");
                 }
                 if (tile == null) { Outcome = "the pack's plain grey: no floor tile could be read from the game."; return; }
@@ -720,6 +826,7 @@ namespace Driveways
                 var groups = packFile.List<FSO.Files.Formats.IFF.Chunks.OBJD>().Where(o => o.NumGraphics > 0 && VMDrive.IsDrivewayGUID(o.MasterID == 0 ? o.GUID : MasterOf(packFile, o)))
                     .Select(o => o.BaseGraphicID).Distinct().ToList();
                 Dressed = FloorDress.Build(packFile, groups, tile);
+                Pattern = number;
                 Outcome = $"painted with {what} ({tile.Width} by {tile.Height}). \"driveways floors\" lists the floors it could be; \"driveways floor <words from a name>\" picks one, and \"driveways floor tarmac\" the road's.";
             }
             catch (Exception e)
@@ -732,6 +839,13 @@ namespace Driveways
         private static uint MasterOf(FSO.Files.Formats.IFF.IffFile file, FSO.Files.Formats.IFF.Chunks.OBJD tile)
         {
             return file.List<FSO.Files.Formats.IFF.Chunks.OBJD>().FirstOrDefault(o => o.MasterID == tile.MasterID && o.SubIndex == -1)?.GUID ?? 0;
+        }
+
+        /// <summary>The floor to lay under a driveway: the one it is painted with. 0 if none could be found.</summary>
+        public static ushort FloorFor(VMEntity tile)
+        {
+            if (!Looked) Look(tile.Object.OBJ.ChunkParent);
+            return Pattern;
         }
 
         /// <summary>
@@ -869,6 +983,86 @@ namespace Driveways
             if (!Borrowed.TryGetValue(obj.MasterDefinition.GUID, out var tiles)) return;
             var place = PlaceOf(obj.Object.OBJ.SubIndex);
             if (tiles.TryGetValue(place.X * 256 + place.Y, out var dgrp) && obj.WorldUI is ObjectComponent picture) picture.DGRP = dgrp;
+        }
+
+        /// <summary>
+        /// How the game's own carpool works, for the "driveways work" console command: the menu and the scripts of the
+        /// carpool's car, of the scripts it shares with other objects, and of anything else named for work. Scripts
+        /// are given instruction by instruction, as numbers. For working out how a Sim's own car could take them to
+        /// work.
+        /// </summary>
+        public static string ListWork()
+        {
+            var text = new System.Text.StringBuilder();
+            var content = FSO.Content.Content.Get();
+            var provider = content.WorldObjects;
+            var done = new HashSet<FSO.Files.Formats.IFF.IffFile>();
+
+            void Dump(string title, FSO.Files.Formats.IFF.IffFile file)
+            {
+                if (file == null || !done.Add(file)) return;
+                text.AppendLine();
+                text.AppendLine("==== " + title + " (" + file.Filename + ") ====");
+                foreach (var objd in file.List<FSO.Files.Formats.IFF.Chunks.OBJD>() ?? new List<FSO.Files.Formats.IFF.Chunks.OBJD>())
+                {
+                    if (objd.MasterID != 0 && objd.SubIndex != -1 && objd.SubIndex != 0) continue; //(one tile of each is enough)
+                    text.AppendLine($"object \"{objd.ChunkLabel}\" {objd.GUID:X8} type {objd.ObjectType} sub {objd.SubIndex}: init {objd.BHAV_Init} main {objd.BHAV_MainID} menu {objd.TreeTableID} attributes {objd.NumAttributes} global {objd.Global} fn table {objd.UsesFnTable}");
+                }
+                foreach (var glob in file.List<FSO.Files.Formats.IFF.Chunks.GLOB>() ?? new List<FSO.Files.Formats.IFF.Chunks.GLOB>())
+                    text.AppendLine("shares scripts with: " + glob.Name);
+                foreach (var table in file.List<FSO.Files.Formats.IFF.Chunks.TTAB>() ?? new List<FSO.Files.Formats.IFF.Chunks.TTAB>())
+                {
+                    var names = file.Get<FSO.Files.Formats.IFF.Chunks.TTAs>(table.ChunkID);
+                    text.AppendLine($"menu {table.ChunkID}:");
+                    foreach (var action in table.Interactions)
+                        text.AppendLine($"  \"{names?.GetString((int)action.TTAIndex)}\" action {action.ActionFunction} test {action.TestFunction} flags {(uint)action.Flags:X} autonomy {action.AutonomyThreshold} attenuation {action.AttenuationCode}");
+                }
+                foreach (var strings in file.List<FSO.Files.Formats.IFF.Chunks.STR>() ?? new List<FSO.Files.Formats.IFF.Chunks.STR>())
+                {
+                    if (strings is FSO.Files.Formats.IFF.Chunks.TTAs || strings is FSO.Files.Formats.IFF.Chunks.CTSS) continue;
+                    text.AppendLine($"strings {strings.ChunkID} \"{strings.ChunkLabel}\": " + string.Join(" | ", Enumerable.Range(0, Math.Min(strings.Length, 40)).Select(i => strings.GetString(i))));
+                }
+                foreach (var script in (file.List<FSO.Files.Formats.IFF.Chunks.BHAV>() ?? new List<FSO.Files.Formats.IFF.Chunks.BHAV>()).OrderBy(b => b.ChunkID))
+                {
+                    text.AppendLine($"script {script.ChunkID} \"{script.ChunkLabel}\" args {script.Args} locals {script.Locals}");
+                    for (int i = 0; i < script.Instructions.Length; i++)
+                    {
+                        var ins = script.Instructions[i];
+                        text.AppendLine($"  {i}: {ins.Opcode} [{string.Join(" ", ins.Operand.Select(b => b.ToString("X2")))}] t{ins.TruePointer} f{ins.FalsePointer}");
+                    }
+                }
+            }
+
+            try
+            {
+                //the carpool's car, and the scripts it shares
+                var car = provider.Get(0xDB6DEDB2);
+                if (car == null) text.AppendLine("The carpool's car (DB6DEDB2) is not in this game.");
+                else
+                {
+                    Dump("The carpool's car", car.Resource.MainIff);
+                    var resource = car.Resource as FSO.Content.GameObjectResource;
+                    if (resource?.SemiGlobal != null) Dump("The scripts it shares", resource.SemiGlobal.MainIff);
+                }
+                //anything else whose name says it is to do with work or cars arriving
+                var names = new System.Text.RegularExpressions.Regex("carpool|car pool|car portal|job|work|school bus", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                foreach (var entry in provider.Entries.Values.Where(e => (e.SubIndex == -1 || e.Group == 0) && names.IsMatch(e.Name ?? "")).OrderBy(e => e.Name).Take(25))
+                {
+                    try { Dump("\"" + entry.Name + "\"", provider.Get((uint)entry.ID)?.Resource.MainIff); }
+                    catch (Exception e) { text.AppendLine($"\"{entry.Name}\" could not be read: {e.Message}"); }
+                }
+                //the scripts every object shares: only their names, and those named for cars or work in full
+                var global = content.WorldObjectGlobals.Get("global")?.Resource?.MainIff;
+                if (global != null)
+                {
+                    text.AppendLine();
+                    text.AppendLine("==== The scripts every object shares (names only) ====");
+                    foreach (var script in global.List<FSO.Files.Formats.IFF.Chunks.BHAV>().OrderBy(b => b.ChunkID))
+                        text.AppendLine($"script {script.ChunkID} \"{script.ChunkLabel}\" args {script.Args}");
+                }
+            }
+            catch (Exception e) { text.AppendLine("Stopped: " + e); }
+            return text.ToString();
         }
 
         /// <summary>The game's vehicles, for the "driveways cars" console command: each one's name, file and the tiles it stands on.</summary>
