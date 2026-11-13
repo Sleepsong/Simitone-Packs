@@ -1,7 +1,7 @@
 {
   "id": "sample.apartments",
   "name": "Apartments (prototype)",
-  "version": "0.7",
+  "version": "0.8",
   "author": "Simitone",
   "description": "Apartment buildings: divide a lot into apartments, move households into them from the neighbourhood screen, and play one while the others are at home as neighbours who come out now and then. A prototype, with its own window (Options > Apartments, or F9). Back up your UserData first.",
   "minSimitoneVersion": "0.8.22",

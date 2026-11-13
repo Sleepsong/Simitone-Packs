@@ -174,6 +174,19 @@ Check("writing nothing removes the file", PackStore.Write("sample.apartments", n
     Check("each apartment has its own colour", UIApartmentMap.ColourOf(pf, p1) != UIApartmentMap.ColourOf(pf, p2) && UIApartmentMap.ColourOf(pf, p2) != UIApartmentMap.ColourOf(pf, p3));
 }
 
+// ---- the switches, kept between runs ----
+{
+    var before = Settings.Write();
+    Settings.Read("private=0\nvisitors=off\nmailbox=0\ndim=0\nwatch=0\noutings=often\nneeds=off\nnonsense\nwhat=ever\n");
+    Check("the switches read back off", !Doors.Private && !Doors.ShowVisitors && !Neighbours.MovableMailbox && !Neighbours.Dim && !Neighbours.Watch && Neighbours.ComeOut == Outings.Often && Neighbours.NeedsFloor == null);
+    var off = Settings.Write();
+    Settings.Read(before);
+    Check("...and on again, as they started", Doors.Private && Doors.ShowVisitors && Neighbours.MovableMailbox && Neighbours.Dim && Neighbours.Watch && Neighbours.ComeOut == Outings.Sometimes && Neighbours.NeedsFloor == 50 && Settings.Write() == before);
+    Settings.Read(off + "needs=999\noutings=daily\n");
+    Check("a switch set to nonsense is left as it was", Neighbours.NeedsFloor == null && Neighbours.ComeOut == Outings.Often);
+    Settings.Read(before);
+}
+
 // ---- the question dialog's layout ----
 Check("a short message is one line", UIChoiceDialog.LinesOf("Which apartment?", 800, 15) == 1);
 Check("each paragraph is at least a line, blank ones too", UIChoiceDialog.LinesOf("one\n\nthree", 800, 15) == 3);

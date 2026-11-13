@@ -41,6 +41,7 @@ namespace Apartments
             var lot = Actions.Screen?.LotControl;
             if (lot == null) return false;
             Current?.Finish(false);
+            AptLog.Write("[tool] Choosing rooms by clicking" + (keepGoing ? ", until Esc." : "."));
             var picker = new UIRoomPicker() { Lot = lot, WasLive = lot.LiveMode, Picked = picked, Cancelled = done, KeepGoing = keepGoing };
             lot.CustomControl?.Release();
             lot.CustomControl = picker;

@@ -77,6 +77,12 @@ namespace Apartments
                 throw;
             }
             PackManager.RegisterCommand("apt", Command);
+            Settings.Load();
+            //whatever takes the game down, the pack's or not, is written to its log: the game itself only prints it
+            AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
+            {
+                try { AptLog.Write("=== THE GAME IS CLOSING ON AN ERROR: " + e.ExceptionObject); } catch { }
+            };
             Doors.OnAnswer = (vm, title, message) =>
             {
                 if (Actions.Screen?.vm == vm) Actions.Say(title, message);
@@ -184,7 +190,7 @@ namespace Apartments
         public static void BeforeRoomRoute(VMRoutingFrame __instance, HashSet<VMRoomPortal> ___IgnoredRooms)
         {
             var vm = __instance.VM;
-            if (!Neighbours.IsShared(vm)) return; //nearly always: this runs for every walk on every lot
+            if (!Doors.Private || !Neighbours.IsShared(vm)) return; //nearly always: this runs for every walk on every lot
             Guard("closing apartment doors to a Sim", () => Doors.CloseDoors(vm, __instance.Caller, ___IgnoredRooms));
         }
 
@@ -192,22 +198,44 @@ namespace Apartments
         /// A Sim is about to choose something to do by themselves, from the lot's list of things that can be chosen.
         /// For the length of the choice, the list is one without the things in rooms closed to them.
         /// </summary>
-        public static void BeforeBestAction(VMStackFrame context, out List<VMEntity> __state)
+        public static void BeforeBestAction(VMStackFrame context, out List<VMEntity>[] __state)
         {
             __state = null;
             var vm = context.VM;
-            if (!Neighbours.IsShared(vm)) return;
+            if (!Doors.Private || !Neighbours.IsShared(vm)) return;
             List<VMEntity> all = vm.Context.ObjectQueries.WithAutonomy, reachable = null;
             Guard("leaving out what a Sim cannot reach", () => reachable = Doors.Reachable(vm, context.Caller, all));
             if (reachable == null) return;
-            __state = all;
+            __state = new[] { all, reachable, new List<VMEntity>(reachable) };
             vm.Context.ObjectQueries.WithAutonomy = reachable;
         }
 
-        /// <summary>The choice is made (or failed): the lot's own list goes back, whatever happened.</summary>
-        public static void AfterBestAction(VMStackFrame context, List<VMEntity> __state)
+        /// <summary>
+        /// The choice is made (or failed): the lot's own list goes back, whatever happened. If the game added or took
+        /// away a thing while the shorter list stood in for it, the same is done to the lot's own.
+        /// </summary>
+        public static void AfterBestAction(VMStackFrame context, List<VMEntity>[] __state)
         {
-            if (__state != null) context.VM.Context.ObjectQueries.WithAutonomy = __state;
+            if (__state == null) return;
+            var own = __state[0];
+            var stoodIn = __state[1];
+            var asGiven = __state[2];
+            try
+            {
+                if (stoodIn.Count != asGiven.Count || !stoodIn.SequenceEqual(asGiven))
+                {
+                    foreach (var gone in asGiven.Except(stoodIn).ToList()) own.Remove(gone);
+                    foreach (var added in stoodIn.Except(asGiven).ToList())
+                    {
+                        if (!own.Contains(added)) VM.AddToObjList(own, added);
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                AptLog.Write("Could not carry a change over to the lot's list of things Sims can choose: " + e);
+            }
+            context.VM.Context.ObjectQueries.WithAutonomy = own;
         }
 
         // the pie menu. an interaction of the pack's own is marked by a number no object's menu uses, and the parameter
@@ -223,6 +251,7 @@ namespace Apartments
                 var apartment = Doors.ApartmentBehind(vm, __instance, out _);
                 if (apartment == null || !Doors.CanKnock(vm, caller, apartment)) return;
                 __result.Add(new VMPieMenuInteraction() { Name = "Knock", ID = MenuID, Param0 = ParamKnock, Callee = __instance });
+                Doors.Once(vm, "knock-offered:" + __instance.ObjectID, () => "Knock was put on the menu of a door of " + apartment.Name + ".");
             });
         }
 
@@ -239,6 +268,7 @@ namespace Apartments
         {
             if (!IsKnock(__instance)) return true;
             __result = false;
+            AptLog.Write("[menu] Knock was chosen.");
             Guard("going to knock at a door", () =>
             {
                 var door = vm.GetObjectById(__instance.CalleeID);
@@ -263,7 +293,11 @@ namespace Apartments
             if (__result != VMPlacementError.CantBePickedup && __result != VMPlacementError.CantBePickedupOutOfBounds) return;
             var guid = __instance.Object?.OBJ?.GUID ?? 0;
             if (guid != 0xEF121974 && guid != 0x1D95C9B0) return;
-            if (Neighbours.MovableMailbox && Neighbours.IsShared(context.VM)) __result = VMPlacementError.Success;
+            if (Neighbours.MovableMailbox && Neighbours.IsShared(context.VM))
+            {
+                __result = VMPlacementError.Success;
+                Doors.Once(context.VM, "mailbox", () => "The mailbox was allowed to be picked up.");
+            }
         }
 
         // ---- the neighbourhood screen ----

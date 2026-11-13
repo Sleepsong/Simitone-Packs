@@ -35,6 +35,7 @@ namespace Apartments
         private const int LineHeight = 24;
         private const int TextSize = 15;
 
+        private string Title;
         private string Message;
         private List<KeyValuePair<string, Action>> Choices;
         private Action Cancelled;
@@ -51,6 +52,7 @@ namespace Apartments
         private UIChoiceDialog(string title, string message, List<KeyValuePair<string, Action>> choices, Action cancelled) : base()
         {
             Caption = title;
+            Title = title;
             Message = message ?? "";
             Choices = choices;
             Cancelled = cancelled;
@@ -102,7 +104,11 @@ namespace Apartments
             btn.Caption = text;
             btn.Width = width;
             btn.Position = pos;
-            btn.OnButtonClick += (b) => ApartmentsPack.Guard("answering a question", onClick);
+            btn.OnButtonClick += (b) =>
+            {
+                AptLog.Write("[question] " + Title + ": " + text);
+                ApartmentsPack.Guard("answering a question", onClick);
+            };
             Body.Add(btn);
             return btn;
         }

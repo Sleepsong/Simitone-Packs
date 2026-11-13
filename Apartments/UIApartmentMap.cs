@@ -128,9 +128,25 @@ namespace Apartments
             return (PickedOut == null || apartment == PickedOut) ? colour : Color.Lerp(colour, Outdoors, 0.6f);
         }
 
+        private bool Broken;
+
         public override void Draw(UISpriteBatch batch)
         {
-            if (!Visible || Cells == null) return;
+            if (!Visible || Cells == null || Broken) return;
+            try
+            {
+                DrawPlan(batch);
+            }
+            catch (Exception e)
+            {
+                Broken = true; //once is enough: it would fail again every frame
+                AptLog.Write("The plan of the lot could not be drawn: " + e);
+            }
+            base.Draw(batch);
+        }
+
+        private void DrawPlan(UISpriteBatch batch)
+        {
             Fill(batch, -3, -3, PixelWidth + 6, PixelHeight + 6, Frame);
             //each row, in runs of the same kind of tile: far fewer rectangles than tiles
             for (int y = 0; y < LotHeight; y++)
@@ -143,7 +159,6 @@ namespace Apartments
                     start = x;
                 }
             }
-            base.Draw(batch);
         }
     }
 
@@ -356,12 +371,15 @@ namespace Apartments
         {
             base.Update(state);
             //follow the floor the player is looking at
-            var level = LevelNow();
-            if (level != Map.Level)
+            ApartmentsPack.Guard("following the floor on the plan", () =>
             {
-                Map.Level = level;
-                Map.Refresh();
-            }
+                var level = LevelNow();
+                if (level != Map.Level)
+                {
+                    Map.Level = level;
+                    Map.Refresh();
+                }
+            });
         }
 
         public override void Draw(UISpriteBatch batch)

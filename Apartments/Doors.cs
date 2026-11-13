@@ -102,6 +102,7 @@ namespace Apartments
             if (!(walker is VMAvatar sim) || leftOut == null) return;
             var closed = ClosedRooms(vm, sim);
             if (closed.Count == 0) return;
+            Once(vm, "doors:" + sim.ObjectID, () => sim.Name + " plans a walk with " + closed.Count + " room(s) closed to them: " + string.Join(", ", closed.OrderBy(x => x)) + ".");
             var rooms = vm.Context.RoomInfo;
             for (int i = 0; i < rooms.Length; i++)
             {
@@ -123,6 +124,7 @@ namespace Apartments
             if (!(chooser is VMAvatar sim) || all == null) return null;
             var closed = ClosedRooms(vm, sim);
             if (closed.Count == 0) return null;
+            Once(vm, "choice:" + sim.ObjectID, () => sim.Name + " chooses what to do with " + closed.Count + " room(s) closed to them.");
             var result = new List<VMEntity>(all.Count);
             foreach (var thing in all)
             {
@@ -130,6 +132,15 @@ namespace Apartments
                 result.Add(thing);
             }
             return result;
+        }
+
+        private static System.Runtime.CompilerServices.ConditionalWeakTable<VM, HashSet<string>> Said = new System.Runtime.CompilerServices.ConditionalWeakTable<VM, HashSet<string>>();
+
+        /// <summary>Write something to the log the first time it happens on a lot, so the log shows what the pack had begun doing.</summary>
+        public static void Once(VM vm, string key, Func<string> line)
+        {
+            if (!Said.GetValue(vm, x => new HashSet<string>()).Add(key)) return;
+            try { AptLog.Write("(first) " + line()); } catch { }
         }
 
         // ---- an apartment's doors ----
@@ -284,7 +295,8 @@ namespace Apartments
             if (home == null) return;
             List<Doorstep> doors = null;
             var residents = state.ResidentIds;
-            foreach (var entity in vm.Entities)
+            //(a copy: sending a Sim walking puts a go-here marker on the lot, which changes the lot's own list)
+            foreach (var entity in vm.Entities.ToList())
             {
                 if (!(entity is VMAvatar sim) || sim.Dead || sim.IsPet || sim.Position == LotTilePos.OUT_OF_WORLD) continue;
                 if (state.ShownToDoor.Contains(sim.ObjectID)) continue;

@@ -365,12 +365,14 @@ namespace Apartments
         {
             Neighbours.ComeOut = often;
             AptLog.Write("Setting: outings " + often.ToString().ToLowerInvariant());
+            Settings.Save();
         }
 
         public static void SetDim(bool on)
         {
             Neighbours.Dim = on;
             AptLog.Write("Setting: dim " + (on ? "on" : "off"));
+            Settings.Save();
             Neighbours.DimChanged(Screen?.vm);
         }
 
@@ -392,24 +394,28 @@ namespace Apartments
         {
             Doors.Private = on;
             AptLog.Write("Setting: private " + (on ? "on" : "off"));
+            Settings.Save();
         }
 
         public static void SetShowVisitors(bool on)
         {
             Doors.ShowVisitors = on;
             AptLog.Write("Setting: visitors to the door " + (on ? "on" : "off"));
+            Settings.Save();
         }
 
         public static void SetWatch(bool on)
         {
             Neighbours.Watch = on;
             AptLog.Write("Setting: watch " + (on ? "on" : "off"));
+            Settings.Save();
         }
 
         public static void SetNeeds(int? floor)
         {
             Neighbours.NeedsFloor = floor;
             AptLog.Write("Setting: needs " + (floor?.ToString() ?? "off"));
+            Settings.Save();
         }
 
         // ---- telling the player ----

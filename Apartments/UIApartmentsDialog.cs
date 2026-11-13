@@ -151,6 +151,7 @@ namespace Apartments
             //nothing a button does may take the game down: what goes wrong is logged, and shown along the bottom
             btn.OnButtonClick += (b) =>
             {
+                AptLog.Write("[window] " + Showing + " page: " + text);
                 if (!ApartmentsPack.Guard("doing what a button in the Apartments window asked (" + text + ")", onClick))
                 {
                     Message = "That went wrong. The log says how.";
@@ -456,7 +457,7 @@ namespace Apartments
 
             var mailbox = Neighbours.MovableMailbox;
             rows.Add(new Row("The mailbox can be moved", "In a building, pick the mailbox up in buy or build mode and put it where the mail should come: a mail room, or the hall.")
-                .Button(mailbox ? "On" : "Off", () => Do(() => { Neighbours.MovableMailbox = !mailbox; AptLog.Write("Setting: movable mailbox " + (!mailbox ? "on" : "off")); return null; }), mailbox));
+                .Button(mailbox ? "On" : "Off", () => Do(() => { Neighbours.MovableMailbox = !mailbox; AptLog.Write("Setting: movable mailbox " + (!mailbox ? "on" : "off")); Settings.Save(); return null; }), mailbox));
 
             var needs = Neighbours.NeedsFloor;
             rows.Add(new Row("Hold neighbours' needs up", needs == null ? "Neighbours' needs are left to fall while they are out." : ("While a neighbour is out, their needs never fall below " + needs + " (of -100 to 100)."))
@@ -466,7 +467,7 @@ namespace Apartments
             rows.Add(new Row("Write down what neighbours do", "A line in the log each time a neighbour who is out starts doing something else, or moves to another room.")
                 .Button(watch ? "On" : "Off", () => Do(() => { Actions.SetWatch(!watch); return null; }), watch));
 
-            rows.Add(new Row("The log", "These switches last until the game closes. Everything is written to:\n" + AptLog.FilePath));
+            rows.Add(new Row("The log", "These switches are kept between runs. Everything is written to:\n" + AptLog.FilePath));
             return rows;
         }
 

@@ -110,7 +110,7 @@ Most of what the window does can also be typed, as `apt` followed by a command.
 | `apt log` | Where the log is |
 
 Everything is kept when you save the lot, like anything else you do on it. The switches on the
-Testing page last until the game closes.
+Testing page are kept between runs, in `apartments.cfg` in the user directory.
 
 ## Neighbours
 
@@ -201,6 +201,17 @@ Then send `Apartments.log` (the **Testing** page says where it is). It answers t
 | What do bills come to, and when? | `Money:` lines naming the mailbox or the bill |
 | Is rent taken once a day, and is the amount right? | `Rent:` lines |
 
+## If the game goes down
+
+`Apartments.log` is written as things happen, not afterwards, so its last lines say what was going
+on: `[window]` and `[question]` lines for each button pressed, `[tool]` and `[menu]` for choosing
+rooms and knocking, and `(first)` lines the first time each part of the pack acts on a lot. Whatever
+error closes the game is written there too, as `=== THE GAME IS CLOSING ON AN ERROR`, whether or not
+the pack caused it.
+
+Each part has a switch on the Testing page, and the switches are kept between runs. If something
+misbehaves, switch it off: the rest of the pack carries on without it.
+
 ## What it does not do yet
 
 - **Building and buying are not kept to your own apartment.** You can change anything on the lot.
@@ -272,6 +283,7 @@ It uses only what every Simitone with code packs has, so it does not need the ne
 - `Doors.cs` is who may walk into which apartment, knocking, and showing visitors to the door. Doors
   are closed by leaving them out when the engine plans a walk from room to room.
 - `UIApartmentMap.cs` is the plan of the lot: in a window, and in the corner while rooms are chosen.
+- `Settings.cs` keeps the Testing page's switches between runs.
 - `UIChoiceDialog.cs` is a question with a button for each answer. The game's own message box takes
   only one button of each kind, so the pack has its own.
 - `UIRoomPicker.cs` is choosing a room by clicking in it: one of the lot's own tools, like the wall
