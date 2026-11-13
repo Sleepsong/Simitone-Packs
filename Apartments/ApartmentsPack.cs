@@ -86,6 +86,25 @@ namespace Apartments
             {
                 try { AptLog.Write("=== THE GAME IS CLOSING ON AN ERROR: " + e.ExceptionObject); } catch { }
             };
+            //an error that closes the game may never reach that (the game's own handler shows a message first, and may
+            //be closed there; some errors skip it). so the engine's and the pack's errors are also written as they are
+            //thrown, caught or not: a few, since the engine throws and catches some in the ordinary way
+            AppDomain.CurrentDomain.FirstChanceException += (sender, e) =>
+            {
+                if (Thrown >= MostThrown || WritingThrown) return;
+                WritingThrown = true;
+                try
+                {
+                    var text = e.Exception?.ToString() ?? "";
+                    if (text.Contains("Apartments.") || text.Contains("FSO.SimAntics"))
+                    {
+                        Thrown++;
+                        AptLog.Write("[thrown " + Thrown + "/" + MostThrown + "] " + text.Replace("\r", "").Replace("\n", " | "));
+                    }
+                }
+                catch { }
+                finally { WritingThrown = false; }
+            };
             Doors.OnAnswer = (vm, title, message) =>
             {
                 if (Actions.Screen?.vm == vm) Actions.Say(title, message);
@@ -95,6 +114,10 @@ namespace Apartments
                 if (Actions.Screen?.vm == vm) Actions.Say("Rent", message);
             };
         }
+
+        private const int MostThrown = 40;
+        private static int Thrown;
+        [ThreadStatic] private static bool WritingThrown;
 
         public void OnLotLoaded(VM vm)
         {
@@ -162,6 +185,11 @@ namespace Apartments
             }, "knocking at an apartment's door");
             Optional(() => harmony.Patch(Find(typeof(VMEntity), "IndividualUserMovable"), postfix: Mine(nameof(AfterUserMovable))), "moving the mailbox in a building");
 
+            // the engine catches an error in a Sim's or an object's script and resets it. but its own handling of the
+            // error can fail (it resets the thing the script was acting on, and there may be none), and then the game
+            // closes. in a building that is likelier: private apartments mean more walks that cannot be made
+            Optional(() => harmony.Patch(Find(typeof(VMThread), "Tick"), finalizer: Mine(nameof(AfterThreadTick))), "catching script errors the engine lets through");
+
             // the ways into the Apartments window. the pack works without them (the console opens the window too), so
             // a version of Simitone they do not fit costs only that way in
             Optional(() => harmony.Patch(Find(typeof(UILotControl), "Update"), postfix: Mine(nameof(AfterLotControlUpdate))), "the F9 key");
@@ -185,6 +213,43 @@ namespace Apartments
             {
                 AptLog.Write("Could not add " + what + ": " + e.Message + " Use the console instead: apt");
             }
+        }
+
+        // ---- script errors ----
+
+        private static int ScriptErrors;
+
+        /// <summary>
+        /// Whatever escapes a script's tick would close the game. Write it down, in full; and on a lot the pack is at
+        /// work on, stop it there: the thing whose script failed is reset, as the engine meant to do, and the game
+        /// carries on.
+        /// </summary>
+        public static Exception AfterThreadTick(VMThread __instance, VMEntity ___Entity, Exception __exception)
+        {
+            if (__exception == null) return null;
+            var vm = __instance?.Context?.VM;
+            var mine = false;
+            try
+            {
+                mine = Neighbours.IsShared(vm);
+                if (++ScriptErrors <= 25)
+                {
+                    AptLog.Write("=== A SCRIPT ERROR GOT PAST THE ENGINE" + (mine ? " (stopped here, so the game carries on)" : " (not on a building: left to the game)")
+                        + ". Whose script: " + (___Entity?.ToString() ?? "?") + ". " + __exception);
+                }
+            }
+            catch { }
+            if (!mine) return __exception;
+            try
+            {
+                __instance.Stack?.Clear();
+                ___Entity?.Reset(vm.Context);
+            }
+            catch (Exception e)
+            {
+                try { AptLog.Write("    ...and it could not be reset afterwards: " + e.Message); } catch { }
+            }
+            return null;
         }
 
         // ---- private apartments ----
@@ -237,27 +302,45 @@ namespace Apartments
             {
                 AptLog.Write("Could not carry a change over to the lot's list of things Sims can choose: " + e);
             }
+            //a thing that was left out of the stand-in and deleted meanwhile was taken from the stand-in (where it was
+            //not), so it is still in the lot's own: nothing dead stays there
+            try { own.RemoveAll(x => x.Dead); } catch { }
             context.VM.Context.ObjectQueries.WithAutonomy = own;
         }
 
         // the pie menu. an interaction of the pack's own is marked by a number no object's menu uses, and the parameter
         // says which. (Open for Business does the same with 254.)
         private const byte MenuID = 253;
-        private const short ParamKnock = 7701;
+        private const short ParamKnock = 7701;      //on a door: knock at it
+        private const short ParamKnockFor = 7702;   //on a thing inside an apartment: knock at that apartment's nearest door
 
         public static void AfterPieMenu(VMEntity __instance, VM vm, VMEntity caller, List<VMPieMenuInteraction> __result)
         {
-            if (__result == null || !Neighbours.IsShared(vm) || !__instance.Portal) return;
-            Guard("offering to knock at a door", () =>
+            if (__result == null || !Neighbours.IsShared(vm)) return; //(this runs whenever the cursor is over anything)
+            Guard("looking at a menu in a building", () =>
             {
-                var apartment = Doors.ApartmentBehind(vm, __instance, out _);
-                if (apartment == null || !Doors.CanKnock(vm, caller, apartment)) return;
-                __result.Add(new VMPieMenuInteraction() { Name = "Knock", ID = MenuID, Param0 = ParamKnock, Callee = __instance });
-                Doors.Once(vm, "knock-offered:" + __instance.ObjectID, () => "Knock was put on the menu of a door of " + apartment.Name + ".");
+                //a door into somebody else's apartment: knock
+                if (__instance.Portal)
+                {
+                    var behind = Doors.ApartmentBehind(vm, __instance, out _);
+                    if (behind != null && Doors.CanKnock(vm, caller, behind))
+                    {
+                        __result.Add(new VMPieMenuInteraction() { Name = "Knock", ID = MenuID, Param0 = ParamKnock, Callee = __instance });
+                        Doors.Once(vm, 3, __instance.ObjectID, () => "Knock was put on the menu of a door of " + behind.Name + ".");
+                    }
+                    return;
+                }
+                //a thing inside an apartment the Sim cannot walk into: they could never reach it, so the menu says why,
+                //and offers the one thing that would help
+                var closed = Doors.ClosedApartmentOf(vm, caller, __instance);
+                if (closed == null || !Doors.CanKnock(vm, caller, closed)) return;
+                __result.Clear();
+                __result.Add(new VMPieMenuInteraction() { Name = "Knock at " + closed.Name + " first", ID = MenuID, Param0 = ParamKnockFor, Callee = __instance });
+                Doors.Once(vm, 4, closed.Id, () => "A thing inside " + closed.Name + " was clicked: its menu offers only to knock.");
             });
         }
 
-        private static bool IsKnock(VMNetInteractionCmd cmd) => cmd.Interaction == MenuID && !cmd.Global && cmd.Param0 == ParamKnock;
+        private static bool IsKnock(VMNetInteractionCmd cmd) => cmd.Interaction == MenuID && !cmd.Global && (cmd.Param0 == ParamKnock || cmd.Param0 == ParamKnockFor);
 
         public static bool BeforeVerify(VMNetInteractionCmd __instance, VM vm, ref bool __result)
         {
@@ -273,12 +356,27 @@ namespace Apartments
             AptLog.Write("[menu] Knock was chosen.");
             Guard("going to knock at a door", () =>
             {
-                var door = vm.GetObjectById(__instance.CalleeID);
+                var thing = vm.GetObjectById(__instance.CalleeID);
                 var sim = caller ?? (vm.GetObjectById(__instance.CallerID) as VMAvatar);
-                if (door == null || sim == null) return;
-                var apartment = Doors.ApartmentBehind(vm, door, out var doorstep);
-                if (apartment == null || !Doors.CanKnock(vm, sim, apartment)) return;
-                Doors.GoAndKnock(vm, sim, apartment, doorstep);
+                if (thing == null || sim == null) return;
+                if (__instance.Param0 == ParamKnock)
+                {
+                    var apartment = Doors.ApartmentBehind(vm, thing, out var doorstep);
+                    if (apartment == null || !Doors.CanKnock(vm, sim, apartment)) return;
+                    Doors.GoAndKnock(vm, sim, apartment, doorstep);
+                }
+                else
+                {
+                    var apartment = Doors.ClosedApartmentOf(vm, sim, thing);
+                    if (apartment == null || !Doors.CanKnock(vm, sim, apartment)) return;
+                    var door = Doors.NearestDoor(vm, sim, apartment);
+                    if (door == null)
+                    {
+                        Actions.Say(apartment.Name, apartment.Name + " has no door to knock at: none of its rooms has a door to anywhere outside it.");
+                        return;
+                    }
+                    Doors.GoAndKnock(vm, sim, apartment, door.Value);
+                }
             });
             return false;
         }
@@ -298,7 +396,7 @@ namespace Apartments
             if (Neighbours.MovableMailbox && Neighbours.IsShared(context.VM))
             {
                 __result = VMPlacementError.Success;
-                Doors.Once(context.VM, "mailbox", () => "The mailbox was allowed to be picked up.");
+                Doors.Once(context.VM, 5, 0, () => "The mailbox was allowed to be picked up.");
             }
         }
 

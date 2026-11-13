@@ -22,7 +22,7 @@ foreach (var m in h.GetPatchedMethods()) {
 }
 // the two ways into the Apartments window are optional to the pack, but should fit the Simitone this is built against
 foreach (var needed in new[] { "TS1GameScreen.Save", "VMContext.RefreshLighting", "UILotControl.Update", "UIMainPanel.AddPacksButton", "UIHouseSelectPanel..ctor", "TS1GameScreen.MoveInAndPlay", "TS1GameScreen.PlayHouse",
-    "VMRoutingFrame.DoRoomRoute", "VMFindBestAction.Execute", "VMEntity.GetPieMenu", "VMNetInteractionCmd.Verify", "VMNetInteractionCmd.Execute", "VMEntity.IndividualUserMovable" }) {
+    "VMRoutingFrame.DoRoomRoute", "VMFindBestAction.Execute", "VMThread.Tick", "VMEntity.GetPieMenu", "VMNetInteractionCmd.Verify", "VMNetInteractionCmd.Execute", "VMEntity.IndividualUserMovable" }) {
     if (!h.GetPatchedMethods().Any(m => m.DeclaringType.Name + "." + m.Name == needed)) { Console.WriteLine("FAILED: the patch on " + needed + " did not attach"); return 1; }
 }
 // the per-tick hook must be harmless on a VM it knows nothing about
@@ -162,6 +162,8 @@ Check("writing nothing removes the file", PackStore.Write("sample.apartments", n
     Check("the neighbours may not enter the played household's apartment", !Doors.MayEnter(neighbour, played, residents, mine, false) && !Doors.MayEnter(otherNeighbour, played, residents, mine, false));
     Check("the played household may not enter a neighbour's apartment uninvited", !Doors.MayEnter(played, played, residents, theirs, false));
     Check("...but may when asked in", Doors.MayEnter(played, played, residents, theirs, true));
+    Check("the game's own characters on a job go anywhere: a fire next door has to be put out", Doors.MayEnter(npc, played, residents, theirs, false, true) && Doors.MayEnter(npc, played, residents, mine, false, true));
+    Check("...but a visitor, or a neighbour, is not one of them", !Doors.MayEnter(guest, played, residents, theirs, false, false) && !Doors.MayEnter(otherNeighbour, played, residents, theirs, false, false));
     Check("an invitation is for the played household only", !Doors.MayEnter(guest, played, residents, theirs, true) && !Doors.MayEnter(npc, played, residents, theirs, true) && !Doors.MayEnter(otherNeighbour, played, residents, theirs, true));
 }
 

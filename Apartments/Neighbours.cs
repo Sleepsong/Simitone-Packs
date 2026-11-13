@@ -111,6 +111,13 @@ namespace Apartments
             /// <summary>While apartments are being shown on the lot: the one picked out (null: none is), or not showing at all.</summary>
             public bool Showing;
             public Apartment ShowingOne;
+            /// <summary>The engine's room table the room numbers above were worked out from. It is replaced whenever walls change.</summary>
+            public object RoomsSeen;
+            /// <summary>The rooms closed to each Sim, as worked out this tick (Doors.ClosedRooms): Sims plan many walks a tick.</summary>
+            public Dictionary<long, HashSet<ushort>> ClosedNow = new Dictionary<long, HashSet<ushort>>();
+            public int ClosedTick = -1;
+            /// <summary>Visitors seen waiting at the front of the lot, and for how many looks they have stood still.</summary>
+            public Dictionary<long, KeyValuePair<LotTilePos, int>> Waiting = new Dictionary<long, KeyValuePair<LotTilePos, int>>();
             /// <summary>What the last rent taken came to, for the window to say.</summary>
             public string RentNote;
             /// <summary>While showing: what each lit room is (by the room its light is worked out with). 0: shared, 1: the one picked out, 2: another apartment.</summary>
@@ -118,6 +125,23 @@ namespace Apartments
         }
 
         internal static LotState StateOf(VM vm) => (vm != null && Lots.TryGetValue(vm, out var state)) ? state : null;
+
+        /// <summary>
+        /// Rooms are known by the engine's numbers, and the engine renumbers them whenever a wall changes. Make sure
+        /// which-room-is-whose is from the room table as it is now, not as it was at the last regular look.
+        /// </summary>
+        internal static void FreshRooms(VM vm, LotState state)
+        {
+            var rooms = vm.Context.RoomInfo;
+            if (ReferenceEquals(rooms, state.RoomsSeen)) return;
+            state.RoomsSeen = rooms;
+            state.ClosedNow.Clear();
+            if (rooms == null || state.File == null) return;
+            state.RoomOwners = Units.RoomOwners(vm, state.File);
+            state.RoomApts = Units.RoomApartments(vm, state.File);
+        }
+
+        internal static int TickOf(LotState state) => state.Ticks;
 
         internal static long Clock(VM vm) => Now(vm);
 
@@ -629,6 +653,7 @@ namespace Apartments
             if (!Lots.TryGetValue(vm, out var state)) return;
             if (++state.Ticks % WatchEvery != 0) return;
             if (HomeHouse(vm) != state.House) return;
+            state.RoomsSeen = vm.Context.RoomInfo;
 
             var owners = Units.RoomOwners(vm, state.File);
             var changed = owners.Count != state.RoomOwners.Count || owners.Any(x => !state.RoomOwners.TryGetValue(x.Key, out var was) || was != x.Value);

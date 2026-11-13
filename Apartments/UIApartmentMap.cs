@@ -192,7 +192,7 @@ namespace Apartments
         public override void GameResized()
         {
             base.GameResized();
-            Refresh();
+            ApartmentsPack.Guard("laying the plan of the lot out again", Refresh);
         }
 
         public override void Update(UpdateState state)

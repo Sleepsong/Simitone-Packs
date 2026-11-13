@@ -160,11 +160,16 @@ to themselves, Sims do not even want the things in an apartment they cannot ente
 
 | Apartment | Who can walk in |
 |---|---|
-| Yours | Your household, your visitors, and the game's own characters (the maid, the repairman, a burglar). Not the neighbours. |
+| Yours | Your household and your visitors. Not the neighbours. |
 | A neighbour's | That household only, and yours for three hours after being asked in. |
+| Any | The game's own characters on a job: the firefighter, the police, the repairman, the maid. A fire next door has to be put out. |
 | A vacant one | Everyone, so it can be looked round and furnished. |
 
-A Sim who is already inside is never trapped: the way out is always open.
+A Sim who is already inside is never trapped: the way out is always open. That goes for a room that
+is in no apartment but opens only into one, too (a cupboard, or a room cut off by a new wall).
+
+Click anything inside an apartment your Sim cannot enter and its menu has one thing on it: **Knock
+at ... first**, which sends them to that apartment's nearest door.
 
 **Knocking.** Click a neighbour's door with one of your Sims and choose **Knock** (or use **Options >
 Knock** on the household, in the window). The Sim walks to the door. Between 8 in the morning and 10
@@ -173,8 +178,8 @@ household is welcome for three hours. At night nobody answers. When the welcome 
 apartment goes dark again; anyone still inside can walk out, but not back in.
 
 **Visitors.** The game sends a visitor to the front of the lot to wait to be greeted, which in a
-building is the street door. A visitor waiting there is walked to your own apartment's door and
-waits there instead.
+building is the street door. A visitor who has stood waiting there for a few seconds is walked to
+your own apartment's door and waits there instead. (Someone only walking past is left alone.)
 
 **The mailbox.** The game fixes the mailbox at the front of the lot. In a building it can be picked
 up in buy or build mode and put where the mail should come: a mail room, or the hall. It cannot be
@@ -218,6 +223,13 @@ rooms and knocking, and `(first)` lines the first time each part of the pack act
 error closes the game is written there too, as `=== THE GAME IS CLOSING ON AN ERROR`, whether or not
 the pack caused it.
 
+Two things are done about errors the game would otherwise close on. An error in a Sim's or an
+object's script that gets past the engine's own handling is stopped on a building lot: it is written
+down as `=== A SCRIPT ERROR GOT PAST THE ENGINE`, the Sim or object is reset, and the game carries
+on. And the first forty errors thrown by the engine or the pack in a run are written as `[thrown]`
+lines as they happen, caught or not, in case the one that closes the game never reaches the log any
+other way.
+
 Each part has a switch on the Settings page, and the switches are kept between runs. If something
 misbehaves, switch it off: the rest of the pack carries on without it.
 
@@ -232,8 +244,9 @@ misbehaves, switch it off: the rest of the pack carries on without it.
   needs are as they were when they went home. Relationships are the exception. The game keeps those
   for each Sim, so they change as usual.
 - **A dimmed apartment is only dimmed.** You can still look into it, and nothing in it moves.
-- **Not yet seen in the game:** private apartments and knocking, visitors being walked to your door,
-  moving the mailbox, the plan of the lot, and the lighting while rooms are chosen. Each has a switch
+- **Not yet seen working in the game:** private apartments and knocking, moving the mailbox, the
+  plan of the lot, and the lighting while rooms are chosen. (A visitor was seen being walked to the
+  door.) Each has a switch
   on the Settings page or is only used when you ask for it, and each fails on its own: the log says
   if one could not be added.
 - Away from home (downtown, on holiday) nothing here applies. The other households stay on the lot.

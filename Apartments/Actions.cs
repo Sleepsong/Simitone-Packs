@@ -439,7 +439,7 @@ namespace Apartments
         {
             if (message == null) return;
             AptLog.Write(title + ": " + message.Replace("\n", " | "));
-            GameThread.NextUpdate(x =>
+            GameThread.NextUpdate(x => ApartmentsPack.Guard("showing a message", () =>
             {
                 UIMobileAlert alert = null;
                 alert = new UIMobileAlert(new UIAlertOptions()
@@ -449,7 +449,7 @@ namespace Apartments
                     Buttons = UIAlertButton.Ok((btn) => UIScreen.RemoveDialog(alert))
                 });
                 UIScreen.GlobalShowDialog(alert, true);
-            });
+            }));
         }
 
         /// <summary>Ask the player to choose one of several things, each a button, with Cancel last.</summary>
