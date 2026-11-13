@@ -7,44 +7,35 @@ http://mozilla.org/MPL/2.0/.
 using FSO.Client;
 using FSO.Client.UI.Controls;
 using FSO.Client.UI.Framework;
+using FSO.Common.Rendering.Framework.Model;
 using FSO.Common.Utils;
+using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
+using Simitone.Client.UI.Controls;
+using Simitone.Client.UI.Model;
 using Simitone.Client.UI.Panels;
 using Simitone.Client.UI.Screens;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace FamilyTree
 {
     /// <summary>
-    /// A Sim's family tree, as in The Sims 2, a generation to a row: grandparents at the top, then parents, the Sim's
-    /// own generation, children and grandchildren. Each relative is a button that moves the tree to them.
+    /// A Sim's family tree, as in The Sims 2: portraits joined by lines, the Sim in the middle marked. Choosing a
+    /// relative draws the tree around them. The tree can only be looked at here. It is put together in Create a
+    /// Family, and after that it changes only as the family does.
     /// </summary>
-    public class UIFamilyTreeDialog : UIRowsDialog
+    public class UIFamilyTreeDialog : UIMobileDialog
     {
-        /// <summary>The rows, from the oldest generation down, with what each is called.</summary>
-        private static readonly (Tie, string)[] Generations =
-        {
-            (Tie.Grandparent, "Grandparents"),
-            (Tie.Parent, "Parents"),
-            (Tie.StepParent, "Step-parents"),
-            (Tie.ParentInLaw, "Parents-in-law"),
-            (Tie.AuntUncle, "Aunts and uncles"),
-            (Tie.Spouse, "Married to"),
-            (Tie.Sibling, "Brothers and sisters"),
-            (Tie.Cousin, "Cousins"),
-            (Tie.Child, "Children"),
-            (Tie.StepChild, "Step-children"),
-            (Tie.ChildInLaw, "Children-in-law"),
-            (Tie.NieceNephew, "Nieces and nephews"),
-            (Tie.Grandchild, "Grandchildren"),
-        };
+        private const int Margin = 60;
+        private const int Top = 100;
+        private const int ButtonWidth = 275;
 
         private static UIFamilyTreeDialog Current;
+        private static readonly Dictionary<uint, Texture2D> Faces = new Dictionary<uint, Texture2D>();
 
         private uint Centre;
-
-        protected override int RowHeight => 105;
+        private UIContainer Body;
 
         /// <summary>The Sim being played, if a lot is on screen.</summary>
         public static uint? PlayedSim()
@@ -99,121 +90,100 @@ namespace FamilyTree
             });
         }
 
+        /// <summary>A Sim's portrait. They are usually not on the lot, so Simitone draws their head by itself, once.</summary>
+        public static Texture2D Face(uint sim)
+        {
+            if (Faces.TryGetValue(sim, out var face)) return face;
+            try
+            {
+                face = UIIconCache.GetNeighbor(sim);
+            }
+            catch (Exception e)
+            {
+                People.Log("Could not draw the portrait of " + People.FirstName(sim) + ": " + e.Message);
+            }
+            Faces[sim] = face;
+            return face;
+        }
+
         private UIFamilyTreeDialog(uint sim) : base()
         {
             Centre = sim;
-            Caption = "Family Tree";
             Refresh();
         }
 
-        protected override void OnClosed()
+        private void CloseMe()
         {
             if (Current == this) Current = null;
+            Close();
         }
 
         private void Show(uint sim)
         {
             Centre = sim;
-            Page = 0;
-            Message = null;
             Refresh();
         }
 
-        /// <summary>Everyone in the tree, with what they are to the Sim in the middle. For the window, and for checking it.</summary>
-        public static List<(Tie, List<uint>)> Relatives(Kin kin, uint centre)
+        public override void GameResized()
         {
-            var everyone = kin.Links.SelectMany(l => new[] { l.A, l.B }).Distinct().Where(x => x != centre).ToList();
-            var ties = everyone.ToDictionary(x => x, x => kin.Between(centre, x));
-            var result = new List<(Tie, List<uint>)>();
-            foreach (var generation in Generations)
-            {
-                var members = everyone.Where(x => ties[x] == generation.Item1).ToList();
-                if (members.Count > 0) result.Add((generation.Item1, members));
-            }
-            return result;
+            base.GameResized();
+            Refresh();
         }
 
-        private static string ButtonName(uint sim)
+        public override void Update(UpdateState state)
         {
-            var name = People.FirstName(sim);
-            return name.Length > 11 ? name.Substring(0, 10) + "." : name;
+            base.Update(state);
+            //ride in and out with the dialog's stripes
+            if (Body != null) Body.X = ((Closing) ? 1 : -1) * (1 - InterpolatedAnimation) * Width;
         }
 
-        protected override List<Row> Rows()
+        /// <summary>Draw the window again, around the Sim in the middle.</summary>
+        private void Refresh()
         {
-            var rows = new List<Row>();
-            var kin = KinStore.Get();
-            //a Sim who has left the neighbourhood keeps their place in the file, but is not shown
-            var relatives = Relatives(kin, Centre)
-                .Select(group => (group.Item1, group.Item2.Where(People.Exists).ToList()))
-                .Where(group => group.Item2.Count > 0).ToList();
+            if (Body != null) Remove(Body);
+            Body = new UIContainer();
+            Add(Body);
+            Caption = "Family Tree of " + People.FullName(Centre);
 
-            var household = People.FamilyName(People.FamilyOf(Centre));
-            var about = (People.IsAdult(Centre) ? "An adult" : "A child") + (household == null ? "." : " of the " + household + " household.");
-            var played = PlayedSim();
-            var top = new Row(People.FullName(Centre), relatives.Count == 0
-                ? about + " No family is known for them. Family ties are chosen when a family is made, and with Change ties here."
-                : about);
-            if (played != null && played.Value != Centre) top.Button("Back to " + ButtonName(played.Value), () => Show(played.Value), false, false, 330);
-            rows.Add(top);
-
-            foreach (var (tie, members) in relatives)
+            float used = 0;
+            try
             {
-                var title = Generations.First(g => g.Item1 == tie).Item2;
-                var detail = string.Join(", ", members.Select(m => People.FullName(m) + " (" + TieNames.For(tie, People.IsFemale(m)).ToLowerInvariant() + ")"));
-                var row = new Row(title, detail);
-                foreach (var member in members)
+                //a Sim who has left the neighbourhood keeps their place in the file, but is not drawn
+                var layout = TreeLayout.For(KinStore.Get(), Centre, sim => sim == Centre || People.Exists(sim));
+                var tree = new UITreeView(layout, Face, People.FirstName, Show);
+                var scale = tree.Fit(Width - Margin * 2, ScrHeight - Top - 150 - 40);
+                tree.Position = new Vector2((Width - layout.Width * scale) / 2, Top);
+                Body.Add(tree);
+                used = layout.Height * scale;
+
+                if (layout.Nodes.Count == 1)
                 {
-                    var target = member;
-                    row.Button(ButtonName(member), () => Show(target), tie == Tie.Spouse);
-                }
-                rows.Add(row);
-            }
-            return rows;
-        }
-
-        protected override List<(string, Action)> BottomButtons()
-        {
-            return new List<(string, Action)>() { ("Change ties", ChangeTies) };
-        }
-
-        /// <summary>Who the Sim in the middle could have a tie with: their household, the family they already have, and everyone they have met.</summary>
-        public static List<uint> Candidates(Kin kin, uint centre)
-        {
-            var result = new List<uint>();
-            void Add(IEnumerable<uint> sims)
-            {
-                foreach (var sim in sims)
-                {
-                    if (sim != centre && !result.Contains(sim) && People.IsPerson(sim)) result.Add(sim);
+                    var label = new UILabel();
+                    label.CaptionStyle = label.CaptionStyle.Clone();
+                    label.CaptionStyle.Size = 15;
+                    label.CaptionStyle.Color = UIStyle.Current.DialogText;
+                    label.Alignment = TextAlignment.Top | TextAlignment.Center;
+                    label.Wrapped = true;
+                    label.Position = new Vector2(Margin, Top + used);
+                    label.Size = new Vector2(Width - Margin * 2, 1);
+                    label.Caption = "No family is known for " + People.FirstName(Centre) + ". Family is chosen when a household is made, in Create a Family.";
+                    Body.Add(label);
+                    used += 60;
                 }
             }
-            Add(People.FamilyOf(centre)?.FamilyGUIDs ?? new uint[0]);
-            Add(kin.Links.Where(l => l.Touches(centre)).Select(l => l.A == centre ? l.B : l.A));
-            Add(People.Met(centre));
-            return result;
-        }
+            catch (Exception e)
+            {
+                People.Log("The Family Tree window: " + e);
+            }
 
-        private void ChangeTies()
-        {
-            var kin = KinStore.Get();
-            var centre = Centre;
-            UIFamilyTiesDialog.Open(new TiesSubject()
-            {
-                Caption = "Family of " + People.FirstName(centre),
-                Kin = kin,
-                Focus = centre,
-                Sims = new[] { centre }.Concat(Candidates(kin, centre)).ToList(),
-                Name = People.FullName,
-                IsAdult = People.IsAdult,
-                IsFemale = People.IsFemale,
-                Changed = () => { if (!KinStore.Save()) People.Log("The family tree could not be saved."); },
-                Empty = People.FirstName(centre) + " lives alone and has met nobody yet. Sims they meet are listed here."
-            }, () =>
-            {
-                //the tree may have changed under this window
-                if (Current == this) Refresh();
-            });
+            var close = new UIBigButton(true);
+            close.Caption = "Close";
+            close.Width = ButtonWidth;
+            close.Position = new Vector2((Width - ButtonWidth) / 2, Top + used + 20);
+            close.OnButtonClick += (b) => CloseMe();
+            Body.Add(close);
+
+            SetHeight((int)(Top + used + 20 + 125));
         }
     }
 }

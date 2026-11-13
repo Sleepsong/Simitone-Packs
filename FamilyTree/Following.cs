@@ -22,17 +22,6 @@ using System.Linq;
 
 namespace FamilyTree
 {
-    /// <summary>What to do when an adult joins the household being played.</summary>
-    public enum MoveInAnswer
-    {
-        /// <summary>Leave the tree as it is.</summary>
-        Nothing,
-        /// <summary>They moved in by a proposal: they are married.</summary>
-        Marry,
-        /// <summary>They moved in some other way, and could be married: ask the player.</summary>
-        Ask
-    }
-
     /// <summary>
     /// The tree follows what happens in play.
     ///
@@ -45,8 +34,7 @@ namespace FamilyTree
     ///    the tree until it grows up, since the baby is an object and not yet a Sim.
     ///  - The baby becomes a child. The new character is given those parents, and starts out getting on with the
     ///    family as a child of theirs would.
-    ///  - An adult joins the household. If a Sim of the household brought them in, the two may be married: they are
-    ///    if the interaction was a proposal, and otherwise the player is asked.
+    ///  - An adult joins the household. If a Sim of the household brought them in by a proposal, the two are married.
     ///
     /// Everything it sees and decides is written to the terminal ("[family]"), since none of this has been run
     /// against the game yet.
@@ -89,14 +77,17 @@ namespace FamilyTree
             return name.Contains("propos") || name.Contains("marr");
         }
 
-        /// <summary>An adult has joined the household, brought in by one of its Sims: what that means for the two of them.</summary>
-        public static MoveInAnswer MoveInDecision(Kin kin, uint newcomer, uint host, string interaction, Func<uint, bool> isAdult, Func<uint, string> name)
+        /// <summary>
+        /// An adult has joined the household, brought in by one of its Sims. Whether that makes the two of them
+        /// married: it does if the interaction was a proposal, and nothing stands in the way.
+        /// </summary>
+        public static bool MarriedByMovingIn(Kin kin, uint newcomer, uint host, string interaction, Func<uint, bool> isAdult, Func<uint, string> name)
         {
-            if (newcomer == host || !isAdult(newcomer) || !isAdult(host)) return MoveInAnswer.Nothing;
+            if (newcomer == host || !isAdult(newcomer) || !isAdult(host)) return false;
+            if (!LooksLikeProposal(interaction)) return false;
             //family already, of whatever kind, or one of them is married to someone else
-            if (kin.Between(newcomer, host) != Tie.None) return MoveInAnswer.Nothing;
-            if (kin.WhyNot(newcomer, host, Choice.Spouse, isAdult, name) != null) return MoveInAnswer.Nothing;
-            return LooksLikeProposal(interaction) ? MoveInAnswer.Marry : MoveInAnswer.Ask;
+            if (kin.Between(newcomer, host) != Tie.None) return false;
+            return kin.WhyNot(newcomer, host, Choice.Spouse, isAdult, name) == null;
         }
 
         /// <summary>
@@ -150,7 +141,7 @@ namespace FamilyTree
             var name = People.FirstName(child);
             if (parents.Count == 0)
             {
-                return name + " has joined the family, but their parents are not known. You can say who they are in the Family Tree, with Change ties.";
+                return name + " has joined the family. Their parents are not known, so they have none in the family tree.";
             }
             var raised = People.RaiseScoresWithFamily(kin, child);
             People.Log(name + " is the child of " + string.Join(" and ", parents.Select(People.FirstName)) + ". Starts as family with " + raised + " Sim(s).");
@@ -375,16 +366,10 @@ namespace FamilyTree
                     People.Log(People.FirstName(newcomer) + " joined the household. Sims involved: " + Names(involved) + ". Interaction: " + (interaction ?? "(none)") + ".");
                     if (host == null) continue;
 
-                    var kin = KinStore.Get();
-                    switch (MoveInDecision(kin, newcomer, host.Value, interaction, People.IsAdult, People.FirstName))
+                    if (MarriedByMovingIn(KinStore.Get(), newcomer, host.Value, interaction, People.IsAdult, People.FirstName))
                     {
-                        case MoveInAnswer.Marry:
-                            Marry(newcomer, host.Value);
-                            Tell(vm, People.FullName(newcomer) + " and " + People.FullName(host.Value) + " are married. The family tree has been updated.");
-                            break;
-                        case MoveInAnswer.Ask:
-                            AskIfMarried(vm, newcomer, host.Value);
-                            break;
+                        Marry(newcomer, host.Value);
+                        Tell(vm, People.FullName(newcomer) + " and " + People.FullName(host.Value) + " are married. The family tree has been updated.");
                     }
                 }
             });
@@ -399,7 +384,7 @@ namespace FamilyTree
             People.Log(People.FirstName(a) + " and " + People.FirstName(b) + " are married.");
         }
 
-        // ---- telling and asking the player ----
+        // ---- telling the player ----
 
         private static bool OnScreen(VM vm)
         {
@@ -423,26 +408,5 @@ namespace FamilyTree
             });
         }
 
-        private static void AskIfMarried(VM vm, uint newcomer, uint host)
-        {
-            GameThread.NextUpdate(x =>
-            {
-                if (!OnScreen(vm)) return;
-                UIMobileAlert alert = null;
-                alert = new UIMobileAlert(new UIAlertOptions()
-                {
-                    Title = "Family Tree",
-                    Message = People.FullName(newcomer) + " has moved in. Are " + People.FirstName(newcomer) + " and " + People.FirstName(host) + " married?",
-                    Buttons = UIAlertButton.YesNo(
-                        (yes) =>
-                        {
-                            UIScreen.RemoveDialog(alert);
-                            FamilyTreePack.Guard("marrying two Sims", () => Marry(newcomer, host));
-                        },
-                        (no) => UIScreen.RemoveDialog(alert))
-                });
-                UIScreen.GlobalShowDialog(alert, true);
-            });
-        }
     }
 }

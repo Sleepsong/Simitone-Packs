@@ -166,20 +166,6 @@ namespace FamilyTree
             scores[DailyScore] = Math.Max(scores[DailyScore], daily);
             scores[LifetimeScore] = Math.Max(scores[LifetimeScore], lifetime);
         }
-
-        /// <summary>The Sims this one has met: everyone the game keeps a score for, from them. Not pets.</summary>
-        public static List<uint> Met(uint guid)
-        {
-            var result = new List<uint>();
-            var n = ByGuid(guid);
-            var all = Neighbourhood?.Neighbors?.NeighbourByID;
-            if (n?.Relationships == null || all == null) return result;
-            foreach (var id in n.Relationships.Keys)
-            {
-                if (all.TryGetValue((short)id, out var other) && other.GUID != guid && !result.Contains(other.GUID) && IsPerson(other.GUID)) result.Add(other.GUID);
-            }
-            return result;
-        }
     }
 
     /// <summary>

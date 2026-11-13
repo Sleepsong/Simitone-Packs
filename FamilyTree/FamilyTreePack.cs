@@ -39,7 +39,7 @@ namespace FamilyTree
     /// its own file for each neighbourhood (KinStore), and the game's files and scripts are left as they are. The
     /// rules of the tree know nothing about the game (Kin). What is here is where the two meet, as Harmony patches:
     ///
-    ///  1. Create a Family draws its screen: put a Family ties button on it, for choosing who is married to whom and
+    ///  1. Create a Family draws its screen: put a Relationships button on it, for choosing who is married to whom and
     ///     whose child is whose before the family is made.
     ///  2. Create a Family takes a Sim out of the family being made: their ties go with them.
     ///  3. The game has made the family: keep the ties that were chosen, and start those Sims off getting on as
@@ -128,10 +128,10 @@ namespace FamilyTree
                     "VMContext.CreateObjectInstance"), postfix: Theirs(nameof(Following.AfterObjectMade)));
                 harmony.Patch(Found(AccessTools.Method(typeof(VMTS1MakeNewCharacter), "Execute"), "VMTS1MakeNewCharacter.Execute"),
                     prefix: Theirs(nameof(Following.BeforeMakeCharacter)), postfix: Theirs(nameof(Following.AfterMakeCharacter)));
-            }, "babies to the family tree", "Give a new child their parents with Change ties.");
+            }, "babies to the family tree", "New children will have no parents in the tree.");
             // 7. an adult joins the household
             Optional(() => harmony.Patch(Found(AccessTools.Method(typeof(VMGenericTS1Call), "Execute"), "VMGenericTS1Call.Execute"),
-                prefix: Theirs(nameof(Following.BeforeGameCall)), postfix: Theirs(nameof(Following.AfterGameCall))), "marriages to the family tree", "Marry two Sims with Change ties.");
+                prefix: Theirs(nameof(Following.BeforeGameCall)), postfix: Theirs(nameof(Following.AfterGameCall))), "marriages to the family tree", "A proposal will not marry two Sims in the tree.");
         }
 
         private static HarmonyMethod Theirs(string name) => new HarmonyMethod(typeof(Following), name);
@@ -155,26 +155,50 @@ namespace FamilyTree
 
         public static void AfterCASUpdate(TS1CASScreen __instance, UICASMode ___Mode)
         {
-            Guard("looking after the Family ties button", () =>
+            Guard("looking after the Relationships button", () =>
             {
                 var screen = __instance;
+                var mode = ___Mode;
                 var count = screen.WIPFamily.Count;
                 Draft.Trim(count);
                 if (!TiesButtons.TryGetValue(screen, out var button))
                 {
                     button = new UIBigButton(false);
                     button.Width = TiesButtonWidth;
-                    button.OnButtonClick += (b) => Guard("opening the family ties", () => Draft.OpenWindow(screen));
+                    button.OnButtonClick += (b) => Guard("opening the family relationships", () =>
+                    {
+                        //(the page the screen is on now, not the one it was on when the button was made)
+                        if (TiesFor.TryGetValue(screen, out var holder) && holder.Family != null) Draft.OpenExisting(holder.Family);
+                        else Draft.OpenWindow(screen);
+                    });
                     screen.Add(button);
                     TiesButtons.Add(screen, button);
+                    TiesFor.Add(screen, new FamilyHolder());
                 }
-                //only on the family's own page, and not while the screen slides to or from another
-                button.Visible = ___Mode == UICASMode.FamilyEdit && count >= 2 && Math.Abs(screen.FamilySimInterp) < 0.02f;
-                button.Caption = Draft.Ties.Links.Count == 0 ? "Family ties" : "Family ties (" + Draft.Ties.Links.Count + ")";
+                TiesFor.TryGetValue(screen, out var target);
+
+                //on the page of the family being made, and on the list of families, for the one that is chosen.
+                //not while the screen slides from one page to another
+                var making = mode == UICASMode.FamilyEdit && count >= 2 && Math.Abs(screen.FamilySimInterp) < 0.02f;
+                FAMI chosen = null;
+                if (mode == UICASMode.FamilySelect && Math.Abs(screen.FamilySimInterp + 1) < 0.02f)
+                {
+                    var list = screen.FamiliesPanel;
+                    if (list != null && list.Selection >= 0 && list.Selection < list.Families.Count) chosen = list.Families[list.Selection];
+                    if (chosen != null && Draft.PeopleOf(chosen).Count < 2) chosen = null;
+                }
+                if (target != null) target.Family = chosen;
+                button.Visible = making || chosen != null;
+                var ties = chosen != null ? Draft.TiesWithin(chosen) : Draft.Ties.Links.Count;
+                button.Caption = ties == 0 ? "Relationships" : "Relationships (" + ties + ")";
                 //under the family's name, at the right
                 button.Position = new Vector2(screen.ScreenWidth - TiesButtonWidth - 25, 125);
             });
         }
+
+        /// <summary>The family in the list that the button is for just now, if it is not for the family being made.</summary>
+        private class FamilyHolder { public FAMI Family; }
+        private static readonly ConditionalWeakTable<TS1CASScreen, FamilyHolder> TiesFor = new ConditionalWeakTable<TS1CASScreen, FamilyHolder>();
 
         // ---- 2 ----
 
@@ -291,16 +315,70 @@ namespace FamilyTree
         {
             var family = screen.WIPFamily;
             string Name(uint i) => (i < family.Count && !string.IsNullOrWhiteSpace(family[(int)i].Name)) ? family[(int)i].Name.Trim() : "Sim " + (i + 1);
+            var faces = screen.RepresentFamily;
             UIFamilyTiesDialog.Open(new TiesSubject()
             {
-                Caption = "Family ties",
                 Kin = Ties,
                 Sims = Enumerable.Range(0, family.Count).Select(i => (uint)i).ToList(),
                 Name = Name,
                 //adult 0,1... child 2,3
                 IsAdult = i => i >= family.Count || family[(int)i].Gender < 2,
                 IsFemale = i => i < family.Count && (family[(int)i].Gender & 1) == 1,
+                //the Sims standing on the Create a Family screen
+                Picture = i => i < faces.Count ? UIIconCache.GetObject(faces[(int)i]) : null,
             });
+        }
+
+        /// <summary>The Sims of a household, without its pets.</summary>
+        public static List<uint> PeopleOf(FAMI family)
+        {
+            return (family?.FamilyGUIDs ?? new uint[0]).Where(People.IsPerson).ToList();
+        }
+
+        /// <summary>How many ties the tree keeps between Sims of this household.</summary>
+        public static int TiesWithin(FAMI family)
+        {
+            var sims = family?.FamilyGUIDs;
+            if (sims == null) return 0;
+            return KinStore.Get().Links.Count(l => sims.Contains(l.A) && sims.Contains(l.B));
+        }
+
+        /// <summary>
+        /// The same window for a household that already exists and is waiting in Create a Family for a house: one made
+        /// before the pack was switched on, say. Its Sims have characters, so their ties go straight into the
+        /// neighbourhood's tree, and when the window is closed they are started off getting on as family does.
+        /// </summary>
+        public static void OpenExisting(FAMI family)
+        {
+            var tree = KinStore.Get();
+            var changed = false;
+            UIFamilyTiesDialog.Open(new TiesSubject()
+            {
+                Kin = tree,
+                Sims = PeopleOf(family),
+                Name = People.FirstName,
+                IsAdult = People.IsAdult,
+                IsFemale = People.IsFemale,
+                Picture = UIFamilyTreeDialog.Face,
+                Changed = () =>
+                {
+                    changed = true;
+                    if (!KinStore.Save()) People.Log("The family tree could not be saved.");
+                },
+                Done = () =>
+                {
+                    if (!changed) return;
+                    if (StartAsFamily(tree, PeopleOf(family)) > 0) People.Neighbourhood.SaveNeighbourhood(false);
+                }
+            });
+        }
+
+        /// <summary>Start each of these Sims off getting on with the family they have in the tree. Returns how many pairs.</summary>
+        public static int StartAsFamily(Kin tree, IEnumerable<uint> sims)
+        {
+            int started = 0;
+            foreach (var sim in sims) started += People.RaiseScoresWithFamily(tree, sim);
+            return started;
         }
 
         /// <summary>

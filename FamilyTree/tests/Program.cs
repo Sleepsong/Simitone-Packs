@@ -170,13 +170,55 @@ Check("a score that was already higher is left alone", Scores(1, 2)[People.Daily
 Check("parent and child start close", Scores(1, 3)[People.DailyScore] == 75 && Scores(3, 2)[People.DailyScore] == 75);
 Check("siblings through a parent start as siblings", Scores(3, 4)[People.DailyScore] == 60 && Scores(4, 3)[People.LifetimeScore] == 50);
 Check("a step-parent starts less close", Scores(2, 4)[People.DailyScore] == 40);
-Check("who a Sim has met", People.Met(0x1000).OrderBy(x => x).SequenceEqual(new uint[] { 0x1001, 0x1002, 0x1003 }));
 
 // the tree window's rows, and who can be given a tie
-var rows = UIFamilyTreeDialog.Relatives(tree, 0x1002);
-Check("the tree of a child: parents, then brothers and sisters", rows.Count == 2 && rows[0].Item1 == Tie.Parent && rows[0].Item2.Count == 2 && rows[1].Item1 == Tie.Sibling);
-Check("someone with no family has an empty tree", UIFamilyTreeDialog.Relatives(tree, 0x2000).Count == 0);
-Check("candidates for a tie: the household first, never the Sim themselves", UIFamilyTreeDialog.Candidates(tree, 0x1000).SequenceEqual(new uint[] { 0x1001, 0x1002, 0x1003 }));
+// ---- the picture of the tree ----
+{
+    // the Pleasants, as in The Sims 2: Daniel (1) and Mary-Sue (2), their twins (3, 4), his parents (5, 6) and
+    // sister (7), and his four grandparents (8 to 11). His sister has a husband (12) who is not in his picture.
+    var p = new Kin();
+    p.Set(1, 2, Choice.Spouse); p.Set(1, 3, Choice.Parent); p.Set(2, 3, Choice.Parent); p.Set(1, 4, Choice.Parent); p.Set(2, 4, Choice.Parent);
+    p.Set(5, 1, Choice.Parent); p.Set(6, 1, Choice.Parent); p.Set(5, 7, Choice.Parent); p.Set(6, 7, Choice.Parent);
+    p.Set(8, 5, Choice.Parent); p.Set(9, 5, Choice.Parent); p.Set(10, 6, Choice.Parent); p.Set(11, 6, Choice.Parent);
+    p.Set(7, 12, Choice.Spouse);
+    var t = TreeLayout.For(p, 1);
+    TreeNode N(uint sim) => t.Nodes.FirstOrDefault(n => n.Sim == sim);
+    float Row(uint sim) => N(sim).Y;
+    Check("the picture has everyone within two generations, once each", t.Nodes.Count == 11 && t.Nodes.Select(n => n.Sim).Distinct().Count() == 11 && N(12) == null);
+    Check("a generation to a row, oldest at the top", Row(8) == Row(9) && Row(9) == Row(10) && Row(10) == Row(11) && Row(8) < Row(5) && Row(5) == Row(6) && Row(5) < Row(1)
+        && Row(1) == Row(2) && Row(1) == Row(7) && Row(1) < Row(3) && Row(3) == Row(4));
+    Check("rows are a row's height apart", Row(5) - Row(8) == TreeLayout.RowHeight && Row(3) - Row(1) == TreeLayout.RowHeight);
+    Check("siblings to the left, spouse to the right", N(7).X < N(1).X && N(2).X == N(1).X + TreeLayout.Cell);
+    Check("each pair of grandparents is over their child", (N(8).X + N(9).X) / 2 == N(5).X && (N(10).X + N(11).X) / 2 == N(6).X);
+    Check("parents are over the middle of their children", (N(5).X + N(6).X) / 2 == (N(7).X + N(1).X) / 2);
+    Check("children are under the couple", (N(3).X + N(4).X) / 2 == (N(1).X + N(2).X) / 2);
+    Check("nobody overlaps", t.Nodes.All(a => t.Nodes.All(b => a == b || a.Y != b.Y || Math.Abs(a.X - b.X) >= TreeLayout.Icon)));
+    Check("only the Sim in the middle is marked", t.Nodes.Count(n => n.Centre) == 1 && N(1).Centre);
+    Check("a Sim with family outside the picture has the dots", N(7).More && !N(3).More && !N(8).More && N(2).More == false);
+    Check("everything is inside the picture", t.Nodes.All(n => n.X - TreeLayout.Icon / 2 >= 0 && n.X + TreeLayout.Icon / 2 <= t.Width && n.Y - TreeLayout.Icon / 2 >= 0 && n.Y + TreeLayout.Icon / 2 + TreeLayout.NameRoom <= t.Height)
+        && t.Lines.All(l => Math.Min(l.X1, l.X2) >= 0 && Math.Max(l.X1, l.X2) <= t.Width && Math.Min(l.Y1, l.Y2) >= 0 && Math.Max(l.Y1, l.Y2) <= t.Height));
+    Check("lines run straight across or straight down", t.Lines.Count > 0 && t.Lines.All(l => l.X1 == l.X2 || l.Y1 == l.Y2));
+    // every child is joined to the bar under their parents: a line ends at the top of their portrait
+    Check("a line comes down to each child", new uint[] { 5, 6, 7, 1, 3, 4 }.All(c => t.Lines.Any(l => l.X1 == l.X2 && l.X1 == N(c).X && Math.Max(l.Y1, l.Y2) == N(c).Y - TreeLayout.Icon / 2)));
+    Check("no line crosses a portrait", t.Lines.All(l => t.Nodes.All(n =>
+        Math.Max(l.X1, l.X2) <= n.X - TreeLayout.Icon / 2 || Math.Min(l.X1, l.X2) >= n.X + TreeLayout.Icon / 2 || Math.Max(l.Y1, l.Y2) <= n.Y - TreeLayout.Icon / 2 || Math.Min(l.Y1, l.Y2) >= n.Y + TreeLayout.Icon / 2)));
+
+    var around = TreeLayout.For(p, 7);
+    Check("the tree can be drawn around anyone in it", around.Nodes.Any(n => n.Sim == 12) && around.Nodes.First(n => n.Sim == 7).Centre && around.Nodes.All(n => n.Sim != 3));
+    var alone = TreeLayout.For(new Kin(), 42);
+    Check("a Sim with no family is a picture of one", alone.Nodes.Count == 1 && alone.Lines.Count == 0 && alone.Width > 0 && alone.Height > 0);
+    var hidden = TreeLayout.For(p, 1, sim => sim != 2 && sim != 8);
+    Check("a Sim who has gone is not drawn", hidden.Nodes.Count == 9 && hidden.Nodes.All(n => n.Sim != 2 && n.Sim != 8));
+    var couple = new Kin(); couple.Set(1, 2, Choice.Spouse);
+    Check("a couple with no children are still joined", TreeLayout.For(couple, 1).Lines.Count == 3);
+    var brothers = new Kin(); brothers.Set(1, 2, Choice.Sibling);
+    Check("siblings with no parents in the tree are still joined", TreeLayout.For(brothers, 1).Lines.Count == 3);
+}
+
+// the tree of the family that was just made
+var drawn = TreeLayout.For(tree, 0x1002);
+Check("the tree of a child: both parents above, the brother beside", drawn.Nodes.Count == 4 && drawn.Nodes.First(n => n.Sim == 0x1000).Y < drawn.Nodes.First(n => n.Sim == 0x1002).Y
+    && drawn.Nodes.First(n => n.Sim == 0x1003).Y == drawn.Nodes.First(n => n.Sim == 0x1002).Y);
 
 // a family made with no ties chosen changes nothing
 var before = File.GetLastWriteTimeUtc(KinStore.PathNow);
@@ -191,9 +233,69 @@ Draft.Keep(family, infos);
 Check("a tie the rules refuse is not kept", KinStore.Get().Between(0x1002, 0x1003) == Tie.Sibling);
 
 // the ties window's words
-var subject = new TiesSubject() { Kin = tree, Name = People.FirstName, IsFemale = People.IsFemale };
-Check("the button for a pair says the choice", UIFamilyTiesDialog.ButtonText(Choice.Parent, "Ma Smith", "Kid Smith") == "Ma is parent" && UIFamilyTiesDialog.ButtonText(Choice.Child, "Ma", "Bartholomew") == "Bartholo. is parent");
-Check("a pair in a sentence", UIFamilyTiesDialog.Sentence(subject, 0x1001, 0x1000).EndsWith("'s wife.") && UIFamilyTiesDialog.Sentence(subject, 0x1002, 0x1003).EndsWith("brother, through the rest of the family."));
+// ---- the Family Relationships window in Create a Family: choose a Sim, then another, then what they are ----
+{
+    var chosenKin = new Kin();
+    int changes = 0;
+    var names = new[] { "Ma", "Pa", "Kid" };
+    var subject = new TiesSubject() { Kin = chosenKin, Sims = new List<uint>() { 0, 1, 2 }, Name = i => names[i], IsAdult = i => i != 2, IsFemale = i => i == 0, Changed = () => changes++ };
+    uint? first = null, second = null;
+    Check("it starts by asking for a Sim", UIFamilyTiesDialog.Prompt(subject, first, second) == "Choose a Sim.");
+    UIFamilyTiesDialog.Pick(ref first, ref second, 1);
+    Check("then for the Sim they are related to", first == 1 && second == null && UIFamilyTiesDialog.Prompt(subject, first, second).Contains("Pa"));
+    UIFamilyTiesDialog.Pick(ref first, ref second, 0);
+    Check("then what the first is to the second", first == 1 && second == 0 && UIFamilyTiesDialog.Prompt(subject, first, second) == "Pa is Ma's:");
+    Check("a choice the rules allow is made", UIFamilyTiesDialog.Choose(subject, 1, 0, Choice.Spouse) == null && chosenKin.Between(1, 0) == Tie.Spouse && changes == 1);
+    Check("under a portrait, what that Sim is to the first", UIFamilyTiesDialog.Under(subject, first, 0) == "Wife" && UIFamilyTiesDialog.Under(subject, first, 1) == "" && UIFamilyTiesDialog.Under(subject, first, 2) == "" && UIFamilyTiesDialog.Under(subject, null, 0) == "");
+    UIFamilyTiesDialog.Pick(ref first, ref second, 2);
+    Check("choosing a third Sim makes them the second", first == 1 && second == 2);
+    Check("a choice the rules refuse says why, and changes nothing", UIFamilyTiesDialog.Choose(subject, 1, 2, Choice.Child) != null && chosenKin.Links.Count == 1 && changes == 1);
+    Check("parent of the child", UIFamilyTiesDialog.Choose(subject, 1, 2, Choice.Parent) == null && UIFamilyTiesDialog.Under(subject, 2, 1) == "Father" && UIFamilyTiesDialog.Under(subject, 2, 0) == "Stepmother");
+    Check("roommate takes the tie away", UIFamilyTiesDialog.Choose(subject, 1, 2, Choice.Housemate) == null && chosenKin.Links.Count == 1 && changes == 3);
+    UIFamilyTiesDialog.Pick(ref first, ref second, 1);
+    Check("choosing the first Sim again starts over", first == null && second == null);
+    Check("a button for each choice", UIFamilyTiesDialog.Choices.Select(c => c.Item1).OrderBy(c => c).SequenceEqual(Enum.GetValues<Choice>().OrderBy(c => c)));
+}
+
+// a household that already exists: its ties go straight into the tree, and they then start as family
+{
+    var old = KinStore.Get();
+    Check("the Sims of a household, and the ties kept among them", Draft.PeopleOf(family).Count == 4 && Draft.TiesWithin(family) == old.Links.Count(l => guids.Contains(l.A) && guids.Contains(l.B)) && Draft.PeopleOf(null).Count == 0);
+    neigh.Neighbors.NeighbourByID[3].Relationships.Remove(4);
+    Check("an existing household is started off as family", Draft.StartAsFamily(old, Draft.PeopleOf(family)) > 0 && neigh.Neighbors.NeighbourByID[3].Relationships[4][People.DailyScore] == 60);
+}
+
+// ---- the tree is only looked at in play ----
+{
+    // every method the window and its picture call, read from their compiled code
+    var uses = new HashSet<string>();
+    var all = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+    var types = typeof(UIFamilyTreeDialog).Assembly.GetTypes().Where(t =>
+        new[] { typeof(UIFamilyTreeDialog), typeof(UITreeView), typeof(UITreeLines) }.Any(w => t == w || t.DeclaringType == w)).ToList();
+    foreach (var type in types)
+    {
+        foreach (var method in type.GetMethods(all).Cast<MethodBase>().Concat(type.GetConstructors(all)))
+        {
+            var il = method.GetMethodBody()?.GetILAsByteArray();
+            if (il == null) continue;
+            for (int i = 0; i + 4 < il.Length; i++)
+            {
+                if (il[i] != 0x28 && il[i] != 0x6F && il[i] != 0x73 && il[i] != 0xFE) continue; // call, callvirt, newobj, (ldftn)
+                var at = il[i] == 0xFE ? i + 2 : i + 1;
+                if (at + 4 > il.Length) continue;
+                try
+                {
+                    var called = method.Module.ResolveMethod(BitConverter.ToInt32(il, at), type.IsGenericType ? type.GetGenericArguments() : null, method.IsGenericMethod ? method.GetGenericArguments() : null);
+                    if (called?.DeclaringType != null) uses.Add(called.DeclaringType.Name + "." + called.Name);
+                }
+                catch (Exception) { } // not a call after all
+            }
+        }
+    }
+    var changers = new[] { "Kin.Set", "Kin.GiveParents", "Kin.Forget", "Kin.RemoveAt", "Kin.Mend", "KinStore.Save", "UIFamilyTiesDialog.Open", "UIFamilyTiesDialog..ctor", "Draft.OpenExisting", "Draft.OpenWindow" };
+    Check("the window in play reads the tree (" + uses.Count(u => u.StartsWith("Kin") || u.StartsWith("TreeLayout")) + " calls)", uses.Contains("KinStore.Get") && uses.Contains("TreeLayout.For"));
+    Check("...and nothing in it can change the tree", !changers.Any(uses.Contains));
+}
 
 // ---- the tree follows play ----
 
@@ -274,9 +376,9 @@ Check("...and starts as family with each of them", Live(5, 1)[People.DailyScore]
 }
 var linksBefore = play.Links.Count;
 told = Following.Welcome(play, 0x1005, new Expected() { House = 7, ObjectId = 3 });
-Check("a child with no known parents is left alone, and the player is told", play.Links.Count == linksBefore && told.Contains("not known"));
+Check("a child with no known parents is left alone, and the player is told", play.Links.Count == linksBefore && told.Contains("not known") && !told.Contains("Change ties"));
 told = Following.Welcome(play, 0x1005, new Expected() { ParentA = 0x1002, ParentB = 0x7777 });
-Check("a child or a Sim who has gone is not made a parent", play.Links.Count == linksBefore && told.Contains("not known"));
+Check("a child or a Sim who has gone is not made a parent", play.Links.Count == linksBefore && told.Contains("not known") && !told.Contains("Change ties"));
 var given = play.GiveParents(0x1005, new uint[] { 0x1000, 0x1000, 0x1005 }, People.IsAdult, x => "S", null);
 Check("a parent is given once", given.SequenceEqual(new uint[] { 0x1000 }) && play.ParentsOf(0x1005).Count == 1);
 
@@ -284,13 +386,13 @@ Check("a parent is given once", given.SequenceEqual(new uint[] { 0x1000 }) && pl
 Check("a proposal is told by its name", Following.LooksLikeProposal("Propose") && Following.LooksLikeProposal("Ask to Marry") && !Following.LooksLikeProposal("Ask to Move In") && !Following.LooksLikeProposal(null));
 var town = new Kin();
 bool Grown(uint x) => x != 3;
-Check("moved in by a proposal: married", Following.MoveInDecision(town, 1, 2, "Propose", Grown, x => "S") == MoveInAnswer.Marry);
-Check("moved in some other way: the player is asked", Following.MoveInDecision(town, 1, 2, "Ask to Move In", Grown, x => "S") == MoveInAnswer.Ask && Following.MoveInDecision(town, 1, 2, null, Grown, x => "S") == MoveInAnswer.Ask);
-Check("a child moving in marries nobody", Following.MoveInDecision(town, 3, 2, "Propose", Grown, x => "S") == MoveInAnswer.Nothing && Following.MoveInDecision(town, 1, 3, "Propose", Grown, x => "S") == MoveInAnswer.Nothing);
+Check("moved in by a proposal: married", Following.MarriedByMovingIn(town, 1, 2, "Propose", Grown, x => "S"));
+Check("moved in some other way: the tree is left alone", !Following.MarriedByMovingIn(town, 1, 2, "Ask to Move In", Grown, x => "S") && !Following.MarriedByMovingIn(town, 1, 2, null, Grown, x => "S"));
+Check("a child moving in marries nobody", !Following.MarriedByMovingIn(town, 3, 2, "Propose", Grown, x => "S") && !Following.MarriedByMovingIn(town, 1, 3, "Propose", Grown, x => "S"));
 town.Set(2, 5, Choice.Spouse);
-Check("nobody is asked about a Sim who is married already", Following.MoveInDecision(town, 1, 2, "Propose", Grown, x => "S") == MoveInAnswer.Nothing);
+Check("a Sim who is married already does not marry again", !Following.MarriedByMovingIn(town, 1, 2, "Propose", Grown, x => "S"));
 town.Set(1, 6, Choice.Sibling);
-Check("nor about family", Following.MoveInDecision(town, 1, 6, null, Grown, x => "S") == MoveInAnswer.Nothing);
+Check("nor does family", !Following.MarriedByMovingIn(town, 1, 6, "Propose", Grown, x => "S"));
 
 try { Directory.Delete(FSO.Common.FSOEnvironment.UserDir, true); } catch { }
 Console.WriteLine(Environment.ExitCode == 0 ? "All checks passed." : "SOME CHECKS FAILED.");
