@@ -14,14 +14,15 @@ using FSO.LotView.Model;
 using FSO.SimAntics;
 using Simitone.Client.UI.Panels;
 using Simitone.Client.UI.Screens;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace Apartments
 {
     /// <summary>
-    /// Everything the player can do with apartments. The Apartments window and the console both come here, so they
-    /// cannot differ. Each action returns what to tell the player (and writes it to the log); none shows anything
+    /// Everything the player can do with apartments on a lot. The Apartments window and the console both come here, so
+    /// they cannot differ. Each action returns what to tell the player (and writes it to the log); none shows anything
     /// itself.
     /// </summary>
     public static class Actions
@@ -34,7 +35,10 @@ namespace Apartments
 
         // ---- where we are ----
 
-        /// <summary>The lot being played, if its family is at home there. Otherwise null, and why.</summary>
+        /// <summary>
+        /// The lot on screen, if it is a house being played by the family that lives there, or one being built with
+        /// nobody on it. Otherwise null, and why.
+        /// </summary>
         public static VM HomeLot(out int house, out string problem)
         {
             problem = null;
@@ -42,23 +46,26 @@ namespace Apartments
             var vm = screen?.vm;
             house = (screen == null || screen.Downtown) ? 0 : Neighbours.HomeHouse(vm);
             if (house != 0) return vm;
-            problem = "This works while you are playing a household in its own house.";
+            problem = "This works on a house you are playing or building, not on a lot your Sims are visiting.";
             return null;
         }
 
-        /// <summary>The lot being played and its apartment file, if more than one household lives there.</summary>
-        public static VM SharedLot(out int house, out LotFile file, out string problem)
+        /// <summary>The lot on screen and its apartment file, if it is an apartment building.</summary>
+        public static VM BuildingLot(out int house, out LotFile file, out string problem)
         {
             file = null;
             var vm = HomeLot(out house, out problem);
             if (vm == null) return null;
             file = Neighbours.FileOf(vm);
             if (file != null) return vm;
-            problem = "Only one household lives here. Move another in first.";
+            problem = "This is an ordinary house. Make it an apartment building first.";
             return null;
         }
 
-        public static bool IsPlayed(VM vm, FAMI family) => vm?.TS1State?.CurrentFamily?.ChunkID == family?.ChunkID;
+        /// <summary>The household being played (null while a lot is being built with nobody on it).</summary>
+        public static FAMI Played(VM vm) => vm?.TS1State?.CurrentFamily;
+
+        public static bool IsPlayed(VM vm, FAMI family) => family != null && Played(vm)?.ChunkID == family.ChunkID;
 
         public static List<FAMI> ResidentsHere()
         {
@@ -93,55 +100,156 @@ namespace Apartments
             return Residency.NameOf(family) + ": " + family.FamilyGUIDs.Length + " Sim" + (family.FamilyGUIDs.Length == 1 ? "" : "s") + ", " + family.Budget + " simoleons";
         }
 
-        public static string UnitLine(VM vm, LotFile file, FAMI family)
+        /// <summary>An apartment's size and rent in a few words, from the lot as it is now.</summary>
+        public static string SizeText(VM vm, LotFile file, Apartment apartment)
         {
-            return Residency.NameOf(family) + ": " + UnitText(vm, file, family);
+            var rooms = Units.RoomCount(vm, file, apartment);
+            if (rooms == 0) return "no rooms yet";
+            var area = Units.Area(vm, file, apartment);
+            return rooms + " room" + (rooms == 1 ? "" : "s") + ", " + area + " tiles, rent " + Units.DailyRent(area, file.Rate) + " a day";
         }
 
-        /// <summary>A household's apartment in a few words, without its name.</summary>
+        /// <summary>An apartment's size and rent as they were when the lot was last saved (for when no lot is loaded).</summary>
+        public static string SavedSizeText(LotFile file, Apartment apartment)
+        {
+            return apartment.Rooms + " room" + (apartment.Rooms == 1 ? "" : "s") + ", " + apartment.Area + " tiles, rent " + Units.DailyRent(apartment.Area, file.Rate) + " a day";
+        }
+
+        /// <summary>A household's apartment in a few words, without the household's name.</summary>
         public static string UnitText(VM vm, LotFile file, FAMI family)
         {
-            var rooms = (file == null) ? 0 : Units.RoomCount(vm, file, family.ChunkID);
-            if (rooms == 0) return "no apartment yet";
-            var area = Units.Area(vm, file, family.ChunkID);
+            var apartment = file?.ApartmentOf(family.ChunkID);
+            if (apartment == null) return "no apartment";
             var owed = file.Rent.TryGetValue(family.ChunkID, out var account) ? account.Owed : 0;
-            return rooms + " room" + (rooms == 1 ? "" : "s") + ", " + area + " tiles, rent " + Units.DailyRent(area, file.Rate) + " a day"
-                + (owed > 0 ? ", " + owed + " owed" : "");
+            return apartment.Name + " (" + SizeText(vm, file, apartment) + (owed > 0 ? ", " + owed + " owed" : "") + ")";
         }
+
+        public static string UnitLine(VM vm, LotFile file, FAMI family) => Residency.NameOf(family) + ": " + UnitText(vm, file, family);
 
         public static string RentLine(LotFile file)
         {
             return file.Rate == 0 ? "There is no rent on this lot."
-                : ("Rent is " + file.Rate + " for each tile each day, paid by the household being played. Every other room, and outdoors, is shared.");
+                : ("Rent is " + file.Rate + " for each tile each day, paid by the household being played. Every room that is in no apartment, and outdoors, is shared.");
         }
 
-        /// <summary>What the room the played Sim is standing in is: whose, or shared, or not a room. Null owner means shared or none.</summary>
-        public static string RoomHere(out FAMI owner, out bool isRoom)
+        public static string TenantText(int house, Apartment apartment)
         {
-            owner = null;
-            isRoom = false;
-            var vm = SharedLot(out var house, out var file, out var problem);
+            if (apartment.Vacant) return "vacant";
+            return Residency.NameOf(Residency.Residents(house).FirstOrDefault(x => x.ChunkID == apartment.Tenant));
+        }
+
+        // ---- the building ----
+
+        public static string MakeBuilding()
+        {
+            var vm = HomeLot(out var house, out var problem);
             if (vm == null) return problem;
-            if (!StandingAt(out var pos, out problem)) return problem;
-            var room = Units.IndoorRoomAt(vm, pos);
-            if (room == 0) return "Your Sim is not in a room (outdoors, or a room open to the outdoors). That is shared space.";
-            isRoom = true;
-            if (!Units.RoomOwners(vm, file).TryGetValue(room, out var id)) return "The room your Sim is in is shared: it is nobody's apartment.";
-            owner = Residency.Residents(house).FirstOrDefault(x => x.ChunkID == id);
-            return "The room your Sim is in is part of the apartment of " + Residency.NameOf(owner) + ".";
+            if (Neighbours.FileOf(vm) != null) return "This is already an apartment building.";
+            Neighbours.SetBuilding(vm, true);
+            AptLog.Write("House " + house + " is now an apartment building.");
+            return "This is now an apartment building. Add its apartments next. " + KeepNote;
+        }
+
+        public static string MakeOrdinary()
+        {
+            var vm = BuildingLot(out var house, out var file, out var problem);
+            if (vm == null) return problem;
+            if (Residency.Residents(house).Count > 1) return "More than one household lives here. Move the others out first.";
+            Neighbours.SetBuilding(vm, false);
+            AptLog.Write("House " + house + " is an ordinary house again.");
+            return "This is an ordinary house again. Its apartments are forgotten when you save.";
+        }
+
+        /// <summary>Add an apartment with no rooms yet.</summary>
+        public static Apartment AddApartment(out string result)
+        {
+            var vm = BuildingLot(out var house, out var file, out result);
+            if (vm == null) return null;
+            var apartment = file.Add();
+            AptLog.Write(apartment.Name + " added to house " + house + ".");
+            result = apartment.Name + " added. " + KeepNote;
+            return apartment;
+        }
+
+        public static string DeleteApartment(Apartment apartment)
+        {
+            var vm = BuildingLot(out var house, out var file, out var problem);
+            if (vm == null) return problem;
+            if (!file.Apartments.Remove(apartment)) return "That apartment is already gone.";
+            AptLog.Write(apartment.Name + " of house " + house + " deleted" + (apartment.Vacant ? "." : " (family " + apartment.Tenant + " lived there, and now has no apartment)."));
+            return apartment.Name + " is gone. Its rooms are shared again"
+                + (apartment.Vacant ? ". " : (", and " + TenantText(house, apartment) + " have no apartment. ")) + KeepNote;
+        }
+
+        /// <summary>Add the room at a spot to an apartment.</summary>
+        public static string AddRoom(Apartment apartment, LotTilePos pos)
+        {
+            var vm = BuildingLot(out _, out var file, out var problem);
+            if (vm == null) return problem;
+            if (!file.Apartments.Contains(apartment)) return "That apartment is gone.";
+            problem = Units.Claim(vm, file, apartment, pos);
+            if (problem != null) return problem;
+            AptLog.Write("Room at floor " + pos.Level + ", tile " + pos.TileX + "," + pos.TileY + " added to " + apartment.Name + ".");
+            return "Room added to " + apartment.Name + " (" + SizeText(vm, file, apartment) + "). " + KeepNote;
+        }
+
+        /// <summary>Take the room at a spot out of whatever apartment it is in.</summary>
+        public static string RemoveRoom(LotTilePos pos)
+        {
+            var vm = BuildingLot(out _, out var file, out var problem);
+            if (vm == null) return problem;
+            var owner = Units.Unclaim(vm, file, pos);
+            if (owner == null) return "That room is not in any apartment.";
+            AptLog.Write("Room at floor " + pos.Level + ", tile " + pos.TileX + "," + pos.TileY + " taken out of " + owner.Name + ".");
+            return "That room is shared again. It was part of " + owner.Name + ". " + KeepNote;
+        }
+
+        /// <summary>Make a household that lives here the tenant of an apartment (null: nobody is).</summary>
+        public static string SetTenant(Apartment apartment, FAMI family)
+        {
+            var vm = BuildingLot(out var house, out var file, out var problem);
+            if (vm == null) return problem;
+            if (!file.Apartments.Contains(apartment)) return "That apartment is gone.";
+            if (family != null && family.HouseNumber != house) return Residency.NameOf(family) + " do not live here.";
+            if (family == null)
+            {
+                if (apartment.Vacant) return apartment.Name + " is already vacant.";
+                var was = TenantText(house, apartment);
+                apartment.Tenant = 0;
+                AptLog.Write(apartment.Name + " is vacant (was " + was + "'s).");
+                return apartment.Name + " is now vacant. " + was + " still live here, with no apartment. " + KeepNote;
+            }
+            file.SetTenant(apartment, family.ChunkID);
+            AptLog.Write(apartment.Name + " is now the apartment of " + Residency.NameOf(family) + ".");
+            return Residency.NameOf(family) + " now live in " + apartment.Name + ". " + KeepNote;
+        }
+
+        public static string SetRent(int rate)
+        {
+            var vm = BuildingLot(out var house, out var file, out var problem);
+            if (vm == null) return problem;
+            rate = Math.Max(0, Math.Min(MostRent, rate));
+            file.Rate = rate;
+            AptLog.Write("Rent on house " + house + " set to " + rate + " a tile a day.");
+            return (rate == 0 ? "There is now no rent on this lot. " : ("Rent is now " + rate + " for each tile each day. ")) + KeepNote;
         }
 
         // ---- households ----
 
-        public static string MoveIn(FAMI family)
+        /// <summary>A household from the family bin moves in beside the one being played, into an apartment if one is given.</summary>
+        public static string MoveIn(FAMI family, Apartment apartment = null)
         {
             var vm = HomeLot(out var house, out var problem);
             if (vm == null) return problem;
+            if (Played(vm) == null) return "Nobody lives here yet. Move the first household in from the neighbourhood screen: choose the family, then this house.";
             if (family.HouseNumber != 0) return Residency.NameOf(family) + " already have a house.";
+            if (apartment != null && !apartment.Vacant) return apartment.Name + " is taken.";
             family.HouseNumber = house; //its own record names the house. the game's table still names the played household
-            AptLog.Write(Residency.NameOf(family) + " moved into house " + house + ".");
+            AptLog.Write(Residency.NameOf(family) + " moved into house " + house + (apartment == null ? "" : ", " + apartment.Name) + ".");
+            Neighbours.Reconcile(vm, "moved in"); //(two households make it a building, if it was not one)
+            if (apartment != null) Neighbours.FileOf(vm)?.SetTenant(apartment, family.ChunkID);
             Neighbours.Reconcile(vm, "moved in");
-            return Residency.NameOf(family) + " now live here too. They are at home; give them an apartment, and one of them will come out now and then. " + KeepNote;
+            return Residency.NameOf(family) + " now live here too, " + (apartment == null ? "with no apartment yet" : "in " + apartment.Name) + ". They are at home, and one of them will come out now and then. " + KeepNote;
         }
 
         public static string MoveOut(FAMI family)
@@ -152,9 +260,11 @@ namespace Apartments
             if (family.HouseNumber != house) return Residency.NameOf(family) + " do not live here.";
             var removed = Neighbours.RemoveFromLot(vm, family);
             family.HouseNumber = 0;
+            var apartment = Neighbours.FileOf(vm)?.ApartmentOf(family.ChunkID);
+            if (apartment != null) apartment.Tenant = 0;
             AptLog.Write(Residency.NameOf(family) + " moved out of house " + house + " (" + removed + " Sims taken off the lot).");
             Neighbours.Reconcile(vm, "moved out");
-            return Residency.NameOf(family) + " moved out, and are back in the family bin. Their things stay. " + KeepNote;
+            return Residency.NameOf(family) + " moved out, and are back in the family bin. Their things stay" + (apartment == null ? ". " : (", and " + apartment.Name + " is vacant. ")) + KeepNote;
         }
 
         /// <summary>Save, then play another of the house's households. The lot is replaced, a moment from now. Returns a problem, or null.</summary>
@@ -197,43 +307,31 @@ namespace Apartments
             return null;
         }
 
-        // ---- apartments ----
+        // ---- the console's way of giving rooms: the room the played Sim is standing in ----
 
-        /// <summary>The room the played Sim is in joins a household's apartment (the played one's, if none is given).</summary>
+        /// <summary>The room the played Sim is in joins a household's apartment (the played one's, if none is given). The household gets an apartment if it has none.</summary>
         public static string Claim(FAMI family)
         {
-            var vm = SharedLot(out var house, out var file, out var problem);
+            var vm = BuildingLot(out var house, out var file, out var problem);
             if (vm == null) return problem;
-            family = family ?? vm.TS1State.CurrentFamily;
+            family = family ?? Played(vm);
+            if (family == null) return "Nobody is being played here. Use the Apartments window to add rooms.";
             if (!StandingAt(out var pos, out problem)) return problem;
-            var residents = Residency.Residents(house);
-            problem = Units.Claim(vm, file, family.ChunkID, pos, id => Residency.NameOf(residents.FirstOrDefault(x => x.ChunkID == id)));
-            if (problem != null) return problem;
-            AptLog.Write("Room at floor " + pos.Level + ", tile " + pos.TileX + "," + pos.TileY + " claimed for " + Residency.NameOf(family) + ".");
-            return "This room is now part of the apartment of " + Residency.NameOf(family) + " (" + UnitText(vm, file, family) + "). " + KeepNote;
+            var apartment = file.ApartmentOf(family.ChunkID);
+            var made = apartment == null;
+            if (made)
+            {
+                apartment = file.Add();
+                apartment.Tenant = family.ChunkID;
+            }
+            var result = AddRoom(apartment, pos);
+            if (made && apartment.Tiles.Count == 0) file.Apartments.Remove(apartment);
+            return result;
         }
 
-        /// <summary>The room the played Sim is in is shared again.</summary>
         public static string Unclaim()
         {
-            var vm = SharedLot(out var house, out var file, out var problem);
-            if (vm == null) return problem;
-            if (!StandingAt(out var pos, out problem)) return problem;
-            var owner = Units.Unclaim(vm, file, pos);
-            if (owner == 0) return "This room is not part of anyone's apartment.";
-            var family = Residency.Residents(house).FirstOrDefault(x => x.ChunkID == owner);
-            AptLog.Write("Room at floor " + pos.Level + ", tile " + pos.TileX + "," + pos.TileY + " is shared again (was " + Residency.NameOf(family) + "'s).");
-            return "This room is shared again. It was part of the apartment of " + Residency.NameOf(family) + ". " + KeepNote;
-        }
-
-        public static string SetRent(int rate)
-        {
-            var vm = SharedLot(out var house, out var file, out var problem);
-            if (vm == null) return problem;
-            rate = System.Math.Max(0, System.Math.Min(MostRent, rate));
-            file.Rate = rate;
-            AptLog.Write("Rent on house " + house + " set to " + rate + " a tile a day.");
-            return (rate == 0 ? "There is now no rent on this lot. " : ("Rent is now " + rate + " for each tile each day. ")) + KeepNote;
+            return StandingAt(out var pos, out var problem) ? RemoveRoom(pos) : problem;
         }
 
         // ---- settings for trying things out. they last until the game closes ----
@@ -254,14 +352,14 @@ namespace Apartments
         /// <summary>Bring a neighbour out of their apartment now (one of this household's, or anyone).</summary>
         public static string BringOut(FAMI family = null)
         {
-            var vm = SharedLot(out _, out _, out var problem);
+            var vm = BuildingLot(out _, out _, out var problem);
             return (vm == null) ? problem : Neighbours.BringOut(vm, family);
         }
 
         /// <summary>Send the neighbours who are out back home.</summary>
         public static string SendHome()
         {
-            var vm = SharedLot(out _, out _, out var problem);
+            var vm = BuildingLot(out _, out _, out var problem);
             return (vm == null) ? problem : Neighbours.SendHome(vm);
         }
 
@@ -295,5 +393,33 @@ namespace Apartments
                 UIScreen.GlobalShowDialog(alert, true);
             });
         }
+
+        /// <summary>
+        /// Ask the player to choose one of several things, each a button, with Cancel last. The game's own message
+        /// box lays the buttons out, in rows if there are many.
+        /// </summary>
+        public static void Choose(string title, string message, IEnumerable<KeyValuePair<string, Action>> choices, Action cancelled = null)
+        {
+            UIMobileAlert alert = null;
+            var buttons = new List<UIAlertButton>();
+            foreach (var choice in choices)
+            {
+                var action = choice.Value;
+                buttons.Add(new UIAlertButton(UIAlertButtonType.OK, (b) =>
+                {
+                    alert.Close();
+                    ApartmentsPack.Guard("doing what was chosen (" + choice.Key + ")", action);
+                }, choice.Key));
+            }
+            buttons.Add(new UIAlertButton(UIAlertButtonType.Cancel, (b) =>
+            {
+                alert.Close();
+                if (cancelled != null) ApartmentsPack.Guard("cancelling", cancelled);
+            }, "Cancel"));
+            alert = new UIMobileAlert(new UIAlertOptions() { Title = title, Message = message, Buttons = buttons.ToArray() });
+            UIScreen.GlobalShowDialog(alert, true);
+        }
+
+        public static KeyValuePair<string, Action> Choice(string text, Action action) => new KeyValuePair<string, Action>(text, action);
     }
 }

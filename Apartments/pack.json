@@ -1,9 +1,9 @@
 {
   "id": "sample.apartments",
   "name": "Apartments (prototype)",
-  "version": "0.4",
+  "version": "0.5",
   "author": "Simitone",
-  "description": "Several households on one lot: you play one, and the others live there as neighbours you can see. Give each its rooms, and pay rent on yours. A prototype, with its own window (Options > Apartments, or F9), that also records how the game treats the unplayed households. Back up your UserData first.",
+  "description": "Apartment buildings: divide a lot into apartments, move households into them from the neighbourhood screen, and play one while the others are at home as neighbours who come out now and then. A prototype, with its own window (Options > Apartments, or F9). Back up your UserData first.",
   "minSimitoneVersion": "0.8.22",
   "assembly": "Apartments.dll"
 }

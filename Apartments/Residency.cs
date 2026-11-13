@@ -102,11 +102,15 @@ namespace Apartments
             }
         }
 
-        /// <summary>Keep the pack's file for a house. A house with one household gets none: it is an ordinary house.</summary>
+        /// <summary>
+        /// Keep the pack's file for a house. An ordinary house gets none. A house is an apartment building once it is
+        /// made one, or once two households live in it.
+        /// </summary>
         public static void Save(int house, LotFile file, TS1NeighborhoodProvider neigh = null)
         {
             var residents = Residents(house, neigh);
-            if (residents.Count < 2 || file == null)
+            if (file != null && residents.Count >= 2) file.Building = true;
+            if (file == null || !file.Building)
             {
                 PackStore.Write(PackId, LotPath(house, neigh), null);
                 return;
@@ -152,16 +156,45 @@ namespace Apartments
         }
 
         /// <summary>
-        /// The game has just moved a house's (played) family out, and thinks the house is empty. If other households
-        /// live there, one of them becomes the played one.
+        /// The game has just moved a house's (played) family out, and thinks the house is empty. Its apartment is
+        /// vacant again, and if other households live there, one of them becomes the played one.
         /// </summary>
         public static void AfterMoveOut(TS1NeighborhoodProvider neigh, short house)
         {
+            var file = Load(house, neigh);
             var left = Residents(house, neigh);
-            if (left.Count == 0) return;
-            neigh.FamilyForHouse[house] = left[0];
-            WritePlayed(house, left[0].ChunkID, neigh);
-            AptLog.Write("The played household moved out of house " + house + ". " + NameOf(left[0]) + " is now played there.");
+            if (left.Count == 0)
+            {
+                if (file.Building)
+                {
+                    file.Played = 0;
+                    Save(house, file, neigh); //(its apartments are all vacant now)
+                }
+                return;
+            }
+            var next = left.FirstOrDefault(x => x.ChunkID == file.Played) ?? left[0];
+            neigh.FamilyForHouse[house] = next;
+            file.Played = next.ChunkID;
+            Save(house, file, neigh);
+            AptLog.Write("The played household moved out of house " + house + ". " + NameOf(next) + " is now played there.");
+        }
+
+        /// <summary>
+        /// A household with no house moves into an apartment of a building, from the neighbourhood screen. It becomes
+        /// the household played there. Nothing is paid: an apartment is rented, not bought.
+        /// </summary>
+        public static void MoveIntoApartment(int house, FAMI family, int apartmentId, TS1NeighborhoodProvider neigh = null)
+        {
+            var file = Load(house, neigh);
+            var apartment = file.Find(apartmentId);
+            if (apartment == null || !apartment.ToLet) throw new InvalidOperationException("That apartment is not free.");
+            family.HouseNumber = house;
+            file.SetTenant(apartment, family.ChunkID);
+            file.Played = family.ChunkID;
+            file.AccountOf(family.ChunkID).Day = 0; //rent starts the day they are first played here
+            (neigh ?? Neigh).FamilyForHouse[(short)house] = family;
+            Save(house, file, neigh);
+            AptLog.Write(NameOf(family) + " moved into " + apartment.Name + " of house " + house + ".");
         }
     }
 }

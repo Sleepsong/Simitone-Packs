@@ -21,7 +21,7 @@ foreach (var m in h.GetPatchedMethods()) {
     Console.WriteLine($"patched {m.DeclaringType.Name}.{m.Name}: prefixes={info.Prefixes.Count} postfixes={info.Postfixes.Count}");
 }
 // the two ways into the Apartments window are optional to the pack, but should fit the Simitone this is built against
-foreach (var needed in new[] { "TS1GameScreen.Save", "VMContext.RefreshLighting", "UILotControl.Update", "UIMainPanel.AddPacksButton" }) {
+foreach (var needed in new[] { "TS1GameScreen.Save", "VMContext.RefreshLighting", "UILotControl.Update", "UIMainPanel.AddPacksButton", "UIHouseSelectPanel..ctor", "TS1GameScreen.MoveInAndPlay", "TS1GameScreen.PlayHouse" }) {
     if (!h.GetPatchedMethods().Any(m => m.DeclaringType.Name + "." + m.Name == needed)) { Console.WriteLine("FAILED: the patch on " + needed + " did not attach"); return 1; }
 }
 // the per-tick hook must be harmless on a VM it knows nothing about
@@ -67,46 +67,76 @@ Residency.FixTable(neigh);
 Check("with no pack file, the first resident (3) is played", neigh.FamilyForHouse[5] == a);
 Residency.WritePlayed(5, 4, neigh);
 Check("played household reads back as 4", Residency.ReadPlayed(5, neigh) == 4);
+Check("a house two households share is an apartment building", Residency.Load(5, neigh).Building);
 neigh.FamilyForHouse[5] = a;
 Residency.FixTable(neigh);
 Check("table follows the pack file (4)", neigh.FamilyForHouse[5] == b);
 Check("unshared house 9 untouched", neigh.FamilyForHouse[9] == d);
 Residency.WritePlayed(9, 7, neigh);
-Check("an unshared house keeps no pack file", Residency.ReadPlayed(9, neigh) == 0);
+Check("an ordinary house keeps no pack file", Residency.ReadPlayed(9, neigh) == 0 && !Residency.Load(9, neigh).Building);
 // the played household (4) is moved out by the game
 neigh.MoveOut(5);
 Check("after the game's MoveOut, family 4 has no house", b.HouseNumber == 0);
 Check("...and the patch made family 3 the house's family", neigh.FamilyForHouse.TryGetValue(5, out var now5) && now5 == a);
-Check("...and house 5 is ordinary again (no pack file)", Residency.ReadPlayed(5, neigh) == 0);
+Check("...and the pack's file says so, and it is still a building", Residency.ReadPlayed(5, neigh) == 3 && Residency.Load(5, neigh).Building);
 neigh.MoveOut(9);
 Check("moving the only family out leaves the house empty", !neigh.FamilyForHouse.ContainsKey(9));
 Check("townie/empty families are not households", !Residency.IsHousehold(townie));
+
 // ---- the lot file ----
-var lf = new LotFile() { Played = 4, Rate = 3 };
-lf.UnitOf(4).Add(new Tile(1, 10, 12)); lf.UnitOf(4).Add(new Tile(2, 14, 12)); lf.UnitOf(3).Add(new Tile(1, 30, 31));
+var lf = new LotFile() { Building = true, Played = 4, Rate = 3 };
+var apA = lf.Add(); apA.Tiles.Add(new Tile(1, 10, 12)); apA.Tiles.Add(new Tile(2, 14, 12)); apA.Tenant = 4; apA.Rooms = 2; apA.Area = 62;
+var apB = lf.Add("The | Penthouse"); apB.Tiles.Add(new Tile(1, 30, 31));
+var apC = lf.Add();
 lf.AccountOf(4).Day = 718921; lf.AccountOf(4).Owed = 55;
 lf.Needs[0x1a2b3c4d] = new short[] { 0, 0, 0, 10, 0, -40, 55, 100, -100, 7, 0, 0, 0, 0, 30, 60 };
 var back = LotFile.Parse(lf.ToBytes());
 Check("lot file: a Sim's needs", back.Needs.Count == 1 && back.Needs[0x1a2b3c4d].SequenceEqual(lf.Needs[0x1a2b3c4d]));
-Check("lot file: played and rate", back.Played == 4 && back.Rate == 3);
-Check("lot file: units", back.Units[4].Count == 2 && back.Units[4][1].Equals(new Tile(2, 14, 12)) && back.Units[3][0].Equals(new Tile(1, 30, 31)));
+Check("lot file: building, played and rate", back.Building && back.Played == 4 && back.Rate == 3);
+Check("lot file: apartments keep their numbers and names", back.Apartments.Count == 3 && back.Find(1).Name == "Apartment 1" && back.Find(2).Name == "The / Penthouse" && back.Find(3).Name == "Apartment 3");
+Check("lot file: an apartment's rooms, tenant and saved size", back.Find(1).Tiles.Count == 2 && back.Find(1).Tiles[1].Equals(new Tile(2, 14, 12)) && back.Find(1).Tenant == 4 && back.Find(1).Rooms == 2 && back.Find(1).Area == 62);
+Check("lot file: who lives where", back.ApartmentOf(4) == back.Find(1) && back.ApartmentOf(7) == null && back.ApartmentOf(0) == null);
+Check("lot file: only a vacant apartment with rooms is to let", back.ToLet.Count == 1 && back.ToLet[0].Id == 2);
 Check("lot file: rent account", back.Rent[4].Day == 718921 && back.Rent[4].Owed == 55);
-var old1 = LotFile.Parse(System.Text.Encoding.UTF8.GetBytes("v=1\nplayed=7\n"));
-Check("lot file: the first stage's file still reads", old1.Played == 7 && old1.Rate == LotFile.DefaultRate && old1.Units.Count == 0);
-var bad = LotFile.Parse(System.Text.Encoding.UTF8.GetBytes("played=9\nunit=oops\nrent=4:x,y\nunit=5:1,2,3\nnonsense\n"));
-Check("lot file: bad lines are skipped, good ones kept", bad.Played == 9 && bad.Units.Count == 1 && bad.Units[5][0].Equals(new Tile(1, 2, 3)) && bad.Rent.Count == 0);
-Check("lot file: nothing reads as empty", LotFile.Parse(null).Played == 0);
+Check("lot file: a new apartment takes the next number", back.Add().Id == 4);
+back.SetTenant(back.Find(2), 4);
+Check("lot file: a household moving apartment leaves its old one", back.Find(1).Vacant && back.Find(2).Tenant == 4);
+back.SetTenant(back.Find(1), 9);
 back.Keep(new[] { 4 });
-Check("lot file: a household that left is forgotten", back.Units.Count == 1 && back.Units.ContainsKey(4));
-// through the pack's file for a shared house
-var c2 = Fam(10, 20, 1); var c3 = Fam(11, 20, 1);
-var shared = new LotFile() { Played = 11, Rate = 2 }; shared.UnitOf(10).Add(new Tile(1, 5, 5)); shared.UnitOf(99).Add(new Tile(1, 6, 6));
-Residency.Save(20, shared, neigh);
-var sharedBack = Residency.Load(20, neigh);
-Check("house file round trip, strangers dropped", sharedBack.Played == 11 && sharedBack.Rate == 2 && sharedBack.Units.Count == 1 && sharedBack.Units[10].Count == 1);
-Residency.WritePlayed(20, 10, neigh);
-Check("changing the played household keeps the apartments", Residency.Load(20, neigh).Played == 10 && Residency.Load(20, neigh).Units[10].Count == 1);
+Check("lot file: a household that left is forgotten, and its apartment is vacant", back.Find(1).Vacant && back.Find(2).Tenant == 4 && back.Rent.ContainsKey(4));
+var old1 = LotFile.Parse(System.Text.Encoding.UTF8.GetBytes("v=1\nplayed=7\n"));
+Check("lot file: version 1 still reads", old1.Played == 7 && old1.Rate == LotFile.DefaultRate && old1.Apartments.Count == 0 && !old1.Building);
+var old2 = LotFile.Parse(System.Text.Encoding.UTF8.GetBytes("v=2\nplayed=2\nrate=1\nunit=2:1,40,34\nunit=3:1,40,28;1,44,28\nrent=2:718921,0\n"));
+Check("lot file: version 2's households' rooms become apartments they live in", old2.Building && old2.Apartments.Count == 2 && old2.ApartmentOf(2).Tiles.Count == 1 && old2.ApartmentOf(3).Tiles.Count == 2 && old2.ApartmentOf(3).Name == "Apartment 2");
+var bad = LotFile.Parse(System.Text.Encoding.UTF8.GetBytes("played=9\napartment=oops\nrent=4:x,y\napartment=5|0|1|9|Flat|1,2,3\napartment=5|0|1|9|Twice|1,2,3\napartment=6|4|0|0||\napartment=7|4|0|0||\nnonsense\n"));
+Check("lot file: bad lines are skipped, good ones kept", bad.Played == 9 && bad.Apartments.Count == 3 && bad.Find(5).Name == "Flat" && bad.Find(5).Tiles[0].Equals(new Tile(1, 2, 3)) && bad.Rent.Count == 0);
+Check("lot file: a household named for two apartments lives in the first", bad.Find(6).Tenant == 4 && bad.Find(7).Vacant);
+Check("lot file: nothing reads as empty", LotFile.Parse(null).Played == 0 && !LotFile.Parse(null).Building);
 
+// ---- a building laid out with nobody in it, then filled from the neighbourhood screen ----
+var plan = new LotFile() { Building = true, Rate = 2 };
+var flat1 = plan.Add(); flat1.Tiles.Add(new Tile(1, 5, 5)); flat1.Rooms = 1; flat1.Area = 20;
+var flat2 = plan.Add(); flat2.Tiles.Add(new Tile(1, 9, 5)); flat2.Rooms = 2; flat2.Area = 35;
+Residency.Save(20, plan, neigh);
+Check("an empty building keeps its file", Residency.Load(20, neigh).Building && Residency.Load(20, neigh).ToLet.Count == 2 && Residency.Residents(20, neigh).Count == 0);
+var first = Fam(10, 0, 1); var second = Fam(11, 0, 2); var third = Fam(12, 0, 1);
+Residency.MoveIntoApartment(20, first, 2, neigh);
+var after1 = Residency.Load(20, neigh);
+Check("the first family takes the apartment it chose", first.HouseNumber == 20 && after1.ApartmentOf(10).Id == 2 && after1.Played == 10 && neigh.FamilyForHouse[20] == first);
+Check("...and one apartment is left", after1.ToLet.Count == 1 && after1.ToLet[0].Id == 1);
+Residency.MoveIntoApartment(20, second, 1, neigh);
+var after2 = Residency.Load(20, neigh);
+Check("the second family takes the one left, and is the one played", second.HouseNumber == 20 && after2.ApartmentOf(11).Id == 1 && after2.ApartmentOf(10).Id == 2 && after2.Played == 11 && neigh.FamilyForHouse[20] == second);
+Check("...and the building is full", after2.ToLet.Count == 0 && Residency.Residents(20, neigh).Count == 2);
+var refused = false;
+try { Residency.MoveIntoApartment(20, third, 1, neigh); } catch (InvalidOperationException) { refused = true; }
+Check("a taken apartment cannot be moved into", refused && third.HouseNumber == 0);
+neigh.MoveOut(20); // the game evicts the played household (11)
+var after3 = Residency.Load(20, neigh);
+Check("an evicted household's apartment is vacant again, and the other household is played", second.HouseNumber == 0 && after3.Find(1).Vacant && after3.ApartmentOf(10).Id == 2 && after3.Played == 10 && neigh.FamilyForHouse[20] == first);
+neigh.MoveOut(20);
+Check("with everyone gone the building is still a building, all to let", Residency.Load(20, neigh).Building && Residency.Load(20, neigh).ToLet.Count == 2 && !neigh.FamilyForHouse.ContainsKey(20));
+Residency.WritePlayed(20, 10, neigh);
 Check("the pack keeps its files where Simitone's own helper would", PackStore.PathFor("sample.apartments", neigh.GetHousePath(20)).Replace('\\', '/').Contains("/LocalHouse/PackData/sample.apartments/House20-"));
 Check("writing nothing removes the file", PackStore.Write("sample.apartments", neigh.GetHousePath(20), null) && PackStore.Read("sample.apartments", neigh.GetHousePath(20)) == null);
 

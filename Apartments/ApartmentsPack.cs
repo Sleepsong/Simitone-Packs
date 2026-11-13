@@ -52,6 +52,9 @@ namespace Apartments
     ///  6. The lot is saved: keep the pack's file for the lot with it.
     ///  7. A room's light has been worked out: turn it down if it is another household's apartment.
     ///
+    /// And on the neighbourhood screen (Hood.cs): a building's panel says what it is, moving a family into one asks
+    /// which apartment, and entering one asks which household to play.
+    ///
     /// This is a prototype whose first purpose is to find out what the game's scripts make of Sims who live on a lot
     /// without being played. Everything it learns goes to Apartments.log. It has no apartments yet: no units, doors,
     /// rent or bills of its own. Those come once this stage shows what has to be worked around.
@@ -136,6 +139,13 @@ namespace Apartments
             // a version of Simitone they do not fit costs only that way in
             Optional(() => harmony.Patch(Find(typeof(UILotControl), "Update"), postfix: Mine(nameof(AfterLotControlUpdate))), "the F9 key");
             Optional(() => harmony.Patch(Find(typeof(UIMainPanel), "AddPacksButton"), postfix: Mine(nameof(AfterPacksButton))), "the Apartments button in Options");
+
+            // the neighbourhood screen. without these a building can still be filled from the Apartments window's
+            // Move in page, and its households changed with Play
+            Optional(() => harmony.Patch(AccessTools.Constructor(typeof(UIHouseSelectPanel), new[] { typeof(int) }) ?? throw new Exception("UIHouseSelectPanel(int) was not found."),
+                postfix: Mine(nameof(AfterHousePanel))), "apartment buildings to the neighbourhood screen's house panel");
+            Optional(() => harmony.Patch(Find(typeof(TS1GameScreen), "MoveInAndPlay"), prefix: Mine(nameof(BeforeMoveInAndPlay))), "moving into an apartment from the neighbourhood screen");
+            Optional(() => harmony.Patch(Find(typeof(TS1GameScreen), "PlayHouse"), prefix: Mine(nameof(BeforePlayHouse))), "choosing a household from the neighbourhood screen");
         }
 
         private static void Optional(Action patch, string what)
@@ -148,6 +158,27 @@ namespace Apartments
             {
                 AptLog.Write("Could not add " + what + ": " + e.Message + " Use the console instead: apt");
             }
+        }
+
+        // ---- the neighbourhood screen ----
+
+        public static void AfterHousePanel(UIHouseSelectPanel __instance, int houseID)
+        {
+            Guard("describing an apartment building on the neighbourhood screen", () => Hood.DescribeHouse(__instance, houseID));
+        }
+
+        public static bool BeforeMoveInAndPlay(TS1GameScreen __instance, short house, int family, UIElement switcher)
+        {
+            var handled = false;
+            Guard("moving a family into an apartment", () => handled = Hood.MoveIn(__instance, house, family, switcher));
+            return !handled;
+        }
+
+        public static bool BeforePlayHouse(TS1GameScreen __instance, short house, UIElement switcher)
+        {
+            var handled = false;
+            Guard("asking which household to play", () => handled = Hood.ChooseHousehold(__instance, house, switcher));
+            return !handled;
         }
 
         // ---- the ways into the window ----
@@ -293,6 +324,7 @@ namespace Apartments
             "apt movein <number or name> - move a household in beside yours\n" +
             "apt moveout <number or name> - move a neighbouring household out\n" +
             "apt switch <number or name> - save, and play that household\n" +
+            "apt building - make this lot an apartment building\n" +
             "apt claim [number or name] - the room your Sim is in joins your apartment (or that household's)\n" +
             "apt unclaim - the room your Sim is in is shared again\n" +
             "apt units - each household's apartment and rent\n" +
@@ -358,13 +390,14 @@ namespace Apartments
                     }
                 case "units":
                     {
-                        var vm = Actions.SharedLot(out var house, out var file, out var problem);
+                        var vm = Actions.BuildingLot(out var house, out var file, out var problem);
                         if (vm == null) Actions.Say("Apartments", problem);
-                        else Actions.Say("Apartments in house " + house, string.Join("\n", Residency.Residents(house).Select(x => Actions.UnitLine(vm, file, x))) + "\n\n" + Actions.RentLine(file));
+                        else Actions.Say("Apartments in house " + house, (file.Apartments.Count == 0 ? "None yet." : string.Join("\n",
+                            file.Apartments.Select(x => x.Name + " (" + Actions.TenantText(house, x) + "): " + Actions.SizeText(vm, file, x)))) + "\n\n" + Actions.RentLine(file));
                         return true;
                     }
                 case "movein":
-                    return Named(rest, Residency.Homeless(), "No household with no house matches \"" + rest + "\". See: apt families", Actions.MoveIn);
+                    return Named(rest, Residency.Homeless(), "No household with no house matches \"" + rest + "\". See: apt families", x => Actions.MoveIn(x));
                 case "moveout":
                     return Named(rest, Actions.NeighboursHere(), "No neighbouring household matches \"" + rest + "\". See: apt who", Actions.MoveOut);
                 case "switch":
@@ -372,6 +405,9 @@ namespace Apartments
                 case "claim":
                     if (rest == "") Actions.Say("Apartments", Actions.Claim(null));
                     else Named(rest, Actions.ResidentsHere(), "No household here matches \"" + rest + "\". See: apt who", Actions.Claim);
+                    return true;
+                case "building":
+                    Actions.Say("Apartments", Actions.MakeBuilding());
                     return true;
                 case "unclaim":
                     Actions.Say("Apartments", Actions.Unclaim());

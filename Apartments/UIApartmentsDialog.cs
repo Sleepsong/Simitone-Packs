@@ -33,7 +33,7 @@ namespace Apartments
         private const int SmallButton = 150;
         private const int Gap = 20;
 
-        private enum Tab { Households, MoveIn, Testing }
+        public enum Tab { Households, Apartments, MoveIn, Testing }
 
         /// <summary>One line of the window: a title, a line or two under it, and buttons at the right.</summary>
         private class Row
@@ -68,21 +68,26 @@ namespace Apartments
         private int Page;
         private string Message; //how the last thing the player did went
 
-        /// <summary>Open the window, or bring the open one up to date.</summary>
-        public static void Open()
+        /// <summary>Open the window, or bring the open one up to date. It can be opened on a page, with something to say.</summary>
+        public static void Open(Tab? tab = null, string message = null)
         {
             if (Actions.Screen?.vm == null)
             {
-                Actions.Say("Apartments", "Open this while you are playing a lot.");
+                Actions.Say("Apartments", "Open this while you are on a lot.");
                 return;
             }
-            if (Current != null)
+            if (Current == null)
             {
-                Current.Refresh();
-                return;
+                Current = new UIApartmentsDialog();
+                UIScreen.GlobalShowDialog(Current, true);
             }
-            Current = new UIApartmentsDialog();
-            UIScreen.GlobalShowDialog(Current, true);
+            if (tab != null)
+            {
+                Current.Showing = tab.Value;
+                Current.Page = 0;
+            }
+            if (message != null) Current.Message = message;
+            Current.Refresh();
         }
 
         /// <summary>The lot is going away (a switch of household): the window goes with it.</summary>
@@ -180,68 +185,162 @@ namespace Apartments
                 return rows;
             }
             var file = Neighbours.FileOf(vm);
-            foreach (var family in Residency.Residents(house))
+            var residents = Residency.Residents(house);
+            if (residents.Count == 0)
+            {
+                rows.Add(new Row("Nobody lives here yet", (file == null)
+                    ? "To let several households share this lot, make it an apartment building and lay out its apartments on the Apartments page."
+                    : "Lay out the apartments on the Apartments page and save. Then, from the neighbourhood screen, choose a family to move in and pick this house: you are asked which apartment they take.")
+                    .Button("Apartments", () => Show(Tab.Apartments), true));
+                return rows;
+            }
+            foreach (var family in residents)
             {
                 var mine = Actions.IsPlayed(vm, family);
                 var sims = family.FamilyGUIDs.Length;
-                var detail = sims + " Sim" + (sims == 1 ? "" : "s") + ", " + family.Budget + " simoleons. Apartment: " + Actions.UnitText(vm, file, family) + ".";
-                if (!mine)
+                var detail = sims + " Sim" + (sims == 1 ? "" : "s") + ", " + family.Budget + " simoleons. " + (file == null ? "" : ("Lives in: " + Actions.UnitText(vm, file, family) + "."));
+                if (!mine && file != null)
                 {
                     var outNow = Neighbours.OutNow(vm, family);
                     detail += (outNow.Count == 0) ? " At home." : (" Out now: " + string.Join(", ", outNow) + ".");
                 }
                 var row = new Row(Residency.NameOf(family) + (mine ? "  -  you are playing them" : ""), detail);
                 var target = family;
-                if (mine) row.Button("Add this room", () => Do(() => Actions.Claim(target)), true, file == null);
-                else row.Button("Options", () => HouseholdOptions(target));
+                if (!mine) row.Button("Options", () => HouseholdOptions(target));
                 rows.Add(row);
             }
             if (file == null)
             {
-                rows.Add(new Row("Only one household lives here", "Move another in to share the lot. Apartments and rent start once two households live here.")
-                    .Button("Move in...", () => Show(Tab.MoveIn), true));
-                return rows;
+                rows.Add(new Row("This is an ordinary house", "Make it an apartment building to let other households live here too, each in its own apartment.")
+                    .Button("Apartments", () => Show(Tab.Apartments), true));
             }
-
-            var here = Actions.RoomHere(out var owner, out _);
-            rows.Add(new Row("The room your Sim is in", here)
-                .Button("Make shared", () => Do(Actions.Unclaim), false, owner == null));
-
-            var rate = file.Rate;
-            rows.Add(new Row("Rent: " + (rate == 0 ? "none" : rate + " a tile a day"), Actions.RentLine(file))
-                .Button("-", () => Do(() => Actions.SetRent(rate - 1)), false, rate <= 0, SmallButton)
-                .Button("+", () => Do(() => Actions.SetRent(rate + 1)), false, rate >= Actions.MostRent, SmallButton));
             return rows;
         }
 
         /// <summary>What can be done with a neighbouring household, as a question with a button for each answer.</summary>
         private void HouseholdOptions(FAMI family)
         {
-            var name = Residency.NameOf(family);
-            UIMobileAlert alert = null;
-            alert = new UIMobileAlert(new UIAlertOptions()
-            {
-                Title = name,
-                Message = "Play: save the lot, then play this household. Yours go home, and become neighbours.\n\n"
-                    + "Bring out: one of them comes out of their apartment now.\n\n"
-                    + "Give this room: the room your Sim is standing in becomes part of their apartment.\n\n"
-                    + "Move out: they go back to the family bin. Their things stay.",
-                Buttons = new UIAlertButton[]
+            Actions.Choose(Residency.NameOf(family),
+                "Play: save the lot, then play this household. Yours go home, and become neighbours.\n\n"
+                + "Bring out: one of them comes out of their apartment now.\n\n"
+                + "Move out: they go back to the family bin. Their things stay.",
+                new[]
                 {
-                    new UIAlertButton(UIAlertButtonType.Yes, (b) =>
+                    Actions.Choice("Play", () =>
                     {
-                        alert.Close();
                         var problem = Actions.Switch(family);
                         if (problem == null) CloseMe(); //the lot is about to be replaced
                         else Do(() => problem);
-                    }, "Play"),
-                    new UIAlertButton(UIAlertButtonType.OK, (b) => { alert.Close(); Do(() => Actions.BringOut(family)); }, "Bring out"),
-                    new UIAlertButton(UIAlertButtonType.OK, (b) => { alert.Close(); Do(() => Actions.Claim(family)); }, "Give this room"),
-                    new UIAlertButton(UIAlertButtonType.No, (b) => { alert.Close(); Do(() => Actions.MoveOut(family)); }, "Move out"),
-                    new UIAlertButton(UIAlertButtonType.Cancel, (b) => { alert.Close(); }, "Cancel"),
-                }
-            });
-            UIScreen.GlobalShowDialog(alert, true);
+                    }),
+                    Actions.Choice("Bring out", () => Do(() => Actions.BringOut(family))),
+                    Actions.Choice("Move out", () => Do(() => Actions.MoveOut(family))),
+                });
+        }
+
+        private List<Row> ApartmentRows()
+        {
+            var rows = new List<Row>();
+            var vm = Actions.HomeLot(out var house, out var problem);
+            if (vm == null)
+            {
+                rows.Add(new Row("Not at home", problem) { Warn = true });
+                return rows;
+            }
+            var file = Neighbours.FileOf(vm);
+            if (file == null)
+            {
+                rows.Add(new Row("This is an ordinary house", "An apartment building is divided into apartments, each rented by a household. You can make one out of an empty lot or a house someone lives in. Nothing about the house itself changes.")
+                    .Button("Make building", () => Do(Actions.MakeBuilding), true));
+                return rows;
+            }
+
+            foreach (var apartment in file.Apartments.OrderBy(x => x.Id))
+            {
+                var target = apartment;
+                var detail = Actions.SizeText(vm, file, apartment) + ".";
+                if (Units.LostTiles(vm, apartment).Count > 0) detail += " Part of it is no longer a room: a wall has gone. It counts as shared until it is closed again.";
+                rows.Add(new Row(apartment.Name + "  -  " + Actions.TenantText(house, apartment), detail) { Warn = Units.LostTiles(vm, apartment).Count > 0 }
+                    .Button("Add room", () => PickRoom(target, false), true, false, 200)
+                    .Button("More", () => ApartmentOptions(house, file, target), false, false, SmallButton));
+            }
+
+            rows.Add(new Row("New apartment", file.Apartments.Count == 0
+                    ? "Add the first apartment, then click in each room that belongs to it. Every room you leave out is shared by everyone, and so is outdoors."
+                    : "Add another apartment, then click in each room that belongs to it.")
+                .Button("Add", () =>
+                {
+                    var made = Actions.AddApartment(out var result);
+                    if (made == null) Do(() => result);
+                    else PickRoom(made, false);
+                }, true));
+
+            var rate = file.Rate;
+            rows.Add(new Row("Rent: " + (rate == 0 ? "none" : rate + " a tile a day"), Actions.RentLine(file))
+                .Button("-", () => Do(() => Actions.SetRent(rate - 1)), false, rate <= 0, SmallButton)
+                .Button("+", () => Do(() => Actions.SetRent(rate + 1)), false, rate >= Actions.MostRent, SmallButton));
+
+            if (Residency.Residents(house).Count <= 1)
+            {
+                rows.Add(new Row("Apartment building", "Make this an ordinary house again. Its apartments are forgotten.")
+                    .Button("Ordinary house", () => Do(Actions.MakeOrdinary)));
+            }
+            return rows;
+        }
+
+        private void ApartmentOptions(int house, LotFile file, Apartment apartment)
+        {
+            Actions.Choose(apartment.Name,
+                "Remove room: click in a room to take it out of the apartment.\n\n"
+                + "Tenant: choose which household lives here, or nobody.\n\n"
+                + "Delete: the apartment is gone, and its rooms are shared.",
+                new[]
+                {
+                    Actions.Choice("Remove room", () => PickRoom(apartment, true)),
+                    Actions.Choice("Tenant", () => ChooseTenant(house, file, apartment)),
+                    Actions.Choice("Delete", () => Do(() => Actions.DeleteApartment(apartment))),
+                });
+        }
+
+        private void ChooseTenant(int house, LotFile file, Apartment apartment)
+        {
+            var choices = new List<KeyValuePair<string, Action>>();
+            foreach (var family in Residency.Residents(house))
+            {
+                if (family.ChunkID == apartment.Tenant) continue;
+                var target = family;
+                choices.Add(Actions.Choice(Residency.NameOf(family), () => Do(() => Actions.SetTenant(apartment, target))));
+            }
+            if (!apartment.Vacant) choices.Add(Actions.Choice("Nobody", () => Do(() => Actions.SetTenant(apartment, null))));
+            Actions.Choose("Who lives in " + apartment.Name + "?",
+                choices.Count == 0 ? "No household lives on this lot yet. Households move in from the neighbourhood screen, or from the Move in page."
+                    : "Only households that already live on this lot are listed. A household that moves here takes this one's place in its old apartment.",
+                choices);
+        }
+
+        private static bool PickHintShown;
+
+        /// <summary>Put the window away and let the player click in a room, then come back and say how it went.</summary>
+        private void PickRoom(Apartment apartment, bool remove)
+        {
+            CloseMe();
+            Action begin = () =>
+            {
+                var started = UIRoomPicker.Begin(
+                    pos => Open(Tab.Apartments, remove ? Actions.RemoveRoom(pos) : Actions.AddRoom(apartment, pos)),
+                    () => Open(Tab.Apartments, "No room was chosen."));
+                if (!started) Open(Tab.Apartments, "There is no lot to choose a room on.");
+            };
+            if (PickHintShown)
+            {
+                begin();
+                return;
+            }
+            PickHintShown = true;
+            Actions.Choose(remove ? "Remove a room" : "Add a room",
+                "Click inside a room" + (remove ? " to take it out of its apartment." : (" to add it to " + apartment.Name + "."))
+                + " To choose a room on another floor, change floor first. Esc cancels.\n\nThis window comes back when you have clicked.",
+                new[] { Actions.Choice("OK", begin) },
+                () => Open(Tab.Apartments, "No room was chosen."));
         }
 
         private List<Row> MoveInRows()
@@ -253,25 +352,48 @@ namespace Apartments
                 rows.Add(new Row("Not at home", problem) { Warn = true });
                 return rows;
             }
+            if (Actions.Played(vm) == null)
+            {
+                rows.Add(new Row("Nobody lives here yet", "Households move into an empty building from the neighbourhood screen: choose the family, then this house, and you are asked which apartment they take. Save the lot first."));
+                return rows;
+            }
             var homeless = Residency.Homeless();
             if (homeless.Count == 0)
             {
-                rows.Add(new Row("Nobody to move in", "Every household has a house. " + Actions.NoHomeless.Substring("There are none. ".Length)));
+                rows.Add(new Row("Nobody to move in", "Every household has a house. Make a family first and leave it in the family bin."));
                 return rows;
             }
             foreach (var family in homeless)
             {
                 var target = family;
                 var sims = family.FamilyGUIDs.Length;
-                rows.Add(new Row(Residency.NameOf(family), sims + " Sim" + (sims == 1 ? "" : "s") + ", " + family.Budget + " simoleons. They move in beside you, free of charge.")
-                    .Button("Move in", () =>
-                    {
-                        Showing = Tab.Households;
-                        Page = 0;
-                        Do(() => Actions.MoveIn(target));
-                    }, true));
+                rows.Add(new Row(Residency.NameOf(family), sims + " Sim" + (sims == 1 ? "" : "s") + ", " + family.Budget + " simoleons. They move in beside you, free of charge, and you choose their apartment.")
+                    .Button("Move in", () => MoveInHere(target), true));
             }
             return rows;
+        }
+
+        /// <summary>Move a household from the family bin in beside the played one, asking which free apartment it takes.</summary>
+        private void MoveInHere(FAMI family)
+        {
+            Action<Apartment> go = apartment =>
+            {
+                Showing = Tab.Households;
+                Page = 0;
+                Do(() => Actions.MoveIn(family, apartment));
+            };
+            var vm = Actions.HomeLot(out _, out _);
+            var file = (vm == null) ? null : Neighbours.FileOf(vm);
+            var free = file?.ToLet ?? new List<Apartment>();
+            if (free.Count == 0)
+            {
+                go(null);
+                return;
+            }
+            var choices = free.Select(x => Actions.Choice(x.Name, () => go(x))).ToList();
+            choices.Add(Actions.Choice("No apartment", () => go(null)));
+            Actions.Choose("Which apartment for " + Residency.NameOf(family) + "?",
+                string.Join("\n", free.Select(x => x.Name + ": " + Actions.SizeText(vm, file, x) + ".")), choices);
         }
 
         private List<Row> TestingRows()
@@ -317,7 +439,7 @@ namespace Apartments
             var style = UIStyle.Current;
 
             //the three pages, across the top
-            var tabs = new[] { ("Households", Tab.Households), ("Move in", Tab.MoveIn), ("Testing", Tab.Testing) };
+            var tabs = new[] { ("Households", Tab.Households), ("Apartments", Tab.Apartments), ("Move in", Tab.MoveIn), ("Testing", Tab.Testing) };
             var tabWidth = Math.Min(ButtonWidth, (Width - Margin * 2 - Gap * (tabs.Length - 1)) / tabs.Length);
             for (int i = 0; i < tabs.Length; i++)
             {
@@ -329,7 +451,7 @@ namespace Apartments
             List<Row> all;
             try
             {
-                all = (Showing == Tab.Households) ? HouseholdRows() : (Showing == Tab.MoveIn) ? MoveInRows() : TestingRows();
+                all = (Showing == Tab.Households) ? HouseholdRows() : (Showing == Tab.Apartments) ? ApartmentRows() : (Showing == Tab.MoveIn) ? MoveInRows() : TestingRows();
             }
             catch (Exception e)
             {

@@ -111,30 +111,63 @@ namespace Apartments
             var house = HomeHouse(vm);
             if (house == 0) return;
             var file = FileOf(vm) ?? Residency.Load(house);
-            var played = vm.TS1State.CurrentFamily.ChunkID;
-            file.Played = played;
+            var played = vm.TS1State?.CurrentFamily?.ChunkID ?? 0;
+            if (played != 0) file.Played = played;
             //nothing falls due for a household while it is a neighbour: its rent starts again from the day it is next played
             foreach (var account in file.Rent.Where(x => x.Key != played)) account.Value.Day = 0;
+            if (file.Building && vm.Context?.RoomInfo != null) Units.NoteSizes(vm, file);
             Residency.Save(house, file);
+        }
+
+        /// <summary>
+        /// Make the lot being played or built an apartment building (or an ordinary house again). Returns its file.
+        /// </summary>
+        public static LotFile SetBuilding(VM vm, bool building)
+        {
+            var house = HomeHouse(vm);
+            if (house == 0) return null;
+            if (building)
+            {
+                var state = Lots.GetValue(vm, x => new LotState());
+                state.House = house;
+                if (state.File == null) state.File = Residency.Load(house);
+                state.File.Building = true;
+                Reconcile(vm, "made an apartment building");
+                return state.File;
+            }
+            if (Lots.TryGetValue(vm, out var old))
+            {
+                old.File.Building = false;
+                old.DimRooms.Clear();
+                Lots.Remove(vm);
+                Relight(vm);
+                return old.File;
+            }
+            return null;
         }
 
         // ---- who is who ----
 
-        /// <summary>The house being played, if the played family is at home in it (not downtown, on holiday, or visiting).</summary>
+        /// <summary>
+        /// The house this lot is, if it is one the pack has business with: a house being played by the family that
+        /// lives in it (not a lot they are visiting), or a house with nobody on it, being built.
+        /// </summary>
         public static int HomeHouse(VM vm)
         {
             if (vm == null || !vm.TS1) return 0;
+            int house = vm.GetGlobalValue(10);
+            if (house <= 0) return 0;
             var family = vm.TS1State?.CurrentFamily;
-            if (family == null || family.HouseNumber <= 0) return 0;
-            return (vm.GetGlobalValue(10) == family.HouseNumber) ? family.HouseNumber : 0;
+            if (family == null) return house; //nobody is being played: the lot is being built
+            return (family.HouseNumber == house) ? house : 0;
         }
 
-        /// <summary>The other households of the house being played.</summary>
+        /// <summary>The households of this house other than the one being played (all of them, if none is).</summary>
         public static List<FAMI> Others(VM vm)
         {
             var house = HomeHouse(vm);
             if (house == 0) return new List<FAMI>();
-            var played = vm.TS1State.CurrentFamily.ChunkID;
+            var played = vm.TS1State?.CurrentFamily?.ChunkID ?? 0;
             return Residency.Residents(house).Where(x => x.ChunkID != played).ToList();
         }
 
@@ -176,34 +209,42 @@ namespace Apartments
             var house = HomeHouse(vm);
             if (house == 0) return;
             var others = Others(vm);
-            if (others.Count == 0)
+            var played = vm.TS1State?.CurrentFamily; //null while the lot is being built with nobody on it
+
+            Lots.TryGetValue(vm, out var state);
+            var file = state?.File ?? Residency.Load(house);
+            if (others.Count + (played == null ? 0 : 1) >= 2) file.Building = true; //two households share it: it is one
+            if (!file.Building)
             {
-                if (Lots.TryGetValue(vm, out var gone))
+                if (state != null)
                 {
-                    //the last neighbours moved out: nothing is dimmed any more
-                    gone.DimRooms.Clear();
+                    //an ordinary house again: nothing is dimmed any more
+                    state.DimRooms.Clear();
                     Lots.Remove(vm);
                     Relight(vm);
                 }
                 return;
             }
-            var state = Lots.GetValue(vm, x => new LotState());
-            state.House = house;
-
-            var played = vm.TS1State.CurrentFamily;
-            if (state.File == null)
+            if (state == null)
             {
-                state.File = Residency.Load(house);
-                //rent starts from today for a household that was not the one played last: while it was a neighbour, nothing fell due
-                var account = state.File.AccountOf(played.ChunkID);
-                if (state.File.Played != played.ChunkID || account.Day <= 0) account.Day = Units.Today(vm.Context.Clock);
-                state.File.Played = played.ChunkID;
+                state = Lots.GetValue(vm, x => new LotState());
+                state.File = file;
+                if (played != null)
+                {
+                    //rent starts from today for a household that was not the one played last: while it was a neighbour, nothing fell due
+                    var account = file.AccountOf(played.ChunkID);
+                    if (file.Played != played.ChunkID || account.Day <= 0) account.Day = Units.Today(vm.Context.Clock);
+                    file.Played = played.ChunkID;
+                }
             }
+            state.House = house;
             state.RoomOwners = Units.RoomOwners(vm, state.File);
             var present = AvatarsByGuid(vm);
-            AptLog.Write("--- House " + house + " (" + why + "). Played: " + Residency.NameOf(played) + ". Neighbours: " + string.Join(", ", others.Select(Residency.NameOf)) + ".");
+            AptLog.Write("--- House " + house + " (" + why + "). " + (played == null ? "Nobody is being played. Households: " : ("Played: " + Residency.NameOf(played) + ". Neighbours: "))
+                + (others.Count == 0 ? "none" : string.Join(", ", others.Select(Residency.NameOf))) + ". Apartments: "
+                + (state.File.Apartments.Count == 0 ? "none" : string.Join(", ", state.File.Apartments.Select(x => x.Name + (x.Vacant ? " (vacant)" : " (family " + x.Tenant + ")")))) + ".");
 
-            foreach (var guid in played.FamilyGUIDs)
+            foreach (var guid in (played == null) ? new uint[0] : played.FamilyGUIDs)
             {
                 if (!present.TryGetValue(guid, out var sim)) continue;
                 state.Out.Remove(guid);
@@ -218,7 +259,8 @@ namespace Apartments
 
             //anyone else who lives here and is standing on the lot goes in (the household played until now, a neighbour
             //who was out when the lot was saved, or neighbours from when they were kept on the lot all the time)
-            foreach (var family in others)
+            //(not while nobody is played: then this is a lot being built or looked at, and its Sims are left as they are)
+            foreach (var family in (played == null) ? new List<FAMI>() : others)
             {
                 foreach (var guid in family.FamilyGUIDs)
                 {
@@ -263,7 +305,8 @@ namespace Apartments
         private static bool PlaceAtHome(VM vm, VMAvatar sim, FAMI family)
         {
             var file = FileOf(vm);
-            if (file == null || !file.Units.TryGetValue(family.ChunkID, out var unit)) return false;
+            var unit = file?.ApartmentOf(family.ChunkID)?.Tiles;
+            if (unit == null) return false;
             foreach (var tile in unit)
             {
                 var room = Units.IndoorRoomAt(vm, tile.ToPos());
@@ -398,7 +441,7 @@ namespace Apartments
         /// <summary>Bring a neighbour out now (one of this household, or anyone). Returns what happened, for the player.</summary>
         public static string BringOut(VM vm, FAMI family = null)
         {
-            if (!Lots.TryGetValue(vm, out var state)) return "Only one household lives here.";
+            if (!Lots.TryGetValue(vm, out var state) || vm.TS1State?.CurrentFamily == null) return "Neighbours come out while you are playing a household here.";
             var present = AvatarsByGuid(vm);
             var choices = new List<Tuple<FAMI, uint>>();
             foreach (var other in Others(vm))
@@ -459,7 +502,8 @@ namespace Apartments
 
         private static Tile? HomeSpot(VM vm, LotState state, int family)
         {
-            if (!state.File.Units.TryGetValue(family, out var unit)) return null;
+            var unit = state.File.ApartmentOf(family)?.Tiles;
+            if (unit == null) return null;
             foreach (var tile in unit)
             {
                 if (Units.IndoorRoomAt(vm, tile.ToPos()) != 0) return tile;
@@ -518,7 +562,7 @@ namespace Apartments
             {
                 var room = vm.Context.GetObjectRoom(sim);
                 where = "floor " + sim.Position.Level + ", room " + room;
-                if (state.File != null && state.File.Units.Count > 0)
+                if (state.File != null && state.File.Apartments.Count > 0)
                 {
                     if (!state.RoomOwners.TryGetValue(room, out var owner)) where += ", shared space";
                     else if (owner == family) where += ", their own apartment";
@@ -546,6 +590,7 @@ namespace Apartments
 
         private static void LookAfterOutings(VM vm, LotState state)
         {
+            if (vm.TS1State?.CurrentFamily == null) return; //the lot is being built: nobody is about
             var now = Now(vm);
             var present = AvatarsByGuid(vm);
             var others = Others(vm);
@@ -638,7 +683,7 @@ namespace Apartments
             var dim = new HashSet<ushort>();
             var played = vm.TS1State?.CurrentFamily?.ChunkID ?? 0;
             var rooms = vm.Context.RoomInfo;
-            if (Dim && rooms != null)
+            if (Dim && rooms != null && played != 0) //(with nobody played the building is being laid out: all of it is shown)
             {
                 foreach (var pair in state.RoomOwners)
                 {
@@ -690,12 +735,12 @@ namespace Apartments
         private static void ReportLostRooms(VM vm, LotState state)
         {
             if (state.File == null) return;
-            foreach (var family in state.File.Units.Keys.ToList())
+            foreach (var apartment in state.File.Apartments)
             {
-                foreach (var tile in Units.LostTiles(vm, state.File, family))
+                foreach (var tile in Units.LostTiles(vm, apartment))
                 {
                     if (!state.ReportedLost.Add(tile)) continue;
-                    AptLog.Write("Part of the apartment of family " + family + " is no longer a room (floor " + tile.Level + ", tile " + tile.X + "," + tile.Y + "): it is open to the outdoors, or gone. It counts as shared until it is a room again.");
+                    AptLog.Write("Part of " + apartment.Name + " is no longer a room (floor " + tile.Level + ", tile " + tile.X + "," + tile.Y + "): it is open to the outdoors, or gone. It counts as shared until it is a room again.");
                 }
             }
         }
