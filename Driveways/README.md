@@ -83,6 +83,13 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 
 ## Changes
 
+- **0.14**: fixed Drive to Work not being offered. The pack read the time and the day from a copy the
+  game only fills in when a lot is loaded, so it worked out the wrong time of day, and after one day at
+  work could think the Sim had already been that day, every day. It now reads them from the lot's
+  clock, as the game's own scripts do. A fault in working out the hours can no longer hide the offer
+  while the carpool is there. The `driveways` report now gives the time, and for each Sim with a job
+  when they start work and when they can drive there.
+
 - **0.13**: Sims come home from work in their car, and can leave for work early.
   - Coming home: the carpool that brings them back is hidden, and their car drives in with them in it.
     Before, the carpool was seen dropping them off and the car followed, empty.

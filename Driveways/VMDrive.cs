@@ -98,8 +98,11 @@ namespace Driveways
                         {
                             var car = CarOf(context.StackObject);
                             var sim = context.Caller as VMAvatar;
-                            var can = car != null && sim != null && IsParked(context.VM, car) && (WorkWindow(context.VM, sim) != null || CarpoolFor(context.VM, sim) != null);
-                            return can ? VMPrimitiveExitCode.GOTO_TRUE : VMPrimitiveExitCode.GOTO_FALSE;
+                            if (car == null || sim == null || !IsParked(context.VM, car)) return VMPrimitiveExitCode.GOTO_FALSE;
+                            //(each on its own: whatever goes wrong working out the hours must not hide the carpool's own offer)
+                            bool early = false;
+                            try { early = WorkWindow(context.VM, sim) != null; } catch (Exception) { }
+                            return (early || CarpoolFor(context.VM, sim) != null) ? VMPrimitiveExitCode.GOTO_TRUE : VMPrimitiveExitCode.GOTO_FALSE;
                         }
                         catch (Exception) { return VMPrimitiveExitCode.GOTO_FALSE; }
                     }
@@ -457,16 +460,43 @@ namespace Driveways
         }
 
         /// <summary>Game minutes until the Sim's work starts today (0 to 1439), or -1 if they are not due at work today.</summary>
-        private static int MinutesUntilWork(VM vm, VMAvatar sim)
+        private static int MinutesUntilWork(VM vm, VMAvatar sim) => WorkHours(vm, sim, out _);
+
+        /// <summary>
+        /// The same, with why not when it is -1. The hour, the minute and the day are read as the game's scripts read
+        /// them (its globals 0, 5 and 1), which come from the lot's clock: VM.GlobalState holds them only as they were
+        /// when the lot was loaded.
+        /// </summary>
+        private static int WorkHours(VM vm, VMAvatar sim, out string why)
         {
+            why = null;
             var job = sim.GetPersonData(VMPersonDataVariable.JobType);
-            if (job <= 0) return -1;
+            if (job <= 0) { why = "has no job"; return -1; }
             var last = sim.GetPersonData(VMPersonDataVariable.TS1LastDayAtWork);
-            if (last == -1 || last == vm.GlobalState[1]) return -1;
-            int start = FSO.Content.Content.Get().Jobs.GetJobData((ushort)job, sim.GetPersonData(VMPersonDataVariable.JobPromotionLevel), 12);
-            if (start < 0 || start > 23) return -1;
-            int now = vm.GlobalState[0] * 60 + vm.GlobalState[5];
+            var today = vm.GetGlobalValue(1);
+            if (last == -1) { why = "is not due at work today (a job taken today)"; return -1; }
+            if (last == today) { why = "has been to work today"; return -1; }
+            int start;
+            try { start = FSO.Content.Content.Get().Jobs.GetJobData((ushort)job, sim.GetPersonData(VMPersonDataVariable.JobPromotionLevel), 12); }
+            catch (Exception) { why = "has a job the game's job list does not have"; return -1; }
+            if (start < 0 || start > 23) { why = "has a job with no start hour"; return -1; }
+            int now = vm.GetGlobalValue(0) * 60 + vm.GetGlobalValue(5);
             return ((start * 60 - now) % 1440 + 1440) % 1440;
+        }
+
+        /// <summary>For the "driveways" report: when a Sim can drive to work, and if not now, why not.</summary>
+        private static string DescribeWork(VM vm, VMAvatar sim)
+        {
+            var until = WorkHours(vm, sim, out var why);
+            if (until < 0) return $"{sim.Name} {why}.";
+            var start = (vm.GetGlobalValue(0) * 60 + vm.GetGlobalValue(5) + until) % 1440;
+            var when = $"{sim.Name} starts work at {start / 60}:{start % 60:00}, in {until / 60}h {until % 60:00}m";
+            bool carpool = false;
+            try { carpool = CarpoolFor(vm, sim) != null; } catch (Exception) { }
+            if (carpool) return when + ". Their carpool is here: they can drive to work now.";
+            if (until > 60 && until <= 120) return when + ". They can drive to work now, before the carpool comes.";
+            if (until > 120) return when + $". They can drive to work in {(until - 120) / 60}h {(until - 120) % 60:00}m, when the game says the carpool will come.";
+            return when + ". Their carpool is not here, so they cannot drive to work now.";
         }
 
         private enum CommuteState { GettingIn, AtWork, Riding, Arrived, Home }
@@ -1012,6 +1042,12 @@ namespace Driveways
             lines.Add($"Driveways snapped to the road since the game started: {Snaps} times. The last: {LastSnap}.");
             lines.Add("The driveway's look: " + DrivewayLook.Describe());
             lines.Add("The car's look: " + CarLook.Describe());
+
+            lines.Add($"The time is {vm.GetGlobalValue(0)}:{vm.GetGlobalValue(5):00} on day {vm.GetGlobalValue(1)}.");
+            foreach (var person in vm.Entities.OfType<VMAvatar>().Where(a => !a.Dead && !a.GhostImage && a.GetPersonData(VMPersonDataVariable.JobType) > 0).ToList())
+            {
+                try { lines.Add(DescribeWork(vm, person)); } catch (Exception e) { lines.Add($"{person.Name}: the hours could not be worked out ({e.Message})."); }
+            }
 
             var cars = vm.Entities.Where(e => e is VMGameObject && IsCarGUID(GUIDOf(e))).Select(e => e.MultitileGroup).Distinct().ToList();
             var driveways = vm.Entities.Where(e => e is VMGameObject && IsDriveway(e)).Select(e => e.MultitileGroup).Distinct().Count();
