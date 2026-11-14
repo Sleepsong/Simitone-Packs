@@ -33,8 +33,14 @@ namespace Apartments
     {
         /// <summary>The last game day rent was worked out for (see Units.Today). 0: never.</summary>
         public int Day;
-        /// <summary>Rent that could not be paid when it fell due.</summary>
+        /// <summary>Rent on bills that have come and not been paid.</summary>
         public int Owed;
+        /// <summary>Rent built up since the last bill, not billed yet.</summary>
+        public int Accrued;
+        /// <summary>The day the last bill came (0: none has).</summary>
+        public int BillDay;
+        /// <summary>How many bills are unpaid.</summary>
+        public int Bills;
     }
 
     /// <summary>
@@ -72,7 +78,9 @@ namespace Apartments
     ///   apartment=1|4|3|62|Apartment 1|1,10,12;1,14,12
     ///                                          its number, tenant (0: vacant), rooms and area when last saved,
     ///                                          name, and a tile inside each of its rooms (floor,x,y)
-    ///   rent=4:7215,0                          a household's rent: the day it was last worked out, and what is owed
+    ///   rent=4:7215,0,30,7213,1                a household's rent: the day it was last worked out, what is owed on
+    ///                                          bills, what has built up since the last bill, the day that came, and
+    ///                                          how many bills are unpaid
     ///   needs=1a2b3c4d:0,0,...                 the needs a Sim went home with (the Sim's number, then its motives)
     ///
     /// Version 2 gave each household its rooms directly (unit=4:1,10,12;...). That still reads: each becomes an
@@ -146,7 +154,8 @@ namespace Apartments
             }
             foreach (var rent in Rent.OrderBy(x => x.Key))
             {
-                text.Append("rent=").Append(rent.Key).Append(':').Append(rent.Value.Day).Append(',').Append(rent.Value.Owed).Append('\n');
+                var r = rent.Value;
+                text.Append("rent=").Append(rent.Key).Append(':').Append(r.Day).Append(',').Append(r.Owed).Append(',').Append(r.Accrued).Append(',').Append(r.BillDay).Append(',').Append(r.Bills).Append('\n');
             }
             foreach (var needs in Needs.OrderBy(x => x.Key))
             {
@@ -224,7 +233,15 @@ namespace Apartments
                             {
                                 var parts = value.Split(':');
                                 var n = parts[1].Split(',');
-                                file.Rent[int.Parse(parts[0])] = new RentAccount() { Day = int.Parse(n[0]), Owed = Math.Max(0, int.Parse(n[1])) };
+                                var account = new RentAccount() { Day = int.Parse(n[0]), Owed = Math.Max(0, int.Parse(n[1])) };
+                                if (n.Length >= 5)
+                                {
+                                    account.Accrued = Math.Max(0, int.Parse(n[2]));
+                                    account.BillDay = Math.Max(0, int.Parse(n[3]));
+                                    account.Bills = Math.Max(0, int.Parse(n[4]));
+                                }
+                                else if (account.Owed > 0) account.Bills = 1; //(before bills, what could not be taken was owed: it is one bill)
+                                file.Rent[int.Parse(parts[0])] = account;
                                 break;
                             }
                     }
@@ -355,6 +372,57 @@ namespace Apartments
         public static int Today(VMClock clock) => clock.Year * 360 + (clock.Month - 1) * 30 + clock.DayOfMonth;
 
         public static int DailyRent(int area, int rate) => Math.Max(0, area) * Math.Max(0, rate);
+
+        /// <summary>A rent bill comes this often, in game days, for the rent built up since the last.</summary>
+        public const int BillEveryDays = 3;
+
+        /// <summary>
+        /// Add the rent for the days that have passed to what has built up (never more than a week at once). Nothing is
+        /// taken: rent comes as bills. Returns the number of days added.
+        /// </summary>
+        public static int AccrueRent(RentAccount account, int today, int dailyRent)
+        {
+            if (account.Day <= 0 || today < account.Day)
+            {
+                //never worked out, or the clock went backwards: from today
+                account.Day = today;
+                if (account.BillDay <= 0 || account.BillDay > today) account.BillDay = today;
+                return 0;
+            }
+            var days = DaysDue(account.Day, today);
+            if (days == 0) return 0;
+            account.Day = today;
+            account.Accrued += Math.Max(0, dailyRent) * days;
+            return days;
+        }
+
+        /// <summary>Whether a bill is due: there is rent built up, and it is a bill's length since the last one.</summary>
+        public static bool BillDue(RentAccount account, int today)
+        {
+            return account.Accrued > 0 && (account.BillDay <= 0 || today - account.BillDay >= BillEveryDays);
+        }
+
+        /// <summary>A bill comes for the rent built up. Returns its amount.</summary>
+        public static int IssueBill(RentAccount account, int today)
+        {
+            var amount = account.Accrued;
+            account.Accrued = 0;
+            account.Owed += amount;
+            account.BillDay = today;
+            if (amount > 0) account.Bills++;
+            return amount;
+        }
+
+        /// <summary>Pay every rent bill that has come, if there is the money for all of it. Returns what was paid (0: nothing was).</summary>
+        public static int PayBills(ref int budget, RentAccount account)
+        {
+            if (account.Owed <= 0 || budget < account.Owed) return 0;
+            var paid = account.Owed;
+            budget -= paid;
+            account.Owed = 0;
+            account.Bills = 0;
+            return paid;
+        }
 
         /// <summary>What a household pays to move into an apartment: two days' rent.</summary>
         public static int Deposit(int area, int rate) => DailyRent(area, rate) * DepositDays;

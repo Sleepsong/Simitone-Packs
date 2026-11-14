@@ -221,11 +221,16 @@ namespace Apartments
                 if (mine && file != null)
                 {
                     if (file.ApartmentOf(family.ChunkID) == null) detail += " Give them one on the Apartments page: More, then Tenant.";
-                    else detail += " " + (Neighbours.RentNote(vm) ?? "Rent is taken as each day begins.");
+                    else detail += " " + (Neighbours.RentNote(vm) ?? "");
                 }
                 var row = new Row(Residency.NameOf(family) + (mine ? "  -  you are playing them" : ""), detail);
                 var target = family;
                 if (!mine) row.Button("Options", () => HouseholdOptions(target));
+                else if (file != null)
+                {
+                    var rent = Neighbours.RentOf(vm);
+                    if (rent != null && rent.Owed > 0) row.Button("Pay rent", () => Do(() => Neighbours.PayRent(vm)), true, family.Budget < rent.Owed);
+                }
                 rows.Add(row);
             }
             if (file == null)
@@ -312,7 +317,7 @@ namespace Apartments
                 }, false, false, 190));
 
             var rate = file.Rate;
-            rows.Add(new Row("Rent: " + (rate == 0 ? "none" : rate + " a tile a day"), Actions.RentLine(file) + " Moving in costs " + Units.DepositDays + " days' rent.")
+            rows.Add(new Row("Rent: " + (rate == 0 ? "none" : rate + " a tile a day"), Actions.RentLine(file) + " Moving in costs " + Units.DepositDays + " days' rent; after that a bill comes every " + Units.BillEveryDays + " days, to pay at the mailbox.")
                 .Button("-", () => Do(() => Actions.SetRent(rate - 1)), false, rate <= 0, SmallButton)
                 .Button("+", () => Do(() => Actions.SetRent(rate + 1)), false, rate >= Actions.MostRent, SmallButton));
 

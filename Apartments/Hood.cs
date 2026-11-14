@@ -94,7 +94,7 @@ namespace Apartments
                 //once they are in: what it cost, and what it will cost
                 var rent = Units.DailyRent(apartment.Area, file.Rate);
                 Actions.Say("Welcome to " + apartment.Name, name + " have moved in, and paid " + (before - family.Budget) + " to do so."
-                    + (rent > 0 ? "\n\nThe rent is " + rent + " a day, taken as each day begins. If there is not enough money, the rest is owed until there is." : "")
+                    + (rent > 0 ? "\n\nThe rent is " + rent + " a day. A bill for it comes every " + Units.BillEveryDays + " days: pay it at the mailbox." : "")
                     + "\n\nThe other apartments are their neighbours' own: knock at a door to be asked in. The Apartments window is under Options, or F9.");
             };
 

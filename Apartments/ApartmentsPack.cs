@@ -111,7 +111,7 @@ namespace Apartments
             {
                 if (Actions.Screen?.vm == vm) Actions.Say(title, message);
             };
-            Neighbours.OnRentShortfall = (vm, message) =>
+            Neighbours.OnRentBill = (vm, message) =>
             {
                 if (Actions.Screen?.vm == vm) Actions.Say("Rent", message);
             };
@@ -320,12 +320,22 @@ namespace Apartments
         // says which. (Open for Business does the same with 254.)
         private const byte MenuID = 253;
         private const short ParamKnock = 7701;      //on a door: knock at it
+        private const short ParamPayRent = 7703;    //on the mailbox: pay the rent bills
 
         public static void AfterPieMenu(VMEntity __instance, VM vm, VMEntity caller, List<VMPieMenuInteraction> __result)
         {
             if (__result == null || !Neighbours.IsShared(vm)) return; //(this runs whenever the cursor is over anything)
             Guard("looking at a menu in a building", () =>
             {
+                //the mailbox: rent bills are paid there, like the game's own
+                var guid = __instance.Object?.OBJ?.GUID ?? 0;
+                if (guid == 0xEF121974 || guid == 0x1D95C9B0)
+                {
+                    var rent = Neighbours.RentOf(vm);
+                    if (rent != null && rent.Owed > 0 && caller is VMAvatar payer && payer.GetPersonData(VMPersonDataVariable.TS1FamilyNumber) == vm.TS1State.CurrentFamily.ChunkID)
+                        __result.Add(new VMPieMenuInteraction() { Name = "Pay Rent (" + rent.Owed + ")", ID = MenuID, Param0 = ParamPayRent, Callee = __instance });
+                    return;
+                }
                 //a door into somebody else's apartment: knock
                 if (Doors.IsDoor(__instance))
                 {
@@ -413,12 +423,12 @@ namespace Apartments
             Guard("sending a visitor to the apartment's door", () =>
             {
                 Doors.Watch(vm, sim, invocation);
-                var done = Doors.SendToOwnDoor(vm, sim, invocation);
+                var done = Doors.SendToOwnDoor(vm, sim, invocation) ?? Doors.WalkOutToMeet(vm, sim, invocation);
                 if (done != null) AptLog.Write(done);
             });
         }
 
-        private static bool IsKnock(VMNetInteractionCmd cmd) => cmd.Interaction == MenuID && !cmd.Global && cmd.Param0 == ParamKnock;
+        private static bool IsKnock(VMNetInteractionCmd cmd) => cmd.Interaction == MenuID && !cmd.Global && (cmd.Param0 == ParamKnock || cmd.Param0 == ParamPayRent);
 
         public static bool BeforeVerify(VMNetInteractionCmd __instance, VM vm, ref bool __result)
         {
@@ -431,12 +441,18 @@ namespace Apartments
         {
             if (!IsKnock(__instance)) return true;
             __result = false;
-            AptLog.Write("[menu] Knock was chosen.");
+            if (__instance.Param0 == ParamKnock) AptLog.Write("[menu] Knock was chosen.");
             Guard("going to knock at a door", () =>
             {
                 var thing = vm.GetObjectById(__instance.CalleeID);
                 var sim = caller ?? (vm.GetObjectById(__instance.CallerID) as VMAvatar);
                 if (thing == null || sim == null) return;
+                if (__instance.Param0 == ParamPayRent)
+                {
+                    AptLog.Write("[menu] Pay Rent was chosen.");
+                    Actions.Say("Rent", Neighbours.PayRent(vm));
+                    return;
+                }
                 var apartment = Doors.ApartmentBehind(vm, thing, out var doorstep);
                 if (apartment == null || !Doors.CanKnock(vm, sim, apartment)) return;
                 Doors.GoAndKnock(vm, sim, apartment, doorstep);

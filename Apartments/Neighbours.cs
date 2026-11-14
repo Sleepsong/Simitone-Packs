@@ -106,6 +106,8 @@ namespace Apartments
             public Dictionary<int, long> Invited = new Dictionary<int, long>();
             /// <summary>Sims on their way to knock at a door.</summary>
             public List<Doors.Knock> Knocks = new List<Doors.Knock>();
+            /// <summary>Visitors a Sim of the played household has walked out to meet, and until when that walk counts (game minutes).</summary>
+            public Dictionary<short, long> WalkedOut = new Dictionary<short, long>();
             /// <summary>Visitors who have already been shown to the played household's door.</summary>
             public HashSet<short> ShownToDoor = new HashSet<short>();
             /// <summary>While apartments are being shown on the lot: the one picked out (null: none is), or not showing at all.</summary>
@@ -118,8 +120,7 @@ namespace Apartments
             public int ClosedTick = -1;
             /// <summary>Visitors seen waiting at the front of the lot, and for how many looks they have stood still.</summary>
             public Dictionary<long, KeyValuePair<LotTilePos, int>> Waiting = new Dictionary<long, KeyValuePair<LotTilePos, int>>();
-            /// <summary>What the last rent taken came to, for the window to say.</summary>
-            public string RentNote;
+            public string RentNote; //(no longer used: rent is billed)
             /// <summary>While showing: what each lit room is (by the room its light is worked out with). 0: shared, 1: the one picked out, 2: another apartment.</summary>
             public Dictionary<ushort, int> ShowRooms = new Dictionary<ushort, int>();
         }
@@ -306,7 +307,11 @@ namespace Apartments
                 {
                     //rent starts from today for a household that was not the one played last: while it was a neighbour, nothing fell due
                     var account = file.AccountOf(played.ChunkID);
-                    if (file.Played != played.ChunkID || account.Day <= 0) account.Day = Units.Today(vm.Context.Clock);
+                    if (file.Played != played.ChunkID || account.Day <= 0)
+                    {
+                        account.Day = Units.Today(vm.Context.Clock);
+                        if (account.Accrued == 0) account.BillDay = account.Day; //the first bill comes a bill's length from now
+                    }
                     file.Played = played.ChunkID;
                 }
             }
@@ -780,8 +785,14 @@ namespace Apartments
 
         internal static void RefreshDim(VM vm, LotState state) => SetDimRooms(vm, state);
 
-        /// <summary>What the last rent taken on this lot came to (null if none has been since it was loaded).</summary>
-        public static string RentNote(VM vm) => StateOf(vm)?.RentNote;
+        /// <summary>The played household's rent in a few words, for the window.</summary>
+        public static string RentNote(VM vm)
+        {
+            var account = RentOf(vm);
+            if (account == null) return null;
+            var owed = (account.Owed > 0) ? ("Rent owed: " + account.Owed + (account.Bills > 1 ? " on " + account.Bills + " bills." : ".")) : "No rent owed.";
+            return owed + (account.Accrued > 0 ? " Since the last bill: " + account.Accrued + "." : "") + " A bill comes every " + Units.BillEveryDays + " days.";
+        }
 
         /// <summary>Whether apartments are being shown on the lot by light.</summary>
         public static bool IsShowing(VM vm) => StateOf(vm)?.Showing ?? false;
@@ -886,38 +897,57 @@ namespace Apartments
 
         // ---- rent ----
 
-        /// <summary>Called when rent is taken, with a message for the player if it could not all be paid.</summary>
-        public static Action<VM, string> OnRentShortfall;
+        /// <summary>Called when a rent bill comes, with what to tell the player.</summary>
+        public static Action<VM, string> OnRentBill;
 
         /// <summary>
-        /// Rent for the played household's apartment, once for each game day that has passed. Only the played household
-        /// pays: the others do not progress. What cannot be paid is owed, and taken when there is money again.
+        /// Rent for the played household's apartment builds up each game day, and every few days a bill comes for it, to
+        /// be paid at the mailbox (or in the window) like the game's own bills. Nothing is taken by itself. Only the
+        /// played household's rent builds up: the others do not progress.
         /// </summary>
         private static void CollectRent(VM vm, LotState state)
         {
             var file = state.File;
             var played = vm.TS1State?.CurrentFamily;
             if (file == null || played == null) return;
+            var apartment = file.ApartmentOf(played.ChunkID);
             var account = file.AccountOf(played.ChunkID);
             var today = Units.Today(vm.Context.Clock);
-            if (account.Day <= 0 || today < account.Day) account.Day = today; //never set, or the clock went backwards
-            var days = Units.DaysDue(account.Day, today);
-            if (days == 0) return;
-            account.Day = today;
+            var daily = (apartment == null) ? 0 : Units.DailyRent(Units.Area(vm, file, apartment), file.Rate);
+            var days = Units.AccrueRent(account, today, daily);
+            if (days > 0 && daily > 0) AptLog.Write("Rent: " + (daily * days) + " built up for " + Residency.NameOf(played) + " (" + days + " day" + (days == 1 ? "" : "s") + " at " + daily + "). Not yet billed: " + account.Accrued + ".");
+            if (!Units.BillDue(account, today)) return;
 
-            var area = Units.Area(vm, file, played.ChunkID);
-            var due = Units.DailyRent(area, file.Rate) * days;
-            if (due == 0 && account.Owed == 0) return;
+            var overdue = account.Bills > 0;
+            var amount = Units.IssueBill(account, today);
+            AptLog.Write("Rent bill: " + amount + " for " + (apartment?.Name ?? "the apartment") + ". Owed in all: " + account.Owed + " on " + account.Bills + " bill" + (account.Bills == 1 ? "" : "s") + ".");
+            OnRentBill?.Invoke(vm, "The rent bill for " + (apartment?.Name ?? "your apartment") + " has come: " + amount + " simoleons."
+                + (overdue ? " The last one has not been paid: " + account.Owed + " is owed in all." : "")
+                + "\n\nPay it at the mailbox (Pay Rent), or in the Apartments window.");
+        }
 
+        /// <summary>What the played household owes in rent: on bills, and built up since the last. Null if there is no building.</summary>
+        public static RentAccount RentOf(VM vm)
+        {
+            var state = StateOf(vm);
+            var played = vm?.TS1State?.CurrentFamily;
+            return (state?.File == null || played == null) ? null : state.File.AccountOf(played.ChunkID);
+        }
+
+        /// <summary>Pay the played household's rent bills. Returns what to tell the player.</summary>
+        public static string PayRent(VM vm)
+        {
+            var state = StateOf(vm);
+            var played = vm?.TS1State?.CurrentFamily;
+            if (state?.File == null || played == null) return "There is no rent to pay here.";
+            var account = state.File.AccountOf(played.ChunkID);
+            if (account.Owed <= 0) return "No rent bill has come yet." + (account.Accrued > 0 ? " " + account.Accrued + " has built up since the last; the next bill brings it." : "");
+            if (played.Budget < account.Owed) return "There is not enough money to pay the rent: " + account.Owed + " is owed, and the household has " + played.Budget + ".";
             var budget = played.Budget;
-            var owed = account.Owed;
-            var paid = Units.Pay(ref budget, ref owed, due);
+            var paid = Units.PayBills(ref budget, account);
             played.Budget = budget;
-            account.Owed = owed;
-            state.RentNote = "Last rent: " + paid + " paid on day " + vm.Context.Clock.DayOfMonth + (days > 1 ? " (for " + days + " days)" : "") + (owed > 0 ? ", " + owed + " still owed" : "") + ".";
-            AptLog.Write("Rent: " + Residency.NameOf(played) + " paid " + paid + " (" + days + " day" + (days == 1 ? "" : "s") + " at " + Units.DailyRent(area, file.Rate)
-                + " a day for " + area + " tiles" + (owed > 0 ? "; " + owed + " still owed" : "") + "). Money now " + budget + ".");
-            if (owed > 0) OnRentShortfall?.Invoke(vm, "The rent could not be paid in full. " + owed + " simoleons are owed, and will be taken when there is money.");
+            AptLog.Write("Rent paid: " + paid + " by " + Residency.NameOf(played) + ". Money now " + budget + ".");
+            return "The rent is paid: " + paid + " simoleons.";
         }
     }
 }

@@ -147,10 +147,13 @@ when they next come out or are played.
 - A household with no apartment still lives here. Its neighbours come out by the mailbox, and are
   simply gone when they go home.
 
-Rent is the apartment's floor area times the lot's rate, each game day, taken from the household you
-are playing. A household pays nothing while it is a neighbour. If there is not enough money, what is
-left is owed and is taken when there is money again; money never goes below zero for rent. A
-household with no apartment pays no rent. Moving into an apartment costs two days' rent, paid at once.
+Rent is the apartment's floor area times the lot's rate, for each game day. Nothing is taken by
+itself: it builds up, and every three days a rent bill comes for it, like the game's own bills, with a
+message saying how much. Pay it at the mailbox (**Pay Rent**), or with **Pay rent** in the window's
+line for your household. All the bills that have come are paid at once, if there is the money for
+them; an unpaid bill stays owed beside the next, and the next one's message says so. Nothing worse
+happens yet if rent goes unpaid. A household builds up no rent while it is a neighbour, or while it
+has no apartment. Moving into an apartment costs two days' rent, paid at once.
 
 ## Private apartments
 
@@ -160,7 +163,7 @@ to themselves, Sims do not even want the things in an apartment they cannot ente
 
 | Apartment | Who can walk in |
 |---|---|
-| Yours | Your household and your visitors. Not the neighbours. |
+| Yours | Your household, and your visitors once they have been greeted. Not the neighbours. |
 | A neighbour's | That household only, and yours for three hours after being asked in. |
 | Any | The game's own characters on a job: the firefighter, the police, the repairman, the maid. A fire next door has to be put out. |
 | A vacant one | Everyone, so it can be looked round and furnished. |
@@ -185,6 +188,10 @@ instead: to the spot just outside it, or one beside that. What they do on gettin
 waiting to be let in) is the game's own. A Sim walking *through* a door is never touched, and nor is
 anyone who lives in the building. Anything a visitor is given to do at the wrong door is moved to
 yours too, and a visitor still found standing waiting at the front of the lot is walked to your door.
+
+A visitor waits outside until they are greeted. When you greet one (or do anything else with them)
+while they wait at your door, your Sim walks out to them first: in a house the game has the visitor
+come to your Sim instead, which here would be into the apartment. Once greeted, they come in.
 
 **The mailbox.** The game fixes the mailbox at the front of the lot. In a building it can be picked
 up in buy or build mode and put where the mail should come: a mail room, or the hall. It cannot be
@@ -216,7 +223,8 @@ Then send `Apartments.log` (the **Settings** page says where it is). It answers 
 | How does the game send visitors to the door? | `[visitor]` lines: where each arriving visitor walks, from which script, and what they are given to do |
 | Does your household pay for what they do? | `Money: ... THAT IS A NEIGHBOUR` |
 | What do bills come to, and when? | `Money:` lines naming the mailbox or the bill |
-| Is rent taken once a day, and is the amount right? | `Rent:` lines |
+| Does rent build up each day, and does a bill come every three days? | `Rent:` and `Rent bill:` lines |
+| Does your Sim walk out to greet a visitor? | `... walks out to ..., who is waiting at the door` |
 
 ## If the game goes down
 

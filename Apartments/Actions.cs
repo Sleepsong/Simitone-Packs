@@ -129,7 +129,7 @@ namespace Apartments
         public static string RentLine(LotFile file)
         {
             return file.Rate == 0 ? "There is no rent on this lot."
-                : ("Rent is " + file.Rate + " for each tile each day, paid by the household being played. Every room that is in no apartment, and outdoors, is shared.");
+                : ("Rent is " + file.Rate + " for each tile each day, for the household being played. Every room that is in no apartment, and outdoors, is shared.");
         }
 
         public static string TenantText(int house, Apartment apartment)

@@ -89,7 +89,7 @@ var lf = new LotFile() { Building = true, Played = 4, Rate = 3 };
 var apA = lf.Add(); apA.Tiles.Add(new Tile(1, 10, 12)); apA.Tiles.Add(new Tile(2, 14, 12)); apA.Tenant = 4; apA.Rooms = 2; apA.Area = 62;
 var apB = lf.Add("The | Penthouse"); apB.Tiles.Add(new Tile(1, 30, 31));
 var apC = lf.Add();
-lf.AccountOf(4).Day = 718921; lf.AccountOf(4).Owed = 55;
+lf.AccountOf(4).Day = 718921; lf.AccountOf(4).Owed = 55; lf.AccountOf(4).Accrued = 30; lf.AccountOf(4).BillDay = 718919; lf.AccountOf(4).Bills = 2;
 lf.Needs[0x1a2b3c4d] = new short[] { 0, 0, 0, 10, 0, -40, 55, 100, -100, 7, 0, 0, 0, 0, 30, 60 };
 var back = LotFile.Parse(lf.ToBytes());
 Check("lot file: a Sim's needs", back.Needs.Count == 1 && back.Needs[0x1a2b3c4d].SequenceEqual(lf.Needs[0x1a2b3c4d]));
@@ -98,7 +98,9 @@ Check("lot file: apartments keep their numbers and names", back.Apartments.Count
 Check("lot file: an apartment's rooms, tenant and saved size", back.Find(1).Tiles.Count == 2 && back.Find(1).Tiles[1].Equals(new Tile(2, 14, 12)) && back.Find(1).Tenant == 4 && back.Find(1).Rooms == 2 && back.Find(1).Area == 62);
 Check("lot file: who lives where", back.ApartmentOf(4) == back.Find(1) && back.ApartmentOf(7) == null && back.ApartmentOf(0) == null);
 Check("lot file: only a vacant apartment with rooms is to let", back.ToLet.Count == 1 && back.ToLet[0].Id == 2);
-Check("lot file: rent account", back.Rent[4].Day == 718921 && back.Rent[4].Owed == 55);
+Check("lot file: rent account", back.Rent[4].Day == 718921 && back.Rent[4].Owed == 55 && back.Rent[4].Accrued == 30 && back.Rent[4].BillDay == 718919 && back.Rent[4].Bills == 2);
+var oldRent = LotFile.Parse(System.Text.Encoding.UTF8.GetBytes("rent=4:700,25\nrent=5:700,0\n"));
+Check("lot file: rent from before bills reads, what was owed as one bill", oldRent.Rent[4].Owed == 25 && oldRent.Rent[4].Bills == 1 && oldRent.Rent[4].Accrued == 0 && oldRent.Rent[5].Bills == 0);
 Check("lot file: a new apartment takes the next number", back.Add().Id == 4);
 back.SetTenant(back.Find(2), 4);
 Check("lot file: a household moving apartment leaves its old one", back.Find(1).Vacant && back.Find(2).Tenant == 4);
@@ -164,6 +166,8 @@ Check("writing nothing removes the file", PackStore.Write("sample.apartments", n
     Check("...but may when asked in", Doors.MayEnter(played, played, residents, theirs, true));
     Check("the game's own characters on a job go anywhere: a fire next door has to be put out", Doors.MayEnter(npc, played, residents, theirs, false, true) && Doors.MayEnter(npc, played, residents, mine, false, true));
     Check("...but a visitor, or a neighbour, is not one of them", !Doors.MayEnter(guest, played, residents, theirs, false, false) && !Doors.MayEnter(otherNeighbour, played, residents, theirs, false, false));
+    Check("a visitor waits outside the played household's apartment until greeted", !Doors.MayEnter(guest, played, residents, mine, false, false, false) && Doors.MayEnter(guest, played, residents, mine, false, false, true));
+    Check("...and the game's own characters on a job need no greeting", Doors.MayEnter(npc, played, residents, mine, false, true, false));
     Check("an invitation is for the played household only", !Doors.MayEnter(guest, played, residents, theirs, true) && !Doors.MayEnter(npc, played, residents, theirs, true) && !Doors.MayEnter(otherNeighbour, played, residents, theirs, true));
 }
 
@@ -187,6 +191,31 @@ Check("writing nothing removes the file", PackStore.Write("sample.apartments", n
     Settings.Read(off + "needs=999\noutings=daily\n");
     Check("a switch set to nonsense is left as it was", Neighbours.NeedsFloor == null && Neighbours.ComeOut == Outings.Often);
     Settings.Read(before);
+}
+
+// ---- rent comes as bills ----
+{
+    var acct = new RentAccount();
+    Check("rent: the first look starts the count, and nothing builds up", Units.AccrueRent(acct, 1000, 40) == 0 && acct.Day == 1000 && acct.BillDay == 1000 && acct.Accrued == 0);
+    Check("rent: a day builds up a day's rent, and nothing is taken or billed", Units.AccrueRent(acct, 1001, 40) == 1 && acct.Accrued == 40 && acct.Owed == 0 && !Units.BillDue(acct, 1001));
+    Check("rent: the same day again adds nothing", Units.AccrueRent(acct, 1001, 40) == 0 && acct.Accrued == 40);
+    Units.AccrueRent(acct, 1003, 40);
+    Check("rent: a bill is due a bill's length after the last", acct.Accrued == 120 && Units.BillDue(acct, 1003) && !Units.BillDue(acct, 1002));
+    Check("rent: the bill is for what built up", Units.IssueBill(acct, 1003) == 120 && acct.Owed == 120 && acct.Accrued == 0 && acct.Bills == 1 && acct.BillDay == 1003);
+    Check("rent: no bill again until there is more", !Units.BillDue(acct, 1003));
+    Units.AccrueRent(acct, 1006, 40);
+    Units.IssueBill(acct, 1006);
+    Check("rent: an unpaid bill stays owed beside the next", acct.Owed == 240 && acct.Bills == 2);
+    int money = 200;
+    Check("rent: bills cannot be paid without the money for all of them, and nothing is taken", Units.PayBills(ref money, acct) == 0 && money == 200 && acct.Owed == 240);
+    money = 1000;
+    Check("rent: paying pays every bill", Units.PayBills(ref money, acct) == 240 && money == 760 && acct.Owed == 0 && acct.Bills == 0);
+    Check("rent: with nothing owed, nothing is paid", Units.PayBills(ref money, acct) == 0 && money == 760);
+    var back2 = new RentAccount() { Day = 2000, BillDay = 2000 };
+    Check("rent: the clock going back starts the count again", Units.AccrueRent(back2, 1990, 40) == 0 && back2.Day == 1990 && back2.BillDay == 1990);
+    var free = new RentAccount();
+    Units.AccrueRent(free, 100, 0); Units.AccrueRent(free, 110, 0);
+    Check("rent: no rent, no bills", free.Accrued == 0 && !Units.BillDue(free, 110));
 }
 
 // ---- the question dialog's layout ----
