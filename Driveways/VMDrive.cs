@@ -50,7 +50,7 @@ namespace Driveways
         /// <summary>Called when a drive cannot start, with what to tell the player.</summary>
         public static Action<VM, string> OnMessage;
 
-        private enum Phase { Out, Away, Back }
+        private enum Phase { Out, Away, Back, Waiting }
 
         private class Trip
         {
@@ -98,10 +98,23 @@ namespace Driveways
                         {
                             var car = CarOf(context.StackObject);
                             var sim = context.Caller as VMAvatar;
-                            var can = car != null && sim != null && IsParked(context.VM, car) && CarpoolFor(context.VM, sim) != null;
+                            var can = car != null && sim != null && IsParked(context.VM, car) && (WorkWindow(context.VM, sim) != null || CarpoolFor(context.VM, sim) != null);
                             return can ? VMPrimitiveExitCode.GOTO_TRUE : VMPrimitiveExitCode.GOTO_FALSE;
                         }
                         catch (Exception) { return VMPrimitiveExitCode.GOTO_FALSE; }
+                    }
+                case Shared.ModeCanRideHome:
+                    {
+                        var sim = context.Caller as VMAvatar;
+                        var commute = sim == null ? null : CommutesOf(context.VM).FirstOrDefault(c => c.SimGUID == sim.Object.OBJ.GUID && (c.State == CommuteState.Riding || c.State == CommuteState.Arrived));
+                        return commute != null ? VMPrimitiveExitCode.GOTO_TRUE : VMPrimitiveExitCode.GOTO_FALSE;
+                    }
+                case Shared.ModeRideHome:
+                    try { return RideHome(context); }
+                    catch (Exception)
+                    {
+                        if (context.Caller is VMAvatar lost) Show(lost, true);
+                        return VMPrimitiveExitCode.GOTO_FALSE;
                     }
                 case Shared.ModeDrive:
                 case Shared.ModeDriveToWork:
@@ -188,7 +201,7 @@ namespace Driveways
                 if (car != null && car.Objects.Count > 0)
                 {
                     var trips = TripsOf(context.VM);
-                    if (trips.TryGetValue(car.BaseObject.ObjectID, out var trip) && trip.Carpool != null) ShowPictures(trip.Carpool.Car, true);
+                    if (trips.TryGetValue(car.BaseObject.ObjectID, out var trip) && trip.Carpool != null) UnhideCar(context.VM, trip.Carpool.Car);
                     trips.Remove(car.BaseObject.ObjectID);
                     Park(car);
                 }
@@ -236,13 +249,13 @@ namespace Driveways
                 if (toWork)
                 {
                     carpool = CarpoolFor(vm, sim);
-                    if (carpool == null)
+                    if (carpool == null && WorkWindow(vm, sim) == null)
                     {
-                        OnMessage?.Invoke(vm, $"The carpool has not come for {sim.Name} yet. A Sim can drive to work once it is here, waiting by the road.");
+                        OnMessage?.Invoke(vm, $"It is not time for {sim.Name} to go to work. They can drive there from when the game says the carpool will come, an hour before it does.");
                         return VMPrimitiveExitCode.GOTO_FALSE;
                     }
                     //the carpool is not wanted: the Sim's own car takes them. (it is still what takes them, out of sight)
-                    ShowPictures(carpool.Car, false);
+                    if (carpool != null) HideCar(vm, carpool.Car);
                 }
                 trip = new Trip { SimID = sim.ObjectID, Car = car, Plan = plan, Phase = Phase.Out, ToWork = toWork, Carpool = carpool };
                 trips[id] = trip;
@@ -263,19 +276,9 @@ namespace Driveways
                     if (trip.Distance >= trip.Plan.Out.Length && trip.ToWork)
                     {
                         Show(car, false);
-                        if (!sim.GetFlag(VMEntityFlags.InteractionCanceled) && HandOver(vm, trip, sim))
-                        {
-                            trips.Remove(id);
-                            return VMPrimitiveExitCode.GOTO_TRUE; //(the Sim stays hidden: the carpool takes them from here)
-                        }
-                        //cancelled, or the carpool has gone: come straight home, and let the carpool be seen again
-                        if (trip.Carpool != null && !trip.Carpool.Car.Objects.Any(o => o.Dead)) ShowPictures(trip.Carpool.Car, true);
-                        trip.Carpool = null;
-                        trip.ToWork = false;
-                        trip.Phase = Phase.Back;
-                        trip.Distance = 0;
-                        Draw(car, trip.Plan.Back.PoseAt(0));
-                        Show(car, true);
+                        //(off the lot. early, before the carpool: wait for it, out of sight)
+                        trip.Phase = Phase.Waiting;
+                        goto case Phase.Waiting;
                     }
                     else if (trip.Distance >= trip.Plan.Out.Length)
                     {
@@ -286,6 +289,47 @@ namespace Driveways
                     }
                     else Draw(car, trip.Plan.Out.PoseAt(trip.Distance));
                     break;
+
+                case Phase.Waiting:
+                    {
+                        //the car is away with the Sim, who is to be handed to the carpool as soon as it comes for them
+                        string why = null;
+                        if (sim.GetFlag(VMEntityFlags.InteractionCanceled)) why = "";
+                        else
+                        {
+                            if (trip.Carpool == null || trip.Carpool.Car.Objects.Any(o => o.Dead))
+                            {
+                                trip.Carpool = CarpoolFor(vm, sim);
+                                if (trip.Carpool != null) HideCar(vm, trip.Carpool.Car);
+                            }
+                            if (trip.Carpool != null)
+                            {
+                                if (HandOver(vm, trip, sim))
+                                {
+                                    trips.Remove(id);
+                                    return VMPrimitiveExitCode.GOTO_TRUE; //(the Sim stays hidden: the carpool takes them from here)
+                                }
+                                why = $"The game would not take {sim.Name} to work just now.";
+                            }
+                            else
+                            {
+                                //(the carpool is made on the hour, an hour before work: half an hour before, it is not coming)
+                                var untilStart = MinutesUntilWork(vm, sim);
+                                if (untilStart < 0 || untilStart <= 30 || untilStart > 150) why = $"No carpool came for {sim.Name}, so there was no work to drive to today.";
+                            }
+                        }
+                        if (why == null) break; //(still waiting)
+                        //cancelled, or no work after all: come straight home, and let the carpool be seen again
+                        if (trip.Carpool != null) UnhideCar(vm, trip.Carpool.Car);
+                        trip.Carpool = null;
+                        trip.ToWork = false;
+                        trip.Phase = Phase.Back;
+                        trip.Distance = 0;
+                        Draw(car, trip.Plan.Back.PoseAt(0));
+                        Show(car, true);
+                        if (why != "") OnMessage?.Invoke(vm, why);
+                        break;
+                    }
 
                 case Phase.Away:
                     trip.Timer--;
@@ -337,7 +381,7 @@ namespace Driveways
             {
                 var trip = trips[id];
                 trips.Remove(id);
-                if (trip.Carpool != null) ShowPictures(trip.Carpool.Car, true);
+                if (trip.Carpool != null) UnhideCar(vm, trip.Carpool.Car);
                 Park(trip.Car);
                 var sim = vm.GetObjectById(trip.SimID) as VMAvatar;
                 if (sim != null) Show(sim, true);
@@ -346,28 +390,24 @@ namespace Driveways
 
         // ---- driving to work ----
         //
-        // The game sends a Sim to work in its carpool. The carpool comes to the lot an hour or so before work starts,
-        // and its "Go to Work" walks the Sim to it through the lot's car portal, which takes them off the lot; they are
-        // brought back the same way after work. Driving to work borrows all of that, so pay, performance and getting
-        // home are the game's own. While the carpool waits for a Sim, their car offers "Drive to Work": the carpool is
-        // hidden, the Sim drives off in their car, and once the car has left the lot the Sim, still hidden, is given the
-        // carpool's own "Go to Work". Their car stays away while they are at work, and comes home when they do.
+        // The game sends a Sim to work with the lot's car portal (CarPortal.iff), an object at the road's edge. Two hours
+        // before work it says the carpool will come in about an hour; an hour before work it makes the carpool, which
+        // waits at the kerb. The carpool's "Go to Work" gives the Sim the portal's "At Work": the Sim gets into the
+        // carpool, is sent out of the world for the day, is paid, and at the end of the day the portal makes another
+        // carpool at the kerb, runs its drop-off, puts the Sim back in the world beside it, and shows them again.
         //
-        // How the carpool brings a Sim home is not yet known to the pack, so for now it does: the carpool is seen
-        // dropping them off, and their car drives back as they get out.
+        // Driving to work borrows all of that, so pay, performance and the hours are the game's own, and only what is
+        // seen changes. From when the game says the carpool will come, a Sim's car offers "Drive to Work". They drive
+        // off; when the carpool comes (or at once, if it is already there) it is hidden, and the Sim, still hidden, is
+        // given its "Go to Work". When the portal puts them back in the world at the end of the day, the carpool that
+        // brought them is hidden as well, and so are they: their car drives in, and they get out of it.
 
         /// <summary>The shared script of the game's cars that sends a Sim to work (carglobals.iff, "go to work").</summary>
         private const ushort GoToWorkAction = 8195;
         /// <summary>The lot's car portals: what the carpool hands a Sim to, to take them off the lot.</summary>
         private static readonly HashSet<uint> CarPortals = new HashSet<uint> { 0x865A6812, 0xD564C66B };
-
-        /// <summary>A carpool that has come for a Sim: the car, its tile that offers "Go to Work", and that interaction.</summary>
-        private class Carpool
-        {
-            public VMMultitileGroup Car;
-            public VMEntity Tile;
-            public int Interaction;
-        }
+        /// <summary>The car's own interactions, as the object file numbers them.</summary>
+        private const int RideHomeInteraction = 2;
 
         /// <summary>
         /// Whether an object is one of the game's cars: one that shares the cars' scripts (carglobals.iff). An action
@@ -377,6 +417,14 @@ namespace Driveways
         {
             var shared = (obj.Object.Resource as FSO.Content.GameObjectResource)?.SemiGlobal?.MainIff?.Filename;
             return shared != null && shared.Equals("carglobals.iff", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>A carpool that has come for a Sim: the car, its tile that offers "Go to Work", and that interaction.</summary>
+        private class Carpool
+        {
+            public VMMultitileGroup Car;
+            public VMEntity Tile;
+            public int Interaction;
         }
 
         /// <summary>The game's carpool that has come for this Sim, by the game's own test: null if none has.</summary>
@@ -396,7 +444,32 @@ namespace Driveways
             return null;
         }
 
-        private enum CommuteState { GettingIn, AtWork, Home }
+        /// <summary>
+        /// If it is the time when a Sim may set off for work before their carpool comes, the hour their work starts;
+        /// otherwise null. That is from when the game says the carpool will come in about an hour (two hours before
+        /// work) until it does, on a day the Sim is due at work: worked out as the car portal works it out, from the
+        /// job's start hour (job data 12) and the day they last went (person data 69: -1 for none yet, a job taken today).
+        /// </summary>
+        private static int? WorkWindow(VM vm, VMAvatar sim)
+        {
+            var untilStart = MinutesUntilWork(vm, sim);
+            return (untilStart > 60 && untilStart <= 120) ? untilStart : (int?)null;
+        }
+
+        /// <summary>Game minutes until the Sim's work starts today (0 to 1439), or -1 if they are not due at work today.</summary>
+        private static int MinutesUntilWork(VM vm, VMAvatar sim)
+        {
+            var job = sim.GetPersonData(VMPersonDataVariable.JobType);
+            if (job <= 0) return -1;
+            var last = sim.GetPersonData(VMPersonDataVariable.TS1LastDayAtWork);
+            if (last == -1 || last == vm.GlobalState[1]) return -1;
+            int start = FSO.Content.Content.Get().Jobs.GetJobData((ushort)job, sim.GetPersonData(VMPersonDataVariable.JobPromotionLevel), 12);
+            if (start < 0 || start > 23) return -1;
+            int now = vm.GlobalState[0] * 60 + vm.GlobalState[5];
+            return ((start * 60 - now) % 1440 + 1440) % 1440;
+        }
+
+        private enum CommuteState { GettingIn, AtWork, Riding, Arrived, Home }
 
         /// <summary>A Sim gone to work in their own car: the car is away until they are back.</summary>
         private class Commute
@@ -407,16 +480,37 @@ namespace Driveways
             public uint SimGUID;
             public string SimName;
             public CommuteState State;
-            public int Ticks;      //how long it has been in its state, or how long the Sim has been seen back
+            public int Ticks;      //how long it has been in its state, or doing nothing to do with the carpool
             public float Distance; //on the way home
+            public HashSet<VMMultitileGroup> CarsWhenGone; //the game's cars on the lot when the Sim had gone to work
         }
 
         private static ConditionalWeakTable<VM, List<Commute>> AllCommutes = new ConditionalWeakTable<VM, List<Commute>>();
         private static List<Commute> CommutesOf(VM vm) => AllCommutes.GetOrCreateValue(vm);
 
         /// <summary>
-        /// The car has left the lot with a Sim on their way to work: give the Sim the carpool's own "Go to Work", which
-        /// takes them from here. False if the carpool is no longer there, or would not have them.
+        /// The game's cars the pack is keeping out of sight: the carpool that takes a Sim who drove to work, and the
+        /// one that brings them back. Each is hidden every tick until it has gone. Only its picture: nothing saved.
+        /// </summary>
+        private static ConditionalWeakTable<VM, HashSet<VMMultitileGroup>> AllHiddenCars = new ConditionalWeakTable<VM, HashSet<VMMultitileGroup>>();
+
+        private static void HideCar(VM vm, VMMultitileGroup car)
+        {
+            if (car == null) return;
+            AllHiddenCars.GetOrCreateValue(vm).Add(car);
+            ShowPictures(car, false);
+        }
+
+        private static void UnhideCar(VM vm, VMMultitileGroup car)
+        {
+            if (car == null) return;
+            AllHiddenCars.GetOrCreateValue(vm).Remove(car);
+            if (!car.Objects.Any(o => o.Dead)) ShowPictures(car, true);
+        }
+
+        /// <summary>
+        /// The car has left the lot with a Sim on their way to work, and the carpool is here: give the Sim its own
+        /// "Go to Work", which takes them from here. False if the carpool will not have them.
         /// </summary>
         private static bool HandOver(VM vm, Trip trip, VMAvatar sim)
         {
@@ -433,10 +527,11 @@ namespace Driveways
             return true;
         }
 
-        /// <summary>The Sim with this character on the lot, if they are here.</summary>
-        private static VMAvatar SimOnLot(VM vm, uint guid) => vm.Context.ObjectQueries.Avatars.FirstOrDefault(a => !a.Dead && a.Object.OBJ.GUID == guid) as VMAvatar;
+        /// <summary>The Sim with this character on the lot, if they are here at all (in the world or out of it).</summary>
+        private static VMAvatar SimOnLot(VM vm, uint guid) =>
+            vm.Entities.FirstOrDefault(e => e is VMAvatar && !e.Dead && !e.GhostImage && e.Object.OBJ.GUID == guid) as VMAvatar;
 
-        /// <summary>Whether a Sim is busy with the carpool or a car portal: going to work, or being brought back.</summary>
+        /// <summary>Whether a Sim is busy with the carpool or a car portal: going to work, at work, or being brought back.</summary>
         private static bool WithTheCarpool(VMAvatar sim, Commute commute)
         {
             var queue = sim.Thread?.Queue;
@@ -452,12 +547,16 @@ namespace Driveways
         }
 
         /// <summary>
-        /// Every tick: follow each Sim who drove to work. While they get into the carpool it is kept out of sight; if
-        /// they do not (the game would not take them) they are shown again and the car comes home. Once they are back
-        /// from work, the car drives home.
+        /// Every tick: keep the game's cars that should not be seen out of sight, and follow each Sim who drove to
+        /// work, from getting into the carpool to getting out of their own car at home.
         /// </summary>
         public static void TickCommutes(VM vm)
         {
+            if (AllHiddenCars.TryGetValue(vm, out var hidden) && hidden.Count > 0)
+            {
+                hidden.RemoveWhere(c => c.Objects.Count == 0 || c.Objects.Any(o => o.Dead));
+                foreach (var car in hidden) ShowPictures(car, false);
+            }
             if (!AllCommutes.TryGetValue(vm, out var commutes) || commutes.Count == 0) return;
             foreach (var commute in commutes.ToList())
             {
@@ -466,47 +565,123 @@ namespace Driveways
                 switch (commute.State)
                 {
                     case CommuteState.GettingIn:
-                        if (commute.Carpool != null && !commute.Carpool.Car.Objects.Any(o => o.Dead)) ShowPictures(commute.Carpool.Car, false);
-                        if (sim == null) { commute.State = CommuteState.AtWork; commute.Ticks = 0; break; } //(gone: they are at work)
+                        //gone once they are out of the world (or off the lot altogether)
+                        if (sim == null || sim.Position == LotTilePos.OUT_OF_WORLD)
+                        {
+                            commute.State = CommuteState.AtWork;
+                            commute.CarsWhenGone = new HashSet<VMMultitileGroup>(GameCars(vm));
+                            break;
+                        }
                         if (WithTheCarpool(sim, commute)) { commute.Ticks = 0; break; }
                         if (++commute.Ticks > 90)
                         {
-                            //three seconds doing nothing to do with the carpool: it did not take them
+                            //three seconds in the world doing nothing to do with the carpool: it did not take them
                             Show(sim, true);
-                            if (commute.Carpool != null && !commute.Carpool.Car.Objects.Any(o => o.Dead)) ShowPictures(commute.Carpool.Car, true);
-                            StartHome(commute);
+                            if (commute.Carpool != null) UnhideCar(vm, commute.Carpool.Car);
+                            StartHome(commute, CommuteState.Home);
                             OnMessage?.Invoke(vm, $"{commute.SimName} could not be taken to work from the car. They are back on the lot: send them in the carpool instead.");
                         }
                         break;
 
                     case CommuteState.AtWork:
-                        //back once they are on the lot, to be seen, and done with the carpool for a second
-                        if (sim == null || sim.Position == LotTilePos.OUT_OF_WORLD || sim.GetValue(VMStackObjectVariable.Hidden) != 0 || WithTheCarpool(sim, commute)) { commute.Ticks = 0; break; }
-                        if (++commute.Ticks > 30) StartHome(commute);
+                        //back when the car portal puts them back in the world, beside the carpool it has made to bring them
+                        if (sim == null || sim.Position == LotTilePos.OUT_OF_WORLD) break;
+                        Show(sim, false);
+                        //the carpool that brought them: one of the game's cars that was not here when they went, made by the
+                        //car portal beside itself. (near them or near the portal; failing that, the newest)
+                        var fresh = GameCars(vm).Where(c => commute.CarsWhenGone == null || !commute.CarsWhenGone.Contains(c)).ToList();
+                        var near = new List<LotTilePos> { sim.Position };
+                        near.AddRange(vm.Entities.Where(e => !e.Dead && CarPortals.Contains(GUIDOf(e)) && e.Position != LotTilePos.OUT_OF_WORLD).Select(e => e.Position));
+                        var brought = fresh.Where(c => c.Objects.Any(o => o.Position != LotTilePos.OUT_OF_WORLD
+                            && near.Any(p => Math.Abs(o.Position.TileX - p.TileX) + Math.Abs(o.Position.TileY - p.TileY) <= 8))).ToList();
+                        if (brought.Count == 0 && fresh.Count > 0) brought.Add(fresh.OrderByDescending(c => c.BaseObject.ObjectID).First());
+                        foreach (var car in brought) HideCar(vm, car);
+                        StartHome(commute, CommuteState.Riding);
+                        //hold them while the car brings them in: queued after what the portal is still doing with them
+                        commute.Car.BaseObject.PushUserInteraction(RideHomeInteraction, sim, vm.Context, false);
                         break;
 
+                    case CommuteState.Riding:
                     case CommuteState.Home:
+                        if (sim != null && commute.State == CommuteState.Riding) Show(sim, false); //(the portal shows them as it puts them back)
                         commute.Distance += commute.Plan.Back.SpeedAt(commute.Distance);
-                        if (commute.Distance >= commute.Plan.Back.Length)
+                        if (commute.Distance < commute.Plan.Back.Length) { Draw(commute.Car, commute.Plan.Back.PoseAt(commute.Distance)); break; }
+                        Park(commute.Car);
+                        if (commute.State == CommuteState.Home) { commutes.Remove(commute); break; }
+                        commute.State = CommuteState.Arrived;
+                        commute.Ticks = 0;
+                        break;
+
+                    case CommuteState.Arrived:
+                        //the Sim's "Ride Home" lets them out. if it has not within ten seconds, let them out here
+                        if (sim == null) { commutes.Remove(commute); break; }
+                        Show(sim, false);
+                        if (++commute.Ticks > 300)
                         {
+                            LetOut(vm, sim, commute);
                             commutes.Remove(commute);
-                            Park(commute.Car);
                         }
-                        else Draw(commute.Car, commute.Plan.Back.PoseAt(commute.Distance));
                         break;
                 }
             }
         }
 
-        private static void StartHome(Commute commute)
+        private static IEnumerable<VMMultitileGroup> GameCars(VM vm) =>
+            vm.Entities.Where(e => e is VMGameObject && !e.Dead && !e.GhostImage && IsGameCar(e)).Select(e => e.MultitileGroup).Distinct().ToList();
+
+        private static void StartHome(Commute commute, CommuteState state)
         {
-            commute.State = CommuteState.Home;
+            commute.State = state;
             commute.Distance = 0;
             Draw(commute.Car, commute.Plan.Back.PoseAt(0));
             Show(commute.Car, true);
         }
 
-        /// <summary>Show or hide a car's pictures without touching anything the game saves. For the game's own carpool.</summary>
+        /// <summary>The Sim's "Ride Home": waits while their car brings them in, then lets them out beside it.</summary>
+        private static VMPrimitiveExitCode RideHome(VMStackFrame context)
+        {
+            var vm = context.VM;
+            var sim = context.Caller as VMAvatar;
+            if (sim == null) return VMPrimitiveExitCode.GOTO_FALSE;
+            var commutes = CommutesOf(vm);
+            var commute = commutes.FirstOrDefault(c => c.SimGUID == sim.Object.OBJ.GUID && (c.State == CommuteState.Riding || c.State == CommuteState.Arrived));
+            if (commute == null) { Show(sim, true); return VMPrimitiveExitCode.GOTO_TRUE; }
+            if (commute.State == CommuteState.Riding)
+            {
+                if (!sim.GetFlag(VMEntityFlags.InteractionCanceled)) return VMPrimitiveExitCode.CONTINUE_NEXT_TICK;
+                //cancelled: they walk home from the kerb, and the car comes in on its own
+                commute.State = CommuteState.Home;
+                Show(sim, true);
+                return VMPrimitiveExitCode.GOTO_TRUE;
+            }
+            LetOut(vm, sim, commute);
+            commutes.Remove(commute);
+            return VMPrimitiveExitCode.GOTO_TRUE;
+        }
+
+        /// <summary>Put the Sim beside their car, which has just parked, and show them.</summary>
+        private static void LetOut(VM vm, VMAvatar sim, Commute commute)
+        {
+            var context = vm.Context;
+            var car = commute.Car;
+            var carTiles = new HashSet<(int, int)>(car.Objects.Select(o => ((int)o.Position.TileX, (int)o.Position.TileY)));
+            float cx = (float)carTiles.Average(t => t.Item1), cy = (float)carTiles.Average(t => t.Item2);
+            //the tiles next to the car, nearest its middle first: on the driveway, or else anywhere beside it
+            var around = new List<(int X, int Y)>();
+            foreach (var (x, y) in carTiles)
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dy = -1; dy <= 1; dy++)
+                        if (!carTiles.Contains((x + dx, y + dy)) && !around.Contains((x + dx, y + dy))) around.Add((x + dx, y + dy));
+            foreach (var (x, y) in around.OrderBy(t => DrivewayAt(vm, t.X, t.Y) != 0 ? 0 : 1).ThenBy(t => Math.Abs(t.X - cx) + Math.Abs(t.Y - cy)))
+            {
+                if (x < 0 || y < 0 || x >= context.Architecture.Width || y >= context.Architecture.Height) continue;
+                var result = sim.SetPosition(LotTilePos.FromBigTile((short)x, (short)y, 1), sim.Direction, context);
+                if (result.Status == VMPlacementError.Success) break;
+            }
+            Show(sim, true);
+        }
+
+        /// <summary>Show or hide a car's pictures without touching anything the game saves.</summary>
         private static void ShowPictures(VMMultitileGroup car, bool visible)
         {
             if (!VM.UseWorld || car == null) return;
@@ -848,7 +1023,14 @@ namespace Driveways
                 var where = $"Car at tile {lead.Position.TileX}, {lead.Position.TileY} facing {lead.Direction.ToString().ToLowerInvariant()}: ";
                 if (TripsOf(vm).ContainsKey(lead.ObjectID)) { lines.Add(where + "out for a drive."); continue; }
                 var commute = CommutesOf(vm).FirstOrDefault(c => c.Car == car);
-                if (commute != null) { lines.Add(where + (commute.State == CommuteState.Home ? "on its way home." : $"taking {commute.SimName} to work.")); continue; }
+                if (commute != null)
+                {
+                    var doing = commute.State == CommuteState.GettingIn ? $"taking {commute.SimName} to work."
+                        : commute.State == CommuteState.AtWork ? $"away while {commute.SimName} is at work."
+                        : commute.State == CommuteState.Home ? "on its way home." : $"bringing {commute.SimName} home.";
+                    lines.Add(where + doing);
+                    continue;
+                }
                 var plan = PlanFor(vm, car);
                 lines.Add(where + (plan.Problem == RouteProblem.None ? "ready to drive." : Explain(plan.Problem)));
             }

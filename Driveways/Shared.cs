@@ -71,5 +71,9 @@ namespace Driveways
         public const byte ModeCanDriveToWork = 4;
         /// <summary>Operand byte 0: take the Sim running this to work in the car, in place of the carpool.</summary>
         public const byte ModeDriveToWork = 5;
+        /// <summary>Operand byte 0: the Sim running this is being driven home from work in the car; true once they are out of it.</summary>
+        public const byte ModeRideHome = 6;
+        /// <summary>Operand byte 0: true when the car is bringing the Sim running this home. Never true for the player's menu.</summary>
+        public const byte ModeCanRideHome = 7;
     }
 }

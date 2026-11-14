@@ -200,7 +200,7 @@ BHAVInstruction Call(byte mode, byte ifTrue = 254, byte ifFalse = 255) =>
 void AddScript(ushort id, string name, ushort locals, params BHAVInstruction[] instructions) =>
     iff.AddChunk(new BHAV() { ChunkID = id, ChunkLabel = name, ChunkProcessed = true, Locals = locals, Instructions = instructions });
 
-const ushort InitDriveway = 4100, InitCar = 4101, GoForADrive = 4102, IsParked = 4103, DriveToWork = 4104, CanDriveToWork = 4105;
+const ushort InitDriveway = 4100, InitCar = 4101, GoForADrive = 4102, IsParked = 4103, DriveToWork = 4104, CanDriveToWork = 4105, RideHome = 4106, CanRideHome = 4107;
 const ushort CarMenu = 4200;
 
 AddScript(InitDriveway, "Init - Driveway", 0, Call(Shared.ModeInitDriveway));
@@ -216,6 +216,9 @@ AddScript(DriveToWork, "Drive to Work", 1,
     new BHAVInstruction { Opcode = 27, TruePointer = 1, FalsePointer = 255, Operand = new byte[] { 0, 0, 0xFF, 0xFE, 0, 0, 0, 0 } },
     // this runs every tick until the car has left the lot, and the game's carpool has been given the Sim to take to work
     Call(Shared.ModeDriveToWork));
+AddScript(CanRideHome, "Ride Home - Test", 0, Call(Shared.ModeCanRideHome));
+//(given to a Sim by the pack's code when they are back from work: it holds them while their car brings them in)
+AddScript(RideHome, "Ride Home", 0, Call(Shared.ModeRideHome));
 
 
 const ushort PavingGraphic = 100, BlockGraphic = 101;
@@ -292,12 +295,14 @@ iff.AddChunk(new TTAB()
     Interactions = new[]
     {
         new TTABInteraction { ActionFunction = GoForADrive, TestFunction = IsParked, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 0 },
-        new TTABInteraction { ActionFunction = DriveToWork, TestFunction = CanDriveToWork, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 1 }
+        new TTABInteraction { ActionFunction = DriveToWork, TestFunction = CanDriveToWork, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 1 },
+        new TTABInteraction { ActionFunction = RideHome, TestFunction = CanRideHome, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 2 }
     }
 });
 var menuStrings = new TTAs() { ChunkID = CarMenu, ChunkLabel = "Car", ChunkProcessed = true };
 menuStrings.InsertString(0, new STRItem("Go for a Drive"));
 menuStrings.InsertString(1, new STRItem("Drive to Work"));
+menuStrings.InsertString(2, new STRItem("Ride Home"));
 iff.AddChunk(menuStrings);
 
 var outDir = args.Length > 0 ? args[0] : ".";
@@ -339,9 +344,9 @@ if (oldTile.BHAV_Init != InitDriveway || oldTile.FunctionFlags != 0 || oldTile.M
 var menu = check.Get<TTAB>(CarMenu);
 var label = check.Get<TTAs>(CarMenu).GetString(0);
 var label2 = check.Get<TTAs>(CarMenu).GetString(1);
-if (menu.Interactions.Length != 2 || menu.Interactions[0].ActionFunction != GoForADrive || menu.Interactions[0].TestFunction != IsParked || label != "Go for a Drive"
+if (menu.Interactions.Length != 3 || menu.Interactions[2].ActionFunction != RideHome || menu.Interactions[2].TestFunction != CanRideHome || check.Get<TTAs>(CarMenu).GetString(2) != "Ride Home" || menu.Interactions[0].ActionFunction != GoForADrive || menu.Interactions[0].TestFunction != IsParked || label != "Go for a Drive"
     || menu.Interactions[1].ActionFunction != DriveToWork || menu.Interactions[1].TestFunction != CanDriveToWork || menu.Interactions[1].TTAIndex != 1 || label2 != "Drive to Work") throw new Exception("The cars' menu did not survive");
-foreach (var (id, mode) in new[] { (InitDriveway, Shared.ModeInitDriveway), (InitCar, Shared.ModeInitCar), (IsParked, Shared.ModeIsParked), (CanDriveToWork, Shared.ModeCanDriveToWork) })
+foreach (var (id, mode) in new[] { (InitDriveway, Shared.ModeInitDriveway), (InitCar, Shared.ModeInitCar), (IsParked, Shared.ModeIsParked), (CanDriveToWork, Shared.ModeCanDriveToWork), (CanRideHome, Shared.ModeCanRideHome), (RideHome, Shared.ModeRideHome) })
 {
     var script = check.Get<BHAV>(id);
     if (script.Instructions.Length != 1 || script.Instructions[0].Opcode != Shared.Opcode || script.Instructions[0].Operand[0] != mode || script.Instructions[0].TruePointer != 254) throw new Exception("Script " + id + " did not survive");

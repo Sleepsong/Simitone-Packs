@@ -24,17 +24,21 @@ The objects are in buy mode under **Decorative > Other**.
 
 ### Driving to work
 
-When the carpool comes for a Sim with a job, their car also offers **Drive to Work**. The carpool is
-hidden, the Sim walks to their car and drives off in it, and the game takes them to work as it would
-have in the carpool: pay, performance and the hours are all the game's own. The car stays away while
-they are at work, and drives home when they are back.
+A Sim with a job can drive to work in their car. **Drive to Work** is on the car's menu from when the
+game says the carpool will come (two hours before work) until the carpool leaves.
 
-**Coming home is not yet in the car.** The game's carpool still brings the Sim back after work, and is
-seen doing it; their car drives home as they get out. The next stage puts the Sim in their own car
-both ways.
+- Set off early, before the carpool: the Sim drives off and is away. When the carpool comes it is
+  kept out of sight, and the game takes them to work from there.
+- Or wait for the carpool: choose Drive to Work while it is at the kerb, and it is hidden as they
+  drive off.
 
-If the car cannot take them (the carpool has gone, or the game will not let them go), they are shown
-again by the car, the car comes home, and a message says to send them in the carpool.
+Pay, performance and the hours are all the game's own: it is the game that takes them, out of sight.
+The car stays away while they are at work. At the end of the day the carpool that brings them back
+is hidden too: their car drives in, and they get out of it beside the driveway.
+
+Cancelling Drive to Work while they are still on the lot or waiting brings them straight home. If the
+game will not take them (no carpool comes, it has gone, or it will not have them), the car comes home
+and a message says so.
 
 ### Going for a drive
 
@@ -78,6 +82,15 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 | `driveways help` | What the commands are |
 
 ## Changes
+
+- **0.13**: Sims come home from work in their car, and can leave for work early.
+  - Coming home: the carpool that brings them back is hidden, and their car drives in with them in it.
+    Before, the carpool was seen dropping them off and the car followed, empty.
+  - Leaving early: Drive to Work is offered from the game's "the carpool will arrive in about an hour"
+    warning. They drive off, and are handed to the carpool, out of sight, when it comes.
+  - Fixed: "could not be taken to work from the car" appeared when the Sim came home, and sent the car
+    home after the carpool. The game keeps a Sim at work out of the world, still busy with the car
+    portal, rather than off the lot, which the pack did not expect; it now tells the two apart.
 
 - **0.12**: **Drive to Work**, a first stage. While the carpool waits for a Sim, their car offers to
   take them instead: the carpool is hidden, they drive off, and the game's own "Go to Work" takes them
@@ -154,12 +167,11 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 
 ## Limits
 
-- **Driving to work needs the carpool to come first.** "Drive to Work" is offered while the game's
-  carpool waits for the Sim, since that is how the pack knows it is time for work, and the carpool is
-  what takes them off the lot, out of sight. The carpool's horn can still be heard.
-- **Coming home is by carpool.** See above.
+- **The carpool is still there, out of sight.** It is what takes a Sim to work and brings them back,
+  so its horn can still be heard, morning and evening.
+- **Waiting for the carpool, a Sim is on the lot, hidden by their car.** Others walk round them.
 - **No driving to community lots yet.**
-- **A lot saved while a car is at work** loads with the car parked.
+- **A lot saved while a car is at work** loads with the car parked, and the Sim comes home by carpool.
 - **The Sim does not get in.** They walk to the car and vanish until it is back. There are no animations
   for getting in and out.
 - **Only what is drawn moves.** For the game's rules the car never leaves its parking place, and the Sim
