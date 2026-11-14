@@ -148,12 +148,18 @@ when they next come out or are played.
   simply gone when they go home.
 
 Rent is the apartment's floor area times the lot's rate, for each game day. Nothing is taken by
-itself: it builds up, and every three days a rent bill comes for it, like the game's own bills, with a
-message saying how much. Pay it at the mailbox (**Pay Rent**), or with **Pay rent** in the window's
-line for your household. All the bills that have come are paid at once, if there is the money for
-them; an unpaid bill stays owed beside the next, and the next one's message says so. Nothing worse
-happens yet if rent goes unpaid. A household builds up no rent while it is a neighbour, or while it
-has no apartment. Moving into an apartment costs two days' rent, paid at once.
+itself: it builds up, and comes with the bills the mail carrier brings, as the game's own bills do.
+When a new bill appears on the lot, the rent built up since the last is added to what is owed, and a
+message says the rent came with the mail. When the household pays its bills, the rent owed is paid
+with them; if there is not enough left for the rent, a message says so and it stays owed. The
+window's line for your household says what is owed, and has **Pay rent** for paying it on its own.
+If no bill has come with the mail for a week (no mailbox, say), the rent bill comes on its own. A
+household builds up no rent while it is a neighbour, or while it has no apartment. Moving into an
+apartment costs two days' rent, paid at once.
+
+The game's bills are known by their name (a word in it is "bill" or "bills"). The rent is not yet
+shown on the bill itself: each bill that comes is written to the log with what it holds, to find out
+how it might be.
 
 ## Private apartments
 
@@ -190,8 +196,10 @@ anyone who lives in the building. Anything a visitor is given to do at the wrong
 yours too, and a visitor still found standing waiting at the front of the lot is walked to your door.
 
 A visitor waits outside until they are greeted. When you greet one (or do anything else with them)
-while they wait at your door, your Sim walks out to them first: in a house the game has the visitor
-come to your Sim instead, which here would be into the apartment. Once greeted, they come in.
+while they wait, your Sim walks out to them first: in a house the game has the visitor come to your
+Sim instead (the pizza delivery comes to whoever pays), which here would be into the apartment. And
+a visitor coming to meet your Sim while your Sim is still inside walks to your door and waits there.
+Once greeted, guests come in.
 
 **The mailbox.** The game fixes the mailbox at the front of the lot. In a building it can be picked
 up in buy or build mode and put where the mail should come: a mail room, or the hall. It cannot be
@@ -223,8 +231,10 @@ Then send `Apartments.log` (the **Settings** page says where it is). It answers 
 | How does the game send visitors to the door? | `[visitor]` lines: where each arriving visitor walks, from which script, and what they are given to do |
 | Does your household pay for what they do? | `Money: ... THAT IS A NEIGHBOUR` |
 | What do bills come to, and when? | `Money:` lines naming the mailbox or the bill |
-| Does rent build up each day, and does a bill come every three days? | `Rent:` and `Rent bill:` lines |
-| Does your Sim walk out to greet a visitor? | `... walks out to ..., who is waiting at the door` |
+| Does rent build up each day, and come with the mail's bills? | `Rent:`, `The mail brought a bill` and `Rent bill with the mail` lines |
+| Is the rent paid with the bills? | `The bills were paid`, then `Rent paid with the bills` |
+| Does your Sim walk out to greet a visitor? | `... walks out to meet ... at the door` |
+| Does a visitor wait at your door instead of walking in? | `... was coming to ..., who is still at home: they wait at the door` |
 
 ## If the game goes down
 

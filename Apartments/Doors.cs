@@ -333,7 +333,9 @@ namespace Apartments
         public static bool WalkToOwnDoor(VMRoutingFrame frame, VMEntity target, out bool planned)
         {
             planned = false;
-            if (!ShowVisitors || target == null || !(frame.Caller is VMAvatar sim) || sim.IsPet || !IsDoor(target)) return false;
+            if (!ShowVisitors || target == null || !(frame.Caller is VMAvatar sim) || sim.IsPet) return false;
+            if (target is VMAvatar host) return WaitForHost(frame, sim, host, out planned);
+            if (!IsDoor(target)) return false;
             var group = target.MultitileGroup?.Objects;
             if (frame.Callee != null && (frame.Callee == target || (group != null && group.Contains(frame.Callee)))) return false; //going through it
             var vm = frame.VM;
@@ -358,6 +360,81 @@ namespace Apartments
             planned = frame.InitRoutes(spots);
             AptLog.Write("Visitor " + sim.Name + " was walking to " + Describe(target) + ". Sent to the door of " + home.Name + " instead" + (planned ? "." : ", but no way there was found."));
             return true;
+        }
+
+        /// <summary>
+        /// A visitor who has not been let in is walking to one of the played household who is at home. In a house the
+        /// game has a visitor come to the Sim who greets them (the pizza delivery comes to whoever pays), which here would
+        /// take them into the apartment. They walk to the apartment's door instead and wait there; the household's Sim
+        /// is walking out to them (WalkOutToMeet), or is sent out now.
+        ///
+        /// Only for a visitor someone of the household has gone to meet, or is dealing with: anyone else who walks to a
+        /// Sim (the social worker, say) is left alone.
+        /// </summary>
+        private static bool WaitForHost(VMRoutingFrame frame, VMAvatar visitor, VMAvatar host, out bool planned)
+        {
+            planned = false;
+            var vm = frame.VM;
+            var state = Neighbours.StateOf(vm);
+            var played = vm?.TS1State?.CurrentFamily;
+            if (state?.File == null || played == null || FamilyOf(host) != played.ChunkID || visitor == host) return false;
+            var theirs = FamilyOf(visitor);
+            if (theirs != 0 && state.ResidentIds.Contains(theirs)) return false;
+            if (IsLetIn(visitor)) return false;
+            var home = state.File.ApartmentOf(played.ChunkID);
+            if (home == null || host.Position == LotTilePos.OUT_OF_WORLD || visitor.Position == LotTilePos.OUT_OF_WORLD) return false;
+            Neighbours.FreshRooms(vm, state);
+            if (!state.RoomApts.TryGetValue(vm.Context.GetRoomAt(host.Position), out var hostIn) || hostIn != home) return false; //the host is out: meet them there
+            if (state.RoomApts.TryGetValue(vm.Context.GetRoomAt(visitor.Position), out var visitorIn) && visitorIn == home) return false;
+            var now = Neighbours.Clock(vm);
+            var meeting = (state.WalkedOut.TryGetValue(visitor.ObjectID, out var until) && until > now) || IsDealingWith(host, visitor);
+            if (!meeting) return false;
+
+            var doors = DoorsOf(vm, state, home);
+            if (doors.Count == 0) return false;
+            var door = doors.OrderBy(x => Math.Abs(x.Outside.x - visitor.Position.x) + Math.Abs(x.Outside.y - visitor.Position.y) + Math.Abs(x.Outside.Level - visitor.Position.Level) * 1000).First();
+            var spots = SpotsOutside(vm, door);
+            if (spots.Count == 0) return false;
+            planned = frame.InitRoutes(spots);
+            Once(vm, 8, visitor.ObjectID, () => visitor.Name + " was coming to " + host.Name + ", who is still at home: they wait at the door of " + home.Name + " instead.");
+            //and the host comes out, if nobody has sent them yet
+            if (!state.WalkedOut.ContainsKey(visitor.ObjectID) || state.WalkedOut[visitor.ObjectID] <= now)
+            {
+                var sent = SendOut(vm, state, host, visitor, door);
+                if (sent != null) AptLog.Write(sent);
+            }
+            return true;
+        }
+
+        /// <summary>Whether a visitor has been let in: greeted, for a guest; for one of the game's own characters, not waiting at the door.</summary>
+        public static bool IsLetIn(VMAvatar visitor)
+        {
+            var greeted = visitor.GetPersonData(VMPersonDataVariable.GreetStatus);
+            return (visitor.GetPersonData(VMPersonDataVariable.PersonType) > 1) ? greeted != 0 : greeted > 0;
+        }
+
+        /// <summary>Whether one Sim has anything to do with another in their queue (greeting them, paying them).</summary>
+        private static bool IsDealingWith(VMAvatar sim, VMAvatar other)
+        {
+            var queue = sim.Thread?.Queue;
+            if (queue == null) return false;
+            foreach (var action in queue) if (action?.Callee == other || action?.StackObject == other) return true;
+            return false;
+        }
+
+        /// <summary>Send one of the household out of the apartment to a spot beside a visitor at one of its doors.</summary>
+        private static string SendOut(VM vm, Neighbours.LotState state, VMAvatar sim, VMAvatar visitor, Doorstep door)
+        {
+            state.WalkedOut[visitor.ObjectID] = Neighbours.Clock(vm) + 30;
+            var mine = new Tile(visitor.Position.Level, visitor.Position.TileX, visitor.Position.TileY);
+            var spot = SpotsOutside(vm, door)
+                .Select(x => new Tile(x.Position.Level, x.Position.TileX, x.Position.TileY))
+                .Where(x => !x.Equals(mine))
+                .OrderBy(x => Math.Abs(x.X - mine.X) + Math.Abs(x.Y - mine.Y))
+                .Cast<Tile?>().FirstOrDefault();
+            if (spot == null) return null;
+            var walking = Neighbours.Walk(vm, sim, spot.Value);
+            return sim.Name + (walking ? " walks out to meet " : " could not be sent out to meet ") + visitor.Name + " at the door.";
         }
 
         /// <summary>Where to stand at a door, from the hall: the spot just outside it, the ones around that, and the doorway itself last.</summary>
@@ -395,39 +472,22 @@ namespace Apartments
             if (state?.File == null || played == null || FamilyOf(sim) != played.ChunkID) return null;
             var theirs = FamilyOf(visitor);
             if (theirs != 0 && state.ResidentIds.Contains(theirs)) return null;
-            if (visitor.GetPersonData(VMPersonDataVariable.GreetStatus) > 0) return null; //let in already
+            if (IsLetIn(visitor)) return null;
             var home = state.File.ApartmentOf(played.ChunkID);
             if (home == null || sim.Position == LotTilePos.OUT_OF_WORLD || visitor.Position == LotTilePos.OUT_OF_WORLD) return null;
             Neighbours.FreshRooms(vm, state);
             if (!state.RoomApts.TryGetValue(vm.Context.GetRoomAt(sim.Position), out var simIn) || simIn != home) return null; //the Sim is not at home
             if (state.RoomApts.TryGetValue(vm.Context.GetRoomAt(visitor.Position), out var visitorIn) && visitorIn == home) return null; //the visitor is in already
 
-            //the visitor has to be at one of the doors
-            var doors = DoorsOf(vm, state, home);
-            Doorstep? at = null;
-            foreach (var door in doors)
-            {
-                if (door.Outside.Level != visitor.Position.Level) continue;
-                if (Math.Abs(door.Outside.x - visitor.Position.x) > 3 * 16 || Math.Abs(door.Outside.y - visitor.Position.y) > 3 * 16) continue;
-                at = door;
-                break;
-            }
-            if (at == null) return null;
-
             //once for each visitor in a while: several things done with them in a row need one walk
             var now = Neighbours.Clock(vm);
             if (state.WalkedOut.TryGetValue(visitor.ObjectID, out var until) && until > now) return null;
-            state.WalkedOut[visitor.ObjectID] = now + 30;
-
-            var mine = new Tile(visitor.Position.Level, visitor.Position.TileX, visitor.Position.TileY);
-            var spot = SpotsOutside(vm, at.Value)
-                .Select(x => new Tile(x.Position.Level, x.Position.TileX, x.Position.TileY))
-                .Where(x => !x.Equals(mine))
-                .OrderBy(x => Math.Abs(x.X - mine.X) + Math.Abs(x.Y - mine.Y))
-                .Cast<Tile?>().FirstOrDefault();
-            if (spot == null) return null;
-            var walking = Neighbours.Walk(vm, sim, spot.Value);
-            return sim.Name + (walking ? " walks out to " : " could not be sent out to ") + visitor.Name + ", who is waiting at the door, for \"" + action.Name + "\".";
+            var doors = DoorsOf(vm, state, home);
+            if (doors.Count == 0) return null;
+            //the door they are at, or the one they will come to
+            var door = doors.OrderBy(x => Math.Abs(x.Outside.x - visitor.Position.x) + Math.Abs(x.Outside.y - visitor.Position.y) + Math.Abs(x.Outside.Level - visitor.Position.Level) * 1000).First();
+            var sent = SendOut(vm, state, sim, visitor, door);
+            return (sent == null) ? null : sent + " (for \"" + action.Name + "\")";
         }
 
         /// <summary>Write down, once for each visitor and each thing, where the game walks an arriving visitor to.</summary>

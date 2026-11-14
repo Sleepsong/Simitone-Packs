@@ -106,6 +106,9 @@ namespace Apartments
             public Dictionary<int, long> Invited = new Dictionary<int, long>();
             /// <summary>Sims on their way to knock at a door.</summary>
             public List<Doors.Knock> Knocks = new List<Doors.Knock>();
+            /// <summary>The game's bills on the lot, as of the last look (Bills.cs), and whether there has been a look yet.</summary>
+            public HashSet<short> BillsSeen = new HashSet<short>();
+            public bool BillsScanned;
             /// <summary>Visitors a Sim of the played household has walked out to meet, and until when that walk counts (game minutes).</summary>
             public Dictionary<short, long> WalkedOut = new Dictionary<short, long>();
             /// <summary>Visitors who have already been shown to the played household's door.</summary>
@@ -669,6 +672,7 @@ namespace Apartments
             Doors.Look(vm, state);
             ReportLostRooms(vm, state);
             CollectRent(vm, state);
+            Bills.Look(vm, state);
             LookAfterOutings(vm, state);
         }
 
@@ -791,7 +795,7 @@ namespace Apartments
             var account = RentOf(vm);
             if (account == null) return null;
             var owed = (account.Owed > 0) ? ("Rent owed: " + account.Owed + (account.Bills > 1 ? " on " + account.Bills + " bills." : ".")) : "No rent owed.";
-            return owed + (account.Accrued > 0 ? " Since the last bill: " + account.Accrued + "." : "") + " A bill comes every " + Units.BillEveryDays + " days.";
+            return owed + (account.Accrued > 0 ? " Since the last bill: " + account.Accrued + "." : "") + " The rent comes with the mail's bills, and is paid with them.";
         }
 
         /// <summary>Whether apartments are being shown on the lot by light.</summary>
@@ -916,14 +920,8 @@ namespace Apartments
             var daily = (apartment == null) ? 0 : Units.DailyRent(Units.Area(vm, file, apartment), file.Rate);
             var days = Units.AccrueRent(account, today, daily);
             if (days > 0 && daily > 0) AptLog.Write("Rent: " + (daily * days) + " built up for " + Residency.NameOf(played) + " (" + days + " day" + (days == 1 ? "" : "s") + " at " + daily + "). Not yet billed: " + account.Accrued + ".");
-            if (!Units.BillDue(account, today)) return;
-
-            var overdue = account.Bills > 0;
-            var amount = Units.IssueBill(account, today);
-            AptLog.Write("Rent bill: " + amount + " for " + (apartment?.Name ?? "the apartment") + ". Owed in all: " + account.Owed + " on " + account.Bills + " bill" + (account.Bills == 1 ? "" : "s") + ".");
-            OnRentBill?.Invoke(vm, "The rent bill for " + (apartment?.Name ?? "your apartment") + " has come: " + amount + " simoleons."
-                + (overdue ? " The last one has not been paid: " + account.Owed + " is owed in all." : "")
-                + "\n\nPay it at the mailbox (Pay Rent), or in the Apartments window.");
+            //the bill comes with the game's own mail (Bills.cs); on its own only if no mail has brought one for a week
+            Bills.OnItsOwn(vm, state, account, today, apartment?.Name);
         }
 
         /// <summary>What the played household owes in rent: on bills, and built up since the last. Null if there is no building.</summary>

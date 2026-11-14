@@ -317,7 +317,7 @@ namespace Apartments
                 }, false, false, 190));
 
             var rate = file.Rate;
-            rows.Add(new Row("Rent: " + (rate == 0 ? "none" : rate + " a tile a day"), Actions.RentLine(file) + " Moving in costs " + Units.DepositDays + " days' rent; after that a bill comes every " + Units.BillEveryDays + " days, to pay at the mailbox.")
+            rows.Add(new Row("Rent: " + (rate == 0 ? "none" : rate + " a tile a day"), Actions.RentLine(file) + " Moving in costs " + Units.DepositDays + " days' rent; after that the rent comes with the mail's bills, and is paid with them.")
                 .Button("-", () => Do(() => Actions.SetRent(rate - 1)), false, rate <= 0, SmallButton)
                 .Button("+", () => Do(() => Actions.SetRent(rate + 1)), false, rate >= Actions.MostRent, SmallButton));
 

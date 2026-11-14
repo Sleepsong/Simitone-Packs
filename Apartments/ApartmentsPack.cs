@@ -115,6 +115,10 @@ namespace Apartments
             {
                 if (Actions.Screen?.vm == vm) Actions.Say("Rent", message);
             };
+            Bills.OnNews = (vm, message) =>
+            {
+                if (Actions.Screen?.vm == vm) Actions.Say("Rent", message);
+            };
         }
 
         private const int MostThrown = 40;
@@ -327,15 +331,6 @@ namespace Apartments
             if (__result == null || !Neighbours.IsShared(vm)) return; //(this runs whenever the cursor is over anything)
             Guard("looking at a menu in a building", () =>
             {
-                //the mailbox: rent bills are paid there, like the game's own
-                var guid = __instance.Object?.OBJ?.GUID ?? 0;
-                if (guid == 0xEF121974 || guid == 0x1D95C9B0)
-                {
-                    var rent = Neighbours.RentOf(vm);
-                    if (rent != null && rent.Owed > 0 && caller is VMAvatar payer && payer.GetPersonData(VMPersonDataVariable.TS1FamilyNumber) == vm.TS1State.CurrentFamily.ChunkID)
-                        __result.Add(new VMPieMenuInteraction() { Name = "Pay Rent (" + rent.Owed + ")", ID = MenuID, Param0 = ParamPayRent, Callee = __instance });
-                    return;
-                }
                 //a door into somebody else's apartment: knock
                 if (Doors.IsDoor(__instance))
                 {
@@ -618,6 +613,7 @@ namespace Apartments
             var neighbour = Neighbours.IsNeighbour(vm, context.Caller);
             AptLog.Write("Money: " + (change > 0 ? "+" : "") + change + " for the played household (now " + now + "). By " + who
                 + (what != who ? ", using " + what : "") + (neighbour ? ". THAT IS A NEIGHBOUR: the played household paid for them" : "") + ".");
+            Bills.AfterPayment(vm, context.Caller, context.Callee, change);
         }
 
         private static string NameOf(VMEntity entity)

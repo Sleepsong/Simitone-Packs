@@ -218,6 +218,10 @@ Check("writing nothing removes the file", PackStore.Write("sample.apartments", n
     Check("rent: no rent, no bills", free.Accrued == 0 && !Units.BillDue(free, 110));
 }
 
+// ---- the game's bills, by name ----
+Check("a bill is known by its name", Bills.IsBillName("Bills") && Bills.IsBillName("Bill - Electric") && Bills.IsBillName("*Bills") && Bills.IsBillName("Mailbox Bills"));
+Check("...and billiards, billboards and nothing are not bills", !Bills.IsBillName("Table - Billiards") && !Bills.IsBillName("Billboard") && !Bills.IsBillName("") && !Bills.IsBillName(null) && !Bills.IsBillName("Mailbox"));
+
 // ---- the question dialog's layout ----
 Check("a short message is one line", UIChoiceDialog.LinesOf("Which apartment?", 800, 15) == 1);
 Check("each paragraph is at least a line, blank ones too", UIChoiceDialog.LinesOf("one\n\nthree", 800, 15) == 3);
