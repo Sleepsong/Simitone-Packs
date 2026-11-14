@@ -186,7 +186,10 @@ namespace Apartments
                 harmony.Patch(AccessTools.Method(typeof(VMNetInteractionCmd), "Execute", new[] { typeof(VM), typeof(VMAvatar) }) ?? throw new Exception("VMNetInteractionCmd.Execute was not found."), prefix: Mine(nameof(BeforeInteraction)));
             }, "knocking at an apartment's door");
             Optional(() => harmony.Patch(Find(typeof(VMEntity), "IndividualUserMovable"), postfix: Mine(nameof(AfterUserMovable))), "moving the mailbox in a building");
-            Optional(() => harmony.Patch(Find(typeof(VMThread), "EnqueueAction"), prefix: Mine(nameof(BeforeEnqueue))), "sending visitors to the apartment's door");
+            Optional(() => harmony.Patch(Find(typeof(VMThread), "EnqueueAction"), prefix: Mine(nameof(BeforeEnqueue))), "sending visitors' business at a door to the apartment's door");
+            Optional(() => harmony.Patch(AccessTools.Method(typeof(VMRoutingFrame), "InitRoutes", new[] { typeof(SLOTItem), typeof(VMEntity) })
+                    ?? throw new Exception("VMRoutingFrame.InitRoutes(SLOTItem, VMEntity) was not found."), prefix: Mine(nameof(BeforeWalkToThing))),
+                "walking visitors to the apartment's door");
             Optional(() => harmony.Patch(Find(typeof(UILotControl), "ShowPieMenu"), prefix: Mine(nameof(BeforeShowPie)), postfix: Mine(nameof(AfterShowPie))),
                 "saying why a thing in someone else's apartment cannot be used");
 
@@ -379,6 +382,24 @@ namespace Apartments
         }
 
         // ---- visitors at the door ----
+
+        /// <summary>A walk to a thing is about to be planned (both the game's walk-to-object primitives come here).</summary>
+        public static bool BeforeWalkToThing(VMRoutingFrame __instance, VMEntity target, ref bool __result)
+        {
+            if (!Doors.ShowVisitors || target == null || !(__instance.Caller is VMAvatar)) return true;
+            var vm = __instance.VM;
+            if (!Neighbours.IsShared(vm)) return true; //nearly always: this runs for every walk to a thing on every lot
+            var replaced = false;
+            var planned = false;
+            Guard("walking a visitor to the apartment's door", () =>
+            {
+                Doors.WatchWalk(__instance, target);
+                replaced = Doors.WalkToOwnDoor(__instance, target, out planned);
+            });
+            if (!replaced) return true;
+            __result = planned;
+            return false;
+        }
 
         /// <summary>
         /// A Sim is being given something to do. On a building, if it is a visitor's business at a door that is not the

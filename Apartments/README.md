@@ -178,13 +178,13 @@ at night someone answers: one of the household comes to the door, the apartment 
 household is welcome for three hours. At night nobody answers. When the welcome is over the
 apartment goes dark again; anyone still inside can walk out, but not back in.
 
-**Visitors.** The game sends visitors (the welcome wagon, guests, the pizza delivery) to its idea of
-the front door, which in a building is the street door. Whatever a visitor is given to do at a door
-that is not your apartment's (ringing the bell, waiting to be let in) is moved to your apartment's
-door, so that is where they ring. It is matched by name, so it works with any kind of door that has
-the same thing on it; when the log says the door had nothing of that name, the visitor goes to the
-street door as before. A visitor still found standing waiting at the front of the lot is walked to
-your door too. Someone who lives in the building uses any door.
+**Visitors.** The game walks visitors (the welcome wagon, guests, the pizza delivery) to its idea of
+the front door, which in a building is the street door, and they ring there. So when a visitor's walk
+to a door that is not your apartment's is about to be planned, it is planned to your apartment's door
+instead: to the spot just outside it, or one beside that. What they do on getting there (ringing,
+waiting to be let in) is the game's own. A Sim walking *through* a door is never touched, and nor is
+anyone who lives in the building. Anything a visitor is given to do at the wrong door is moved to
+yours too, and a visitor still found standing waiting at the front of the lot is walked to your door.
 
 **The mailbox.** The game fixes the mailbox at the front of the lot. In a building it can be picked
 up in buy or build mode and put where the mail should come: a mail room, or the hall. It cannot be
@@ -212,7 +212,8 @@ Then send `Apartments.log` (the **Settings** page says where it is). It answers 
 | Do neighbours stay out of your apartment now? | No `THE APARTMENT OF ...` in a neighbour's line |
 | Does knocking work? | `is going to knock at ...`, then `knocked at ... answered` |
 | Do visitors ring at your door? | `Visitor ... was sent to the door at ... Sent to the door of ... instead.` |
-| How does the game send visitors to the door? | `[visitor]` lines: what each visitor is given to do on arriving, and at doors |
+| Do visitors walk to your door? | `Visitor ... was walking to the door at ... Sent to the door of ... instead.` |
+| How does the game send visitors to the door? | `[visitor]` lines: where each arriving visitor walks, from which script, and what they are given to do |
 | Does your household pay for what they do? | `Money: ... THAT IS A NEIGHBOUR` |
 | What do bills come to, and when? | `Money:` lines naming the mailbox or the bill |
 | Is rent taken once a day, and is the amount right? | `Rent:` lines |

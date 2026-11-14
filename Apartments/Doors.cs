@@ -319,6 +319,82 @@ namespace Apartments
         }
 
         /// <summary>
+        /// The engine is about to plan a Sim's walk to a thing: to one of its routing slots, or to a spot next to it.
+        /// That is how the game walks a visitor to its front door, which in a building is the street door; it does not
+        /// give them anything to do at the door. So if a visitor (anyone who does not live here) is walking to a door that
+        /// is not the played household's, the walk is planned to the household's own door instead: to the spots just
+        /// outside it. What the visitor then does there (ringing, waiting) is the game's own, as it would have been.
+        ///
+        /// Not when the script doing the walking is the door's own: that is how a Sim walks through a door.
+        /// Returns true if the walk was planned here, with whether a way there was found.
+        /// </summary>
+        public static bool WalkToOwnDoor(VMRoutingFrame frame, VMEntity target, out bool planned)
+        {
+            planned = false;
+            if (!ShowVisitors || target == null || !(frame.Caller is VMAvatar sim) || sim.IsPet || !IsDoor(target)) return false;
+            var group = target.MultitileGroup?.Objects;
+            if (frame.Callee != null && (frame.Callee == target || (group != null && group.Contains(frame.Callee)))) return false; //going through it
+            var vm = frame.VM;
+            var state = Neighbours.StateOf(vm);
+            var played = vm?.TS1State?.CurrentFamily;
+            if (state?.File == null || played == null) return false;
+            var family = FamilyOf(sim);
+            if (family != 0 && state.ResidentIds.Contains(family)) return false;
+            var home = state.File.ApartmentOf(played.ChunkID);
+            if (home == null) return false;
+            Neighbours.FreshRooms(vm, state);
+            foreach (var part in group ?? new List<VMEntity>() { target })
+            {
+                if (part.Position == LotTilePos.OUT_OF_WORLD) continue;
+                if (state.RoomApts.TryGetValue(vm.Context.GetRoomAt(part.Position), out var inApt) && inApt == home) return false; //their door already
+            }
+            var doors = DoorsOf(vm, state, home);
+            if (doors.Count == 0) return false;
+            var nearest = doors.OrderBy(x => Math.Abs(x.Outside.x - sim.Position.x) + Math.Abs(x.Outside.y - sim.Position.y) + Math.Abs(x.Outside.Level - sim.Position.Level) * 1000).First();
+            var spots = SpotsOutside(vm, nearest);
+            if (spots.Count == 0) return false;
+            planned = frame.InitRoutes(spots);
+            AptLog.Write("Visitor " + sim.Name + " was walking to " + Describe(target) + ". Sent to the door of " + home.Name + " instead" + (planned ? "." : ", but no way there was found."));
+            return true;
+        }
+
+        /// <summary>Where to stand at a door, from the hall: the spot just outside it, the ones around that, and the doorway itself last.</summary>
+        public static List<VMFindLocationResult> SpotsOutside(VM vm, Doorstep door)
+        {
+            var result = new List<VMFindLocationResult>();
+            var seen = new HashSet<Tile>();
+            void Add(LotTilePos pos, double score)
+            {
+                var tile = new Tile(pos.Level, pos.TileX, pos.TileY);
+                if (!seen.Add(tile)) return;
+                var centre = tile.ToPos();
+                if (vm.Context.GetRoomAt(centre) != door.OutsideRoom) return; //the hall side only
+                result.Add(new VMFindLocationResult() { Position = centre, FaceAnywhere = true, Score = score });
+            }
+            Add(door.Outside, 3);
+            for (int dx = -1; dx <= 1; dx++)
+                for (int dy = -1; dy <= 1; dy++)
+                    if (dx != 0 || dy != 0) Add(new LotTilePos((short)(door.Outside.x + dx * 16), (short)(door.Outside.y + dy * 16), door.Outside.Level), 2);
+            if (door.Hall != null && door.Hall.Position != LotTilePos.OUT_OF_WORLD) Add(door.Hall.Position, 1);
+            return result;
+        }
+
+        /// <summary>Write down, once for each visitor and each thing, where the game walks an arriving visitor to.</summary>
+        public static void WatchWalk(VMRoutingFrame frame, VMEntity target)
+        {
+            if (!(frame.Caller is VMAvatar sim) || sim.IsPet || target == null) return;
+            var vm = frame.VM;
+            var state = Neighbours.StateOf(vm);
+            if (state == null) return;
+            var family = FamilyOf(sim);
+            if (family != 0 && state.ResidentIds.Contains(family)) return;
+            if (sim.GetPersonData(VMPersonDataVariable.GreetStatus) > 0 && !IsDoor(target)) return;
+            var id = (int)((sim.Object.OBJ.GUID * 31) ^ (target.Object?.OBJ?.GUID ?? 0));
+            Once(vm, 7, id, () => "[visitor] " + sim.Name + " (greeted " + sim.GetPersonData(VMPersonDataVariable.GreetStatus) + ") walks to " + (IsDoor(target) ? Describe(target) : target.ToString())
+                + ", from the script \"" + (frame.Routine?.Rti?.Name ?? "?") + "\" of " + (frame.Callee?.ToString() ?? "?") + ".");
+        }
+
+        /// <summary>
         /// Write down, once for each visitor and each thing, what the game gives a visitor to do on a building, and to
         /// what. It is how the game's way of sending visitors to the door can be seen.
         /// </summary>
@@ -491,6 +567,7 @@ namespace Apartments
 
                 doors = doors ?? DoorsOf(vm, state, home);
                 if (doors.Count == 0) return;
+                if (doors.Any(x => x.Outside.Level == sim.Position.Level && Math.Abs(x.Outside.x - sim.Position.x) <= 2 * 16 && Math.Abs(x.Outside.y - sim.Position.y) <= 2 * 16)) continue; //at the door already
                 var nearest = doors.OrderBy(x => Math.Abs(x.Outside.x - sim.Position.x) + Math.Abs(x.Outside.y - sim.Position.y) + Math.Abs(x.Outside.Level - sim.Position.Level) * 1000).First();
                 state.ShownToDoor.Add(sim.ObjectID);
                 var walking = Neighbours.Walk(vm, sim, TileOf(nearest.Outside));

@@ -22,7 +22,7 @@ foreach (var m in h.GetPatchedMethods()) {
 }
 // the two ways into the Apartments window are optional to the pack, but should fit the Simitone this is built against
 foreach (var needed in new[] { "TS1GameScreen.Save", "VMContext.RefreshLighting", "UILotControl.Update", "UIMainPanel.AddPacksButton", "UIHouseSelectPanel..ctor", "TS1GameScreen.MoveInAndPlay", "TS1GameScreen.PlayHouse",
-    "VMRoutingFrame.DoRoomRoute", "VMFindBestAction.Execute", "VMThread.Tick", "VMThread.EnqueueAction", "UILotControl.ShowPieMenu", "VMEntity.GetPieMenu", "VMNetInteractionCmd.Verify", "VMNetInteractionCmd.Execute", "VMEntity.IndividualUserMovable" }) {
+    "VMRoutingFrame.DoRoomRoute", "VMFindBestAction.Execute", "VMThread.Tick", "VMThread.EnqueueAction", "UILotControl.ShowPieMenu", "VMRoutingFrame.InitRoutes", "VMEntity.GetPieMenu", "VMNetInteractionCmd.Verify", "VMNetInteractionCmd.Execute", "VMEntity.IndividualUserMovable" }) {
     if (!h.GetPatchedMethods().Any(m => m.DeclaringType.Name + "." + m.Name == needed)) { Console.WriteLine("FAILED: the patch on " + needed + " did not attach"); return 1; }
 }
 // the per-tick hook must be harmless on a VM it knows nothing about
