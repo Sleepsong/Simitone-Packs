@@ -30,7 +30,7 @@ namespace LifeStages
         public string Title = "";
         /// <summary>"Day 3 of 15".</summary>
         public string Counter = "";
-        /// <summary>"12 days until adult".</summary>
+        /// <summary>"12 days until adult", or "Ages up at 6 pm". Kept short: the display has the width of its bar.</summary>
         public string Status = "";
         /// <summary>A smaller line under it, when there is something to add.</summary>
         public string Note = "";
@@ -69,7 +69,7 @@ namespace LifeStages
                 view.Counter = "Day " + Math.Min(sim.Days + 1, length) + " of " + length;
                 var left = length - sim.Days;
                 if (left > 0) view.Status = left + (left == 1 ? " day until " : " days until ") + Stages.Name(next.Value);
-                else view.Status = "Becomes " + Article(next.Value) + " " + When(settings, atHome, hour);
+                else view.Status = "Ages up " + When(settings, atHome, hour);
             }
             if (!settings.Ageing) view.Note = "Ageing is off.";
             else if (!atHome) view.Note = "Days only count at home.";
@@ -104,9 +104,9 @@ namespace LifeStages
         /// <summary>When a Sim who has lived a stage out will move on: birthdays are in the evening, at home.</summary>
         public static string When(Settings settings, bool atHome, int hour)
         {
-            if (!settings.Ageing) return "once ageing is on";
+            if (!settings.Ageing) return "when ageing is on";
             if (!atHome) return "once back home";
-            return hour < DayWatch.EveningHour ? "at 6 this evening" : "within the hour";
+            return hour < DayWatch.EveningHour ? "at 6 pm" : "within the hour";
         }
 
         /// <summary>A stage's days, whether or not teens are switched on.</summary>

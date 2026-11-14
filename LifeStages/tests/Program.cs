@@ -153,19 +153,93 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
 {
     int Spread(Color c) => Math.Max(c.R, Math.Max(c.G, c.B)) - Math.Min(c.R, Math.Min(c.G, c.B));
     int Far(Color a, Color b) => Math.Max(Math.Abs(a.R - b.R), Math.Max(Math.Abs(a.G - b.G), Math.Abs(a.B - b.B)));
+    // a made-up head, 64 by 64: skin in light and shade, a mop of hair across the top, two eyes (white, with a
+    // dark iris), lips, brows, and the shine of light on a cheek. Each part is listed so it can be checked
+    const int HW = 64, HH = 64;
+    var hairColours = new[] { new Color(20, 16, 14), new Color(70, 40, 22), new Color(214, 180, 90), new Color(150, 60, 30), new Color(110, 110, 112) };
+    (Color[] pixels, Dictionary<string, List<int>> parts) Head(Color skin, Color hair)
+    {
+        var px = new Color[HW * HH];
+        var parts = new Dictionary<string, List<int>>() { ["hair"] = new List<int>(), ["skin"] = new List<int>(), ["eyes"] = new List<int>(), ["lips"] = new List<int>(), ["shine"] = new List<int>(), ["brows"] = new List<int>() };
+        Color Mul(Color c, float f) => new Color(Math.Min(255, (int)(c.R * f)), Math.Min(255, (int)(c.G * f)), Math.Min(255, (int)(c.B * f)), 255);
+        void Put(int x, int y, Color c, string part) { px[y * HW + x] = c; foreach (var l in parts.Values) l.Remove(y * HW + x); parts[part].Add(y * HW + x); }
+        for (int y = 0; y < HH; y++) for (int x = 0; x < HW; x++) Put(x, y, Mul(skin, 0.75f + 0.33f * x / (HW - 1)), "skin");
+        for (int y = 0; y < 18; y++) for (int x = 0; x < HW; x++) Put(x, y, Mul(hair, 0.85f + 0.3f * ((x + y) % 7) / 6f), "hair");
+        foreach (var ex in new[] { 18, 40 })
+        {
+            for (int y = 28; y < 31; y++) for (int x = ex; x < ex + 6; x++) Put(x, y, new Color(232, 230, 222), "eyes");
+            for (int y = 28; y < 31; y++) for (int x = ex + 2; x < ex + 4; x++) Put(x, y, new Color(60, 70, 110), "eyes");
+            for (int x = ex; x < ex + 6; x++) Put(x, 25, Mul(hair, 0.8f), "brows");
+        }
+        for (int y = 46; y < 49; y++) for (int x = 26; x < 38; x++) Put(x, y, new Color((int)(skin.R * 0.72f) + 20, (int)(skin.G * 0.5f), (int)(skin.B * 0.5f)), "lips");
+        for (int y = 36; y < 42; y++) for (int x = 48; x < 55; x++) Put(x, y, Mul(skin, 1.4f), "shine");
+        return (px, parts);
+    }
     foreach (var tone in Body.SkinColours)
     {
         var skin = GreyHair.FallbackSkin(tone);
-        Color Shade(float f) => new Color((int)(skin.R * f), (int)(skin.G * f), (int)(skin.B * f), 255);
-        var face = new[] { skin, Shade(0.85f), Shade(1.08f), Shade(0.75f) };
-        var kept = GreyHair.Process(face, skin);
-        Check(tone + ": a face in light and shade is left", Enumerable.Range(0, face.Length).All(i => Far(face[i], kept[i]) <= 6));
-        var hair = new[] { new Color(20, 16, 14), new Color(70, 40, 22), new Color(214, 180, 90), new Color(150, 60, 30), new Color(110, 110, 112) };
-        var grey = GreyHair.Process(hair, skin);
-        Check(tone + ": black, brown, fair, red and grey hair come out silver", grey.All(c => Spread(c) <= 26 && c.R >= 100));
-        Check(tone + ": the shading in hair is kept", grey[0].R < grey[2].R);
+        var hand = new Color(Math.Min(255, skin.R + 14), Math.Max(0, skin.G - 8), skin.B); //a hand is not quite the face
+        foreach (var hair in hairColours)
+        {
+            var (px, parts) = Head(skin, hair);
+            var grey = GreyHair.Process(px, HW, HH, hand);
+            bool Same(string part) => parts[part].All(i => Far(px[i], grey[i]) <= 6);
+            var what = tone + ", hair " + hair.R + "," + hair.G + "," + hair.B + ": ";
+            Check(what + "the hair is silver", parts["hair"].Where(i => i % HW > 2 && i % HW < HW - 3 && i / HW < 15).All(i => Spread(grey[i]) <= 26 && grey[i].R >= 100));
+            var changed = new[] { "skin", "eyes", "lips", "shine" }.Where(x => !Same(x)).Select(x => x + " (" + parts[x].Count(i => Far(px[i], grey[i]) > 6) + " of " + parts[x].Count + ")").ToList();
+            Check(what + "skin, eyes, lips and the shine on a cheek are left" + (changed.Count == 0 ? "" : ": NOT " + string.Join(", ", changed)), changed.Count == 0);
+            Check(what + "the shading in hair is kept", grey[3 * HW + 3].R != grey[3 * HW + 6].R);
+        }
     }
-    var clear = GreyHair.Process(new[] { new Color(70, 40, 22, 0), new Color(70, 40, 22, 99) }, GreyHair.FallbackSkin("lgt"));
+    // the head in the report: an orange-brown face, with the hand's dark skin as the guess
+    {
+        var face = new Color(160, 88, 52);
+        var (px, parts) = Head(face, hairColours[0]);
+        var grey = GreyHair.Process(px, HW, HH, GreyHair.FallbackSkin("drk"));
+        var changed = new[] { "skin", "eyes", "lips", "shine" }.Where(x => parts[x].Any(i => Far(px[i], grey[i]) > 6)).ToList();
+        Check("a face far from the hand's colour keeps its skin, eyes and lips" + (changed.Count == 0 ? "" : ": NOT " + string.Join(", ", changed)), changed.Count == 0);
+        Check("...and its hair still goes silver", parts["hair"].Where(i => i % HW > 2 && i % HW < HW - 3 && i / HW < 15).All(i => Spread(grey[i]) <= 26 && grey[i].R >= 100));
+    }
+    // a head that is mostly hair: the face is still the skin, not the hair
+    {
+        var face = GreyHair.FallbackSkin("med");
+        var (px, parts) = Head(face, hairColours[1]);
+        for (int y = 18; y < 40; y++) for (int x = 0; x < 12; x++) px[y * HW + x] = hairColours[1];
+        for (int y = 18; y < 40; y++) for (int x = 56; x < HW; x++) px[y * HW + x] = hairColours[1];
+        for (int y = 52; y < HH; y++) for (int x = 0; x < HW; x++) px[y * HW + x] = hairColours[1];
+        var grey = GreyHair.Process(px, HW, HH, face);
+        Check("a head that is mostly hair keeps its face", parts["eyes"].Concat(parts["lips"]).All(i => Far(px[i], grey[i]) <= 6) && Enumerable.Range(0, 6).All(k => Far(px[(30 + k) * HW + 30], grey[(30 + k) * HW + 30]) <= 6));
+    }
+    Check("a skin colour guessed a little wrong is put right from the face", Far(GreyHair.FaceSkin(Head(GreyHair.FallbackSkin("med"), hairColours[0]).pixels, new Color(205, 130, 95)), GreyHair.FallbackSkin("med")) <= 30);
+    var odd = new Color[] { Color.Black, Color.Black };
+    var refused = false;
+    try { GreyHair.Process(odd, 3, 3, GreyHair.FallbackSkin("lgt")); } catch (ArgumentException) { refused = true; }
+    Check("a picture of the wrong size is refused, not misread", refused);
+
+    // for a look at it without the game: --preview writes a head before and after, as pictures
+    var pat = Array.IndexOf(args, "--preview");
+    if (pat >= 0 && pat + 1 < args.Length)
+    {
+        Directory.CreateDirectory(args[pat + 1]);
+        int row = 0;
+        var sheet = new byte[(HW * 2 + 4) * (HH + 4) * 3 * 3 * 3];
+        var lines = new List<byte[]>();
+        foreach (var tone in Body.SkinColours)
+        {
+            var (px, _) = Head(GreyHair.FallbackSkin(tone), hairColours[row % 2 == 0 ? 0 : 2]);
+            var grey = GreyHair.Process(px, HW, HH, GreyHair.FallbackSkin(tone));
+            var ppm = new List<byte>(System.Text.Encoding.ASCII.GetBytes("P6\n" + (HW * 2 + 4) + " " + HH + "\n255\n"));
+            for (int y = 0; y < HH; y++)
+            {
+                for (int x = 0; x < HW; x++) { var c = px[y * HW + x]; ppm.Add(c.R); ppm.Add(c.G); ppm.Add(c.B); }
+                for (int x = 0; x < 4; x++) { ppm.Add(40); ppm.Add(60); ppm.Add(50); }
+                for (int x = 0; x < HW; x++) { var c = grey[y * HW + x]; ppm.Add(c.R); ppm.Add(c.G); ppm.Add(c.B); }
+            }
+            File.WriteAllBytes(Path.Combine(args[pat + 1], "head-" + tone + ".ppm"), ppm.ToArray());
+            row++;
+        }
+    }
+    var clear = GreyHair.Process(new[] { new Color(70, 40, 22, 0), new Color(70, 40, 22, 99) }, 2, 1, GreyHair.FallbackSkin("lgt"));
     Check("what is see-through stays so", clear[0].A == 0 && clear[1].A == 99);
     Check("a hand's average is its skin", GreyHair.Average(new[] { new Color(0, 0, 0, 255), new Color(200, 150, 100, 255), new Color(220, 170, 120, 255), new Color(9, 9, 9, 0) }) == new Color(210, 160, 110) && GreyHair.Average(new Color[] { Color.Black }) == null);
 
@@ -194,12 +268,12 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
 
     Check("one day left is one day", AgeView.For(new SimAge() { Stage = Stage.Child, Days = 7 }, s, true, 12, W).Status == "1 day until teen");
     var due = AgeView.For(new SimAge() { Stage = Stage.Adult, Days = 29 }, s, true, 12, W);
-    Check("a Sim who is due: " + due.Status, due.Status == "Becomes an elder at 6 this evening" && due.Counter == "Day 29 of 29" && due.Segments[2].Fill == 1);
+    Check("a Sim who is due: " + due.Status, due.Status == "Ages up at 6 pm" && due.Counter == "Day 29 of 29" && due.Segments[2].Fill == 1);
     var elder = AgeView.For(new SimAge() { Stage = Stage.Elder, Days = 40 }, s, true, 12, W);
     Check("when a Sim who is due moves on is said truthfully",
-        AgeView.For(new SimAge() { Stage = Stage.Child, Days = 8 }, s, true, 20, W).Status == "Becomes a teen within the hour" &&
-        AgeView.For(new SimAge() { Stage = Stage.Child, Days = 8 }, s, false, 12, W).Status == "Becomes a teen once back home" &&
-        AgeView.For(new SimAge() { Stage = Stage.Child, Days = 8 }, new Settings() { Ageing = false }, true, 12, W).Status == "Becomes a teen once ageing is on");
+        AgeView.For(new SimAge() { Stage = Stage.Child, Days = 8 }, s, true, 20, W).Status == "Ages up within the hour" &&
+        AgeView.For(new SimAge() { Stage = Stage.Child, Days = 8 }, s, false, 12, W).Status == "Ages up once back home" &&
+        AgeView.For(new SimAge() { Stage = Stage.Child, Days = 8 }, new Settings() { Ageing = false }, true, 12, W).Status == "Ages up when ageing is on");
     Check("an elder: " + elder.Counter + " / " + elder.Status, elder.Title == "Elder" && elder.Counter == "Day 41" && elder.Status == "The last stage of life" && elder.Segments.All(x => x.Fill == 1));
     Check("away from home, and with ageing off, it says so", AgeView.For(new SimAge(), s, false, 12, W).Note == "Days only count at home." && AgeView.For(new SimAge(), new Settings() { Ageing = false }, true, 12, W).Note == "Ageing is off.");
 

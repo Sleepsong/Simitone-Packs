@@ -32,17 +32,21 @@ namespace LifeStages
         public const int BarWidth = 300;
         private const int FiguresBottom = 59, BarY = 63, BarHeight = 8;
 
+        /// <summary>The width text may take: the Personality panel's own contents start just after the bar.</summary>
+        public const int TextWidth = BarWidth;
+
         private readonly TS1GameScreen Game;
         private readonly UILabel Title, Status, Note;
+        private readonly int TitleSize = 19, StatusSize = 15, NoteSize = 12;
         private AgeView View = new AgeView();
         private int Wait;
 
         public UIAgeDisplay(TS1GameScreen game)
         {
             Game = game;
-            Title = Label(new Vector2(0, 0), 19, UIStyle.Current.Text);
-            Status = Label(new Vector2(0, 76), 15, UIStyle.Current.Text);
-            Note = Label(new Vector2(0, 98), 12, UIStyle.Current.SecondaryText);
+            Title = Label(new Vector2(0, 0), TitleSize, UIStyle.Current.Text);
+            Status = Label(new Vector2(0, 76), StatusSize, UIStyle.Current.Text);
+            Note = Label(new Vector2(0, 98), NoteSize, UIStyle.Current.SecondaryText);
             Refresh();
         }
 
@@ -73,10 +77,23 @@ namespace LifeStages
             var view = Look();
             if (view.Key == View.Key) return;
             View = view;
-            Title.Caption = view.Title;
-            Status.Caption = view.Status;
-            Note.Caption = view.Counter == "" ? view.Note : view.Note == "" ? view.Counter : view.Counter + ". " + view.Note;
+            Fit(Title, view.Title, TitleSize);
+            Fit(Status, view.Status, StatusSize);
+            Fit(Note, view.Counter == "" ? view.Note : view.Note == "" ? view.Counter : view.Counter + ". " + view.Note, NoteSize);
             Invalidate(); //the panel keeps a picture of itself, and only draws again when told
+        }
+
+        /// <summary>
+        /// Show text within TextWidth, so it never runs into the panel's own: smaller if it must be, down to a size
+        /// still easy to read, and cut short only past that. The game's fonts differ in width, so this is measured.
+        /// </summary>
+        private static void Fit(UILabel label, string text, int size)
+        {
+            var style = label.CaptionStyle;
+            var smallest = Math.Max(10, size - 4);
+            style.Size = size;
+            while (style.Size > smallest && style.MeasureString(text).X > TextWidth) style.Size--;
+            label.Caption = style.MeasureString(text).X > TextWidth ? style.TruncateToWidth(text, TextWidth) : text;
         }
 
         private AgeView Look()

@@ -75,9 +75,10 @@ The settings are kept for each neighbourhood, as soon as you change them.
 - **A teen is a large child.** It has a child's proportions and a child's clothes, and the game lets it
   do exactly what a child may do. Nothing is teen-only.
 - **An elder is an adult with grey hair.** They keep their job, and walk as they did.
-- **Grey hair is a guess.** A head's hair and face are one picture, so the pack turns grey whatever in
-  it is not the colour of the Sim's skin. Lips and eyes go pale with it, and hair close to the skin's own
-  colour keeps some of it. `age grey off` if a head comes out badly.
+- **Grey hair is a guess.** A head's hair and face are one picture, so the pack looks for the hair in
+  it: large patches that are not the colour of the Sim's skin. Eyes, lips and the shine on a cheek are
+  small, so they are left as they were, and so are brows and a small moustache. Hair close to the skin's
+  own colour keeps some of it. `age grey off` if a head comes out badly.
 - **A new adult's other outfits** (formal, swimwear and so on) are the game's defaults for a new Sim.
 - Growing up while in the middle of something may look wrong until the Sim starts their next action.
 
