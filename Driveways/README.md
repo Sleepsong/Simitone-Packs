@@ -22,6 +22,22 @@ The objects are in buy mode under **Decorative > Other**.
    notch to swap its front and back.
 3. Click the car and choose **Go for a Drive**. Any adult of the household can.
 
+### Driving to work
+
+When the carpool comes for a Sim with a job, their car also offers **Drive to Work**. The carpool is
+hidden, the Sim walks to their car and drives off in it, and the game takes them to work as it would
+have in the carpool: pay, performance and the hours are all the game's own. The car stays away while
+they are at work, and drives home when they are back.
+
+**Coming home is not yet in the car.** The game's carpool still brings the Sim back after work, and is
+seen doing it; their car drives home as they get out. The next stage puts the Sim in their own car
+both ways.
+
+If the car cannot take them (the carpool has gone, or the game will not let them go), they are shown
+again by the car, the car comes home, and a message says to send them in the carpool.
+
+### Going for a drive
+
 The Sim walks to the car, the car pulls out along the driveway, turns onto the road and drives off the
 lot. It is away for about 20 seconds at normal speed, and the Sim's Fun goes up all the while. Then it
 comes back from the other end of the road and parks where it was. Cancelling the interaction while the
@@ -57,11 +73,17 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 |---|---|
 | `driveways` | Where the pack thinks the road is on this lot, what the driveway and the cars are drawn with, and whether each car can be driven now. Also written, with maps of the lot, to `driveways-report.txt` |
 | `driveways cars` | Lists the game's vehicles in `driveways-cars.txt` |
-| `driveways work` | Writes how the game's carpool works (its menu and scripts) to `driveways-work.txt` |
+| `driveways work` | Writes how the game's carpool, car portals and taxi work (their menus and scripts) to `driveways-work.txt` |
 | `driveways reverse` | If the cars drive along the road backwards, this turns them round. It is remembered |
 | `driveways help` | What the commands are |
 
 ## Changes
+
+- **0.12**: **Drive to Work**, a first stage. While the carpool waits for a Sim, their car offers to
+  take them instead: the carpool is hidden, they drive off, and the game's own "Go to Work" takes them
+  from there. The car comes home when they do. The game still brings them home in its carpool. The
+  `driveways work` list now includes the lot's car portals and the taxi, which is what the next stages
+  (coming home in the car, and driving to community lots) need.
 
 - **0.11**: a driveway that has been put down is only its floor. Since 0.8 the driveway laid real floor
   under itself but was also still drawn on top, a thin slab just above the ground, so the two showed as
@@ -132,8 +154,12 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 
 ## Limits
 
-- **The car does not go anywhere.** A drive is a trip off the lot and back, for Fun. It does not take a
-  Sim to work or to a community lot yet.
+- **Driving to work needs the carpool to come first.** "Drive to Work" is offered while the game's
+  carpool waits for the Sim, since that is how the pack knows it is time for work, and the carpool is
+  what takes them off the lot, out of sight. The carpool's horn can still be heard.
+- **Coming home is by carpool.** See above.
+- **No driving to community lots yet.**
+- **A lot saved while a car is at work** loads with the car parked.
 - **The Sim does not get in.** They walk to the car and vanish until it is back. There are no animations
   for getting in and out.
 - **Only what is drawn moves.** For the game's rules the car never leaves its parking place, and the Sim

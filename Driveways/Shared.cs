@@ -67,5 +67,9 @@ namespace Driveways
         public const byte ModeInitCar = 2;
         /// <summary>Operand byte 0: true when the car (the stack object) is parked, so it can be offered for a drive.</summary>
         public const byte ModeIsParked = 3;
+        /// <summary>Operand byte 0: true when the Sim running this can drive the car to work now: the game's carpool has come for them.</summary>
+        public const byte ModeCanDriveToWork = 4;
+        /// <summary>Operand byte 0: take the Sim running this to work in the car, in place of the carpool.</summary>
+        public const byte ModeDriveToWork = 5;
     }
 }

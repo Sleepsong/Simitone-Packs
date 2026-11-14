@@ -275,6 +275,7 @@ namespace Driveways
             //(each on its own, and neither allowed to stop the game's tick)
             try { VMDrive.RepairOldObjects(__instance); } catch (Exception) { }
             try { VMDrive.EndStaleTrips(__instance); } catch (Exception) { }
+            try { VMDrive.TickCommutes(__instance); } catch (Exception) { }
         }
 
         private static void ShowMessage(VM fromVM, string message)
