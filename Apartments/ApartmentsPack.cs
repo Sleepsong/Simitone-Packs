@@ -5,6 +5,8 @@ http://mozilla.org/MPL/2.0/.
 */
 
 using FSO.Client;
+using FSO.HIT;
+using FSO.Client.UI.Model;
 using FSO.Client.UI.Controls;
 using FSO.Client.UI.Framework;
 using FSO.Common.Utils;
@@ -184,6 +186,9 @@ namespace Apartments
                 harmony.Patch(AccessTools.Method(typeof(VMNetInteractionCmd), "Execute", new[] { typeof(VM), typeof(VMAvatar) }) ?? throw new Exception("VMNetInteractionCmd.Execute was not found."), prefix: Mine(nameof(BeforeInteraction)));
             }, "knocking at an apartment's door");
             Optional(() => harmony.Patch(Find(typeof(VMEntity), "IndividualUserMovable"), postfix: Mine(nameof(AfterUserMovable))), "moving the mailbox in a building");
+            Optional(() => harmony.Patch(Find(typeof(VMThread), "EnqueueAction"), prefix: Mine(nameof(BeforeEnqueue))), "sending visitors to the apartment's door");
+            Optional(() => harmony.Patch(Find(typeof(UILotControl), "ShowPieMenu"), prefix: Mine(nameof(BeforeShowPie)), postfix: Mine(nameof(AfterShowPie))),
+                "saying why a thing in someone else's apartment cannot be used");
 
             // the engine catches an error in a Sim's or an object's script and resets it. but its own handling of the
             // error can fail (it resets the thing the script was acting on, and there may be none), and then the game
@@ -312,7 +317,6 @@ namespace Apartments
         // says which. (Open for Business does the same with 254.)
         private const byte MenuID = 253;
         private const short ParamKnock = 7701;      //on a door: knock at it
-        private const short ParamKnockFor = 7702;   //on a thing inside an apartment: knock at that apartment's nearest door
 
         public static void AfterPieMenu(VMEntity __instance, VM vm, VMEntity caller, List<VMPieMenuInteraction> __result)
         {
@@ -320,7 +324,7 @@ namespace Apartments
             Guard("looking at a menu in a building", () =>
             {
                 //a door into somebody else's apartment: knock
-                if (__instance.Portal)
+                if (Doors.IsDoor(__instance))
                 {
                     var behind = Doors.ApartmentBehind(vm, __instance, out _);
                     if (behind != null && Doors.CanKnock(vm, caller, behind))
@@ -330,17 +334,70 @@ namespace Apartments
                     }
                     return;
                 }
-                //a thing inside an apartment the Sim cannot walk into: they could never reach it, so the menu says why,
-                //and offers the one thing that would help
+                //a thing inside an apartment the Sim cannot walk into (or a spot on its floor): they could never get to it,
+                //so there is no menu. a click says why, as the game says why for a thing it will not let you use
                 var closed = Doors.ClosedApartmentOf(vm, caller, __instance);
                 if (closed == null || !Doors.CanKnock(vm, caller, closed)) return;
                 __result.Clear();
-                __result.Add(new VMPieMenuInteraction() { Name = "Knock at " + closed.Name + " first", ID = MenuID, Param0 = ParamKnockFor, Callee = __instance });
-                Doors.Once(vm, 4, closed.Id, () => "A thing inside " + closed.Name + " was clicked: its menu offers only to knock.");
+                if (InShowPie) BlockedBy = closed;
             });
         }
 
-        private static bool IsKnock(VMNetInteractionCmd cmd) => cmd.Interaction == MenuID && !cmd.Global && (cmd.Param0 == ParamKnock || cmd.Param0 == ParamKnockFor);
+        // a click on the lot: what was in the way, if anything, so it can be said
+        private static bool InShowPie;
+        private static Apartment BlockedBy;
+
+        public static void BeforeShowPie()
+        {
+            InShowPie = true;
+            BlockedBy = null;
+        }
+
+        public static void AfterShowPie(UILotControl __instance, UpdateState state, UIPieMenu ___PieMenu, ref bool ___ShowTooltip, ref bool ___TipIsError)
+        {
+            InShowPie = false;
+            var closed = BlockedBy;
+            BlockedBy = null;
+            if (closed == null || ___PieMenu != null || state == null) return;
+            var shown = false;
+            Guard("saying why a thing cannot be used", () =>
+            {
+                //made as the game makes its own: a small box by the cursor, until the mouse button comes up
+                HITVM.Get().PlaySoundEvent(UISounds.Error);
+                state.UIState.TooltipProperties.Show = true;
+                state.UIState.TooltipProperties.Color = Color.Black;
+                state.UIState.TooltipProperties.Opacity = 1;
+                state.UIState.TooltipProperties.Position = new Vector2(state.MouseState.X, state.MouseState.Y);
+                state.UIState.Tooltip = "That's " + closed.Name + ". Knock at their door to be let in.";
+                state.UIState.TooltipProperties.UpdateDead = false;
+                shown = true;
+            });
+            if (!shown) return;
+            ___ShowTooltip = true;
+            ___TipIsError = true;
+            Doors.Once(__instance.vm, 4, closed.Id, () => "Something inside " + closed.Name + " was clicked, and the player was told to knock first.");
+        }
+
+        // ---- visitors at the door ----
+
+        /// <summary>
+        /// A Sim is being given something to do. On a building, if it is a visitor's business at a door that is not the
+        /// played household's own (ringing the bell at the street door), it is moved to their own apartment's door.
+        /// </summary>
+        public static void BeforeEnqueue(VMThread __instance, VMEntity ___Entity, VMQueuedAction invocation)
+        {
+            if (invocation == null || __instance.IsCheck || !(___Entity is VMAvatar sim)) return;
+            var vm = __instance.Context?.VM;
+            if (!Neighbours.IsShared(vm)) return; //nearly always: this runs whenever any Sim or object on any lot is given something
+            Guard("sending a visitor to the apartment's door", () =>
+            {
+                Doors.Watch(vm, sim, invocation);
+                var done = Doors.SendToOwnDoor(vm, sim, invocation);
+                if (done != null) AptLog.Write(done);
+            });
+        }
+
+        private static bool IsKnock(VMNetInteractionCmd cmd) => cmd.Interaction == MenuID && !cmd.Global && cmd.Param0 == ParamKnock;
 
         public static bool BeforeVerify(VMNetInteractionCmd __instance, VM vm, ref bool __result)
         {
@@ -359,24 +416,9 @@ namespace Apartments
                 var thing = vm.GetObjectById(__instance.CalleeID);
                 var sim = caller ?? (vm.GetObjectById(__instance.CallerID) as VMAvatar);
                 if (thing == null || sim == null) return;
-                if (__instance.Param0 == ParamKnock)
-                {
-                    var apartment = Doors.ApartmentBehind(vm, thing, out var doorstep);
-                    if (apartment == null || !Doors.CanKnock(vm, sim, apartment)) return;
-                    Doors.GoAndKnock(vm, sim, apartment, doorstep);
-                }
-                else
-                {
-                    var apartment = Doors.ClosedApartmentOf(vm, sim, thing);
-                    if (apartment == null || !Doors.CanKnock(vm, sim, apartment)) return;
-                    var door = Doors.NearestDoor(vm, sim, apartment);
-                    if (door == null)
-                    {
-                        Actions.Say(apartment.Name, apartment.Name + " has no door to knock at: none of its rooms has a door to anywhere outside it.");
-                        return;
-                    }
-                    Doors.GoAndKnock(vm, sim, apartment, door.Value);
-                }
+                var apartment = Doors.ApartmentBehind(vm, thing, out var doorstep);
+                if (apartment == null || !Doors.CanKnock(vm, sim, apartment)) return;
+                Doors.GoAndKnock(vm, sim, apartment, doorstep);
             });
             return false;
         }

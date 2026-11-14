@@ -168,8 +168,9 @@ to themselves, Sims do not even want the things in an apartment they cannot ente
 A Sim who is already inside is never trapped: the way out is always open. That goes for a room that
 is in no apartment but opens only into one, too (a cupboard, or a room cut off by a new wall).
 
-Click anything inside an apartment your Sim cannot enter and its menu has one thing on it: **Knock
-at ... first**, which sends them to that apartment's nearest door.
+Click anything inside an apartment your Sim cannot enter, or the floor in it, and nothing happens
+but a warning by the cursor, as the game gives for a thing it will not let you use: "That's
+Apartment 2. Knock at their door to be let in." The door itself has **Knock** on its menu.
 
 **Knocking.** Click a neighbour's door with one of your Sims and choose **Knock** (or use **Options >
 Knock** on the household, in the window). The Sim walks to the door. Between 8 in the morning and 10
@@ -177,9 +178,13 @@ at night someone answers: one of the household comes to the door, the apartment 
 household is welcome for three hours. At night nobody answers. When the welcome is over the
 apartment goes dark again; anyone still inside can walk out, but not back in.
 
-**Visitors.** The game sends a visitor to the front of the lot to wait to be greeted, which in a
-building is the street door. A visitor who has stood waiting there for a few seconds is walked to
-your own apartment's door and waits there instead. (Someone only walking past is left alone.)
+**Visitors.** The game sends visitors (the welcome wagon, guests, the pizza delivery) to its idea of
+the front door, which in a building is the street door. Whatever a visitor is given to do at a door
+that is not your apartment's (ringing the bell, waiting to be let in) is moved to your apartment's
+door, so that is where they ring. It is matched by name, so it works with any kind of door that has
+the same thing on it; when the log says the door had nothing of that name, the visitor goes to the
+street door as before. A visitor still found standing waiting at the front of the lot is walked to
+your door too. Someone who lives in the building uses any door.
 
 **The mailbox.** The game fixes the mailbox at the front of the lot. In a building it can be picked
 up in buy or build mode and put where the mail should come: a mail room, or the hall. It cannot be
@@ -206,7 +211,8 @@ Then send `Apartments.log` (the **Settings** page says where it is). It answers 
 | Do they walk home when their time is up? | `is walking home`, then `went home`; or `had not got there after 30 minutes` |
 | Do neighbours stay out of your apartment now? | No `THE APARTMENT OF ...` in a neighbour's line |
 | Does knocking work? | `is going to knock at ...`, then `knocked at ... answered` |
-| Do visitors come to your door? | `Visitor ... was waiting at the front of the lot, and is walking to the door of ...` |
+| Do visitors ring at your door? | `Visitor ... was sent to the door at ... Sent to the door of ... instead.` |
+| How does the game send visitors to the door? | `[visitor]` lines: what each visitor is given to do on arriving, and at doors |
 | Does your household pay for what they do? | `Money: ... THAT IS A NEIGHBOUR` |
 | What do bills come to, and when? | `Money:` lines naming the mailbox or the bill |
 | Is rent taken once a day, and is the amount right? | `Rent:` lines |

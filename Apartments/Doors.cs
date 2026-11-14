@@ -7,6 +7,7 @@ http://mozilla.org/MPL/2.0/.
 using FSO.Files.Formats.IFF.Chunks;
 using FSO.LotView.Model;
 using FSO.SimAntics;
+using FSO.SimAntics.Engine;
 using FSO.SimAntics.Model;
 using System;
 using System.Collections.Generic;
@@ -185,7 +186,10 @@ namespace Apartments
         {
             public LotTilePos Outside;
             public ushort OutsideRoom;
+            /// <summary>The part of the door on the apartment's side.</summary>
             public VMEntity Door;
+            /// <summary>The part of the door on the other side (the hall, or wherever the door leads).</summary>
+            public VMEntity Hall;
         }
 
         /// <summary>The doors that lead from an apartment to somewhere that is not part of it.</summary>
@@ -208,7 +212,7 @@ namespace Apartments
                     //one step further out, if that is still on the far side: clear of the door itself
                     var step = new LotTilePos((short)(outside.Position.x * 2 - inside.Position.x), (short)(outside.Position.y * 2 - inside.Position.y), outside.Position.Level);
                     var at = (vm.Context.GetRoomAt(step) == portal.TargetRoom) ? step : outside.Position;
-                    result.Add(new Doorstep() { Outside = at, OutsideRoom = portal.TargetRoom, Door = inside });
+                    result.Add(new Doorstep() { Outside = at, OutsideRoom = portal.TargetRoom, Door = inside, Hall = outside });
                 }
             }
             return result;
@@ -257,6 +261,120 @@ namespace Apartments
             var doors = DoorsOf(vm, state, apartment);
             if (doors.Count == 0) return null;
             return doors.OrderBy(x => Math.Abs(x.Outside.x - sim.Position.x) + Math.Abs(x.Outside.y - sim.Position.y) + Math.Abs(x.Outside.Level - sim.Position.Level) * 1000).First();
+        }
+
+        // ---- visitors at the door ----
+
+        /// <summary>Whether a thing is (part of) a door. Never throws: some objects have no table of entry points.</summary>
+        public static bool IsDoor(VMEntity thing)
+        {
+            try { return thing?.EntryPoints != null && thing.EntryPoints.Length > 15 && thing.Portal; }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// The game is giving a Sim something to do. If it is a visitor, and it is something to do at a door (ringing the
+        /// bell, waiting to be let in), and the door is not the played household's own, it is moved to their own door:
+        /// in a building the game's "front door" is the street door. The action is changed where it lies, so whatever
+        /// gave it keeps hold of the same one. Returns what was done, for the log, or null if nothing was.
+        /// </summary>
+        public static string SendToOwnDoor(VM vm, VMAvatar sim, VMQueuedAction action)
+        {
+            if (!ShowVisitors || action?.Callee == null || action.Callee == sim) return null;
+            var door = action.Callee;
+            if (!IsDoor(door)) return null;
+            var state = Neighbours.StateOf(vm);
+            var played = vm.TS1State?.CurrentFamily;
+            if (state?.File == null || played == null) return null;
+            var family = FamilyOf(sim);
+            if (family != 0 && state.ResidentIds.Contains(family)) return null; //people who live here use any door they like
+            var home = state.File.ApartmentOf(played.ChunkID);
+            if (home == null) return null;
+            Neighbours.FreshRooms(vm, state);
+
+            //a door of the played household's apartment, or one inside it, is the right one already
+            foreach (var part in door.MultitileGroup?.Objects ?? new List<VMEntity>() { door })
+            {
+                if (part.Position == LotTilePos.OUT_OF_WORLD) continue;
+                if (state.RoomApts.TryGetValue(vm.Context.GetRoomAt(part.Position), out var inApt) && inApt == home) return null;
+            }
+            var doors = DoorsOf(vm, state, home);
+            if (doors.Count == 0) return null;
+            var nearest = doors.OrderBy(x => Math.Abs(x.Outside.x - sim.Position.x) + Math.Abs(x.Outside.y - sim.Position.y) + Math.Abs(x.Outside.Level - sim.Position.Level) * 1000).First();
+
+            var fresh = SameThingAt(vm, sim, action, door, nearest);
+            if (fresh == null) return "Visitor " + sim.Name + " was sent to " + Describe(door) + " for \"" + action.Name + "\", but the door of " + home.Name + " has nothing of that name, so they were left to go there.";
+
+            var oldCallee = action.Callee;
+            var ownIcon = action.IconOwner == oldCallee;
+            action.Callee = fresh.Callee;
+            action.StackObject = fresh.StackObject;
+            action.CodeOwner = fresh.CodeOwner;
+            action.ActionRoutine = fresh.ActionRoutine;
+            action.CheckRoutine = fresh.CheckRoutine;
+            action.InteractionNumber = fresh.InteractionNumber;
+            if (!string.IsNullOrEmpty(fresh.Name)) action.Name = fresh.Name;
+            if (ownIcon) action.IconOwner = fresh.Callee;
+            return "Visitor " + sim.Name + " was sent to " + Describe(oldCallee) + " for \"" + action.Name + "\". Sent to the door of " + home.Name + " instead.";
+        }
+
+        /// <summary>
+        /// Write down, once for each visitor and each thing, what the game gives a visitor to do on a building, and to
+        /// what. It is how the game's way of sending visitors to the door can be seen.
+        /// </summary>
+        public static void Watch(VM vm, VMAvatar sim, VMQueuedAction action)
+        {
+            var state = Neighbours.StateOf(vm);
+            if (state == null || sim.IsPet) return;
+            var family = FamilyOf(sim);
+            if (family != 0 && state.ResidentIds.Contains(family)) return;
+            //arriving (not yet greeted), and anything at a door: how they come to the door is what is being looked for
+            if (sim.GetPersonData(VMPersonDataVariable.GreetStatus) > 0 && !IsDoor(action.Callee)) return;
+            var name = action.Name ?? "";
+            var id = (int)((sim.Object.OBJ.GUID * 31) ^ (uint)name.GetHashCode());
+            Once(vm, 6, id, () => "[visitor] " + sim.Name + " (person type " + sim.GetPersonData(VMPersonDataVariable.PersonType) + ", greeted " + sim.GetPersonData(VMPersonDataVariable.GreetStatus)
+                + ") was given \"" + name + "\" on " + (action.Callee == null ? "nothing" : action.Callee == sim ? "themselves" : (IsDoor(action.Callee) ? Describe(action.Callee) : action.Callee.ToString())) + ".");
+        }
+
+        private static string Describe(VMEntity thing)
+        {
+            try { return "the door at floor " + thing.Position.Level + ", tile " + thing.Position.TileX + "," + thing.Position.TileY + " (" + thing.ToString() + ")"; }
+            catch { return "a door"; }
+        }
+
+        /// <summary>The same interaction as an action has, but on another door: the same entry if it is the same kind of door, else the one with the same name.</summary>
+        private static VMQueuedAction SameThingAt(VM vm, VMAvatar sim, VMQueuedAction action, VMEntity from, Doorstep to)
+        {
+            var number = action.InteractionNumber;
+            if (number < 0 && (number & 0x7FFFFFFF) == 0x7FFFFFFF) return null; //not an interaction from a menu table at all
+            var global = (number & unchecked((int)0x80000000)) != 0;
+            var index = number & 0x7FFFFFFF;
+            //the side of the door the visitor stands at first, then the rest of it
+            var parts = new List<VMEntity>();
+            if (to.Hall != null) parts.Add(to.Hall);
+            foreach (var part in to.Door.MultitileGroup?.Objects ?? new List<VMEntity>() { to.Door }) if (!parts.Contains(part)) parts.Add(part);
+
+            foreach (var part in parts)
+            {
+                if (global || part.Object?.OBJ?.GUID == from.Object?.OBJ?.GUID)
+                {
+                    var same = part.GetAction(index, sim, vm.Context, global, action.Args);
+                    if (same != null) return same;
+                    continue;
+                }
+                var table = part.TreeTable?.InteractionByIndex;
+                var names = part.TreeTableStrings;
+                if (table == null || names == null || string.IsNullOrWhiteSpace(action.Name)) continue;
+                foreach (var entry in table)
+                {
+                    string name;
+                    try { name = names.GetString((int)entry.Value.TTAIndex); } catch { continue; }
+                    if (!string.Equals((name ?? "").Trim(), action.Name.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
+                    var named = part.GetAction((int)entry.Key, sim, vm.Context, false, action.Args);
+                    if (named != null) return named;
+                }
+            }
+            return null;
         }
 
         // ---- knocking ----
