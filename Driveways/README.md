@@ -14,7 +14,8 @@ The objects are in buy mode under **Decorative > Other**.
 
 1. Pick up the **Driveway**. It is five tiles wide, after The Sims 2's, and joins your garden to the
    road: it runs to the tarmac, with the pavement left open across it. It can only go there, and slides
-   along the road with the cursor. It lays floor under itself, and takes it up again when it goes.
+   along the road with the cursor. Once down it is real floor, laid on the ground, and moving or selling
+   it puts back what was there before. To pick it up again, click its floor in buy mode.
 2. Buy a car: **Sedan**, **Junker**, **Pickup Truck**, **SUV**, **Town Car** or **Bentley**. Each is drawn
    with one of the game's own cars. A car can only be put down on a driveway, on the garden side of the
    pavement. Hold it over a driveway and it slides to fit, and is turned to point along it; turn it a
@@ -61,6 +62,13 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 | `driveways help` | What the commands are |
 
 ## Changes
+
+- **0.11**: a driveway that has been put down is only its floor. Since 0.8 the driveway laid real floor
+  under itself but was also still drawn on top, a thin slab just above the ground, so the two showed as
+  a dark strip and a floating one. The slab is now hidden once the driveway is down: what you see is the
+  floor, flat on the ground, with the pavement open across it. While you hold a driveway its picture
+  still shows where it will go. To pick one up again, click its floor in buy mode. Driveways already on
+  a lot are put right when it loads.
 
 - **0.10**: a review of the pack.
   - A car held over a driveway slides to lie wholly on it, so it no longer has to be lined up tile by
@@ -151,11 +159,11 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 |---|---|
 | `pack/driveways/content/Downloads/Driveways.iff` | The objects: what they are, and almost nothing of what they look like. Written by `generator`, and committed, since it is data |
 | `generator/` | Writes that file, then reads it back and checks it. Every tile of a driveway or a car is its own object; all the driveway's share one flat grey square and all the cars' one grey block, drawn by tracing rays with the camera maths the engine uses to rebuild a 3D model from a sprite |
-| `FloorDress.cs` | Paints the driveway. It makes a second set of sprites in memory, the shape and depth of the grey square, each pixel coloured from the place on a floor tile of the game's that it lies over. Nothing of the game's is copied into the pack |
+| `FloorDress.cs` | Paints the driveway's preview, while it is held. It makes a second set of sprites in memory, the shape and depth of the grey square, each pixel coloured from the place on a floor tile of the game's that it lies over. Nothing of the game's is copied into the pack |
 | `VMDrive.cs` | A new SimAntics primitive, number 200. The objects' scripts are one or two instructions that call it: to set an object up, to say whether the car is parked, and to drive. Also where a driveway and a car may be put, and what each is drawn with: the floor for the driveway, and the game's cars' tiles for the cars |
 | `Route.cs` | Where things go: finding the road, the car's way out and back and how fast, where a driveway snaps to, and where a car fits on one. Plain numbers, nothing from the engine |
 | `tests/` | Checks `Route.cs` |
-| `DrivewaysPack.cs` | Adds the primitive and the console commands, and Harmony patches: on the game's tick, so a car is never left hidden if its drive is cut short; round an object being moved or deleted, to snap a driveway to the road, keep cars on driveways, and lay and take up the driveway's floor; and when an object's picture is set, to give driveways and cars theirs |
+| `DrivewaysPack.cs` | Adds the primitive and the console commands, and Harmony patches: on the game's tick, so a car is never left hidden if its drive is cut short; round an object being moved or deleted, to snap a driveway to the road, keep cars on driveways, and lay and take up the driveway's floor; when an object's picture is set, to give the driveway's preview and the cars theirs; when the game looks for an object under the cursor, so a driveway that is down can be clicked; and when the player lets go of something, so a driveway that has been moved stays hidden |
 | `Shared.cs` | The ids and sizes the object file and the code must agree on, and the cars: which of the game's each is drawn with. Compiled into both |
 
 To write the object file again, and see a driveway painted with a made-up test tile:

@@ -14,6 +14,8 @@ using FSO.SimAntics.Entities;
 using FSO.SimAntics.Model;
 using System.IO;
 using System.Linq;
+using FSO.LotView;
+using Microsoft.Xna.Framework;
 using FSO.SimAntics;
 using FSO.SimAntics.Engine;
 using HarmonyLib;
@@ -29,8 +31,8 @@ namespace Driveways
     ///
     /// The pack is two things. Its content layer is one object file with a driveway and some cars, written by the
     /// generator folder. Its code layer is this assembly: one new SimAntics primitive (VMDrive) that the objects'
-    /// short scripts call, a console command, and Harmony patches at four places in the engine: the game's tick, an
-    /// object being moved, an object being deleted, and an object's picture being set. Every patch catches whatever
+    /// short scripts call, a console command, and Harmony patches: on the game's tick, an object being moved, deleted
+    /// or given its picture, the game looking for an object under the cursor, and the player letting go of one. Every patch catches whatever
     /// goes wrong in it: the pack must never stop the game doing what it was doing.
     /// </summary>
     public class DrivewaysPack : ISimitonePack
@@ -49,6 +51,11 @@ namespace Driveways
             //the driveway is drawn with the game's own pavement, and the car with a real Sims 1 car's pictures when the game has one that fits
             var graphic = AccessTools.Method(typeof(VMGameObject), "RefreshGraphic") ?? throw new Exception("VMGameObject.RefreshGraphic was not found: this pack was made for a different version of Simitone");
             harmony.Patch(graphic, postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterGraphic)));
+            //a driveway that has been put down is hidden, its floor being what is seen: so the game is helped to find it
+            //under the cursor in buy mode, and told again to hide it when it shows it after a move. both optional:
+            //without them a driveway can still be bought, and sold from the lot's list of objects
+            TryPatch(harmony, AccessTools.Method(typeof(World), "GetObjectIDAtScreenPos"), postfix: nameof(AfterPick));
+            TryPatch(harmony, AccessTools.Method(typeof(UIObjectHolder), "ClearSelected"), prefix: nameof(BeforeLetGo), postfix: nameof(AfterLetGo));
             VMDrive.OnMessage = ShowMessage;
             Settings.Load();
             PackManager.RegisterCommand("driveways", Command);
@@ -157,6 +164,53 @@ namespace Driveways
                 Name = "driveways_drive",
                 OperandModel = typeof(VMDriveOperand)
             });
+        }
+
+        private static void TryPatch(Harmony harmony, System.Reflection.MethodInfo method, string prefix = null, string postfix = null)
+        {
+            if (method == null) return;
+            try
+            {
+                harmony.Patch(method,
+                    prefix: prefix == null ? null : new HarmonyMethod(typeof(DrivewaysPack), prefix),
+                    postfix: postfix == null ? null : new HarmonyMethod(typeof(DrivewaysPack), postfix));
+            }
+            catch (Exception) { }
+        }
+
+        /// <summary>
+        /// The game has looked for an object under the cursor and found none. In buy mode, a driveway that has been put
+        /// down may be there: it is hidden, its floor being what is seen, so it is not drawn to be found. Say it is.
+        /// </summary>
+        public static void AfterPick(World __instance, int x, int y, ref short __result)
+        {
+            if (__result != 0) return;
+            try
+            {
+                var screen = GameFacade.Screens.CurrentUIScreen as TS1GameScreen;
+                var control = screen?.LotControl;
+                if (control == null || control.LiveMode || screen.vm == null || __instance.State.Level != 1) return;
+                var tile = __instance.EstTileAtPosWithScroll(new Vector2(x, y) / FSOEnvironment.DPIScaleFactor);
+                var id = VMDrive.DrivewayAt(screen.vm, (int)Math.Floor(tile.X), (int)Math.Floor(tile.Y));
+                if (id != 0) __result = id;
+            }
+            catch (Exception) { }
+        }
+
+        /// <summary>
+        /// The player has put down, or let go of, something they were moving. The game then shows the real object as
+        /// the copy they held was shown, which for a driveway is not as it should be once it is down: put it right.
+        /// </summary>
+        public static void BeforeLetGo(UIObjectHolder __instance, out VMMultitileGroup __state)
+        {
+            __state = null;
+            try { __state = __instance.Holding?.RealEnt?.MultitileGroup; } catch (Exception) { }
+        }
+
+        public static void AfterLetGo(VMMultitileGroup __state)
+        {
+            if (__state == null || __state.Objects.Count == 0) return;
+            try { VMDrive.AfterDrivewayMoves(__state, __state.Objects[0].Thread?.Context ?? (GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm?.Context); } catch (Exception) { }
         }
 
         /// <summary>After the game has moved an object, or tried to: a driveway lays its floor where it now is.</summary>

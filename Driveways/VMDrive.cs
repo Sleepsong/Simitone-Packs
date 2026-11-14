@@ -348,10 +348,12 @@ namespace Driveways
 
         // ---- the floor under a driveway ----
         //
-        // A driveway is an object, drawn a hair above the ground. Under it the pack lays real floor, the same floor it
-        // is painted with, so that it meets the road and the garden as any floor does, with no ground showing at
-        // the joins. Where it crosses the pavement nothing is laid and that tile of the driveway is hidden, so the
-        // pavement runs on across it. When the driveway is moved or sold, the floor that was there before is put back.
+        // What the player sees of a driveway that has been put down is real floor, laid on each of its tiles: the
+        // floor it is painted with. The driveway object itself is hidden, so nothing is drawn above the floor; it is
+        // only there to be snapped to the road, picked up, sold and parked on. Where it crosses the pavement nothing
+        // is laid, so the pavement runs on across it. While a driveway is being held, it is a copy the game makes,
+        // which lays nothing, and its painted picture shows where it will go. When the driveway is moved or sold, the
+        // floor that was there before is put back.
         //
         // Each tile of a driveway remembers what it did in its own attributes, which the game saves with it:
         private const int AttrPaved = 0;     //1 when this tile has laid floor
@@ -400,14 +402,16 @@ namespace Driveways
         }
 
         /// <summary>
-        /// After a driveway has been moved (or was not, and is where it was): lay floor under it, and open it where it
-        /// crosses the pavement. One only being held shows the opening and lays nothing.
+        /// After a driveway has been moved (or was not, and is where it was): lay floor under it and hide it, leaving
+        /// the pavement open across it. A copy being held lays nothing and shows its picture, as does a driveway when
+        /// no floor of the game's could be found to lay.
         /// </summary>
         public static void AfterDrivewayMoves(VMMultitileGroup group, VMContext context)
         {
             if (!IsNewDriveway(group) || context?.VM == null || !context.VM.TS1) return;
             var arch = context.Architecture;
             ushort laying = 0;
+            bool noFloor = false;
             foreach (var tile in group.Objects)
             {
                 var pos = tile.Position;
@@ -417,26 +421,46 @@ namespace Driveways
                     continue;
                 }
                 var floor = arch.GetFloor(pos.TileX, pos.TileY, 1);
-                bool paved = tile.GetAttribute(AttrPaved) == 1 && tile.GetAttribute(AttrX) == pos.TileX && tile.GetAttribute(AttrY) == pos.TileY;
-                //the pavement runs on across the driveway
-                bool pavement = floor.Pattern == PavementFloor && !paved;
-                Hide(tile, pavement);
-                if (pavement || paved || tile.GhostImage) continue;
+                //a copy being held: its picture is the preview, open where it will cross the pavement
+                if (tile.GhostImage) { Hide(tile, floor.Pattern == PavementFloor); continue; }
 
-                if (laying == 0)
+                bool paved = tile.GetAttribute(AttrPaved) == 1 && tile.GetAttribute(AttrX) == pos.TileX && tile.GetAttribute(AttrY) == pos.TileY;
+                //the floor it laid, or the pavement running on across it
+                if (paved || floor.Pattern == PavementFloor) { Hide(tile, true); continue; }
+
+                if (laying == 0 && !noFloor)
                 {
                     laying = DrivewayLook.FloorFor(tile);
-                    if (laying == 0) return; //(no floor of the game's could be found: the driveway is only its object)
+                    noFloor = laying == 0;
                 }
-                if (floor.Pattern == laying) continue; //(already that floor: nothing to lay, and nothing to put back later)
-                tile.SetAttribute(AttrBefore, (short)floor.Pattern);
-                tile.SetAttribute(AttrX, pos.TileX);
-                tile.SetAttribute(AttrY, pos.TileY);
-                tile.SetAttribute(AttrLaid, (short)laying);
-                tile.SetAttribute(AttrPaved, 1);
-                floor.Pattern = laying;
-                arch.SetFloor(pos.TileX, pos.TileY, 1, floor, true);
+                //(no floor of the game's could be found: the driveway is only its object, and shows)
+                if (noFloor) { Hide(tile, false); continue; }
+                if (floor.Pattern != laying)
+                {
+                    tile.SetAttribute(AttrBefore, (short)floor.Pattern);
+                    tile.SetAttribute(AttrX, pos.TileX);
+                    tile.SetAttribute(AttrY, pos.TileY);
+                    tile.SetAttribute(AttrLaid, (short)laying);
+                    tile.SetAttribute(AttrPaved, 1);
+                    floor.Pattern = laying;
+                    arch.SetFloor(pos.TileX, pos.TileY, 1, floor, true);
+                }
+                //(already that floor: nothing laid, and nothing to put back later; but it is still what is seen)
+                Hide(tile, true);
             }
+        }
+
+        /// <summary>
+        /// The tile of a driveway that has been put down at this tile, for picking it up: a hidden driveway is not
+        /// drawn, so the game does not find it under the cursor by itself. 0 if there is none.
+        /// </summary>
+        public static short DrivewayAt(VM vm, int x, int y)
+        {
+            var arch = vm.Context.Architecture;
+            if (x < 0 || y < 0 || x >= arch.Width || y >= arch.Height) return 0;
+            var here = vm.Context.ObjectQueries.GetObjectsAt(LotTilePos.FromBigTile((short)x, (short)y, 1));
+            var tile = here?.FirstOrDefault(o => o != null && o is VMGameObject && !o.Dead && !o.GhostImage && GUIDOf(o) == Shared.DrivewayGUID);
+            return tile?.ObjectID ?? 0;
         }
 
         /// <summary>The player has chosen another floor: lay it under every driveway on the lot in place of the one laid before.</summary>
@@ -800,8 +824,9 @@ namespace Driveways
     }
 
     /// <summary>
-    /// The driveway's look: one of the game's own floors. The pack's object file gives the driveway only its shape;
-    /// here its tiles are given pictures painted with a floor tile from the player's game (see FloorDress).
+    /// The driveway's look: one of the game's own floors. Once put down, a driveway is that floor, laid for real. While
+    /// it is held it is an object, and the object file gives it only its shape: here its tiles are given pictures
+    /// painted with the same floor tile from the player's game (see FloorDress), so the preview looks like the result.
     ///
     /// Which floor: the one the player chose with "driveways floor", else the first the game sells whose name has
     /// one of the Preferred words in it, else the road's own tarmac. Never the pavement's: a driveway that looks

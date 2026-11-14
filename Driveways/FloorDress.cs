@@ -15,7 +15,8 @@ using System.Linq;
 namespace Driveways
 {
     /// <summary>
-    /// Paints the driveway with one of the game's own floor tiles.
+    /// Paints the driveway with one of the game's own floor tiles, for the preview while the player is holding one.
+    /// (Once put down, the driveway is that floor, laid for real, and its object is hidden.)
     ///
     /// The pack's object file gives the driveway its shape: each tile's sprites, with their depth, drawn flat in one
     /// plain colour. The pack ships no texture for it. When the game runs, this takes a floor tile out of the
