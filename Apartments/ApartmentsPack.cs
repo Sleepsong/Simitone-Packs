@@ -590,9 +590,19 @@ namespace Apartments
 
         // ---- 5. the game has one purse, the played household's. this only reports what reaches it ----
 
-        public static void BeforeBudget(VMStackFrame context, out int __state)
+        public static bool BeforeBudget(VMStackFrame context, out int __state, ref VMPrimitiveExitCode __result)
         {
-            __state = context.VM.TS1State?.CurrentFamily?.Budget ?? 0;
+            var vm = context.VM;
+            __state = vm.TS1State?.CurrentFamily?.Budget ?? 0;
+            if (!Neighbours.IsShared(vm)) return true;
+            //the household's money is the household's: a neighbour doing something that costs (or earns) money is told
+            //there is none, as the game tells anyone who cannot afford a thing
+            var neighbour = false;
+            Guard("checking who is spending money", () => neighbour = Neighbours.IsNeighbour(vm, context.Caller));
+            if (!neighbour) return true;
+            Doors.Once(vm, 9, context.Caller.ObjectID, () => context.Caller.ToString() + " (a neighbour) tried to use the played household's money, using " + (context.Callee?.ToString() ?? "?") + ": refused.");
+            __result = VMPrimitiveExitCode.GOTO_FALSE;
+            return false;
         }
 
         public static void AfterBudget(VMStackFrame context, int __state)

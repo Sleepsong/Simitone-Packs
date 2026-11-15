@@ -8,6 +8,7 @@ using FSO.Content;
 using FSO.Files.Formats.IFF.Chunks;
 using FSO.LotView.Model;
 using FSO.SimAntics;
+using FSO.SimAntics.Engine;
 using FSO.SimAntics.Model;
 using FSO.SimAntics.Model.TSOPlatform;
 using FSO.SimAntics.Primitives;
@@ -82,6 +83,8 @@ namespace Apartments
             public long Ends;            //when they turn for home
             public long HomewardSince = -1;
             public string Doing;
+            /// <summary>When to look for something for them to do next, if they have nothing (game minutes).</summary>
+            public long NextActivity;
         }
 
         internal class LotState
@@ -106,6 +109,8 @@ namespace Apartments
             public Dictionary<int, long> Invited = new Dictionary<int, long>();
             /// <summary>Sims on their way to knock at a door.</summary>
             public List<Doors.Knock> Knocks = new List<Doors.Knock>();
+            /// <summary>Spots at doors that a visitor is on the way to, so another is sent to the next one: by whom, and until when.</summary>
+            public Dictionary<Tile, KeyValuePair<short, long>> SpotsTaken = new Dictionary<Tile, KeyValuePair<short, long>>();
             /// <summary>The game's bills on the lot, as of the last look (Bills.cs), and whether there has been a look yet.</summary>
             public HashSet<short> BillsSeen = new HashSet<short>();
             public bool BillsScanned;
@@ -559,11 +564,96 @@ namespace Apartments
             state.Out[guid] = outing;
             Mark(vm, sim, family, false);
 
+            //something to do in the shared rooms or outdoors; or, if there is nothing, somewhere shared to be
+            var activity = SomethingToDo(vm, state, sim);
+            if (activity != null)
+            {
+                outing.NextActivity = Now(vm) + ActivityEvery;
+                AptLog.Write(sim.Name + " of " + Residency.NameOf(family) + " came out for " + (outing.Ends - Now(vm)) + " minutes, to " + activity + ".");
+                return sim;
+            }
             var where = SharedSpot(vm, state);
             var walking = where != null && WalkTo(vm, sim, where.Value);
+            outing.NextActivity = Now(vm) + ActivityRetry;
             AptLog.Write(sim.Name + " of " + Residency.NameOf(family) + " came out for " + (outing.Ends - Now(vm)) + " minutes"
                 + (where == null ? ". There is nowhere shared to walk to." : (walking ? ", walking to floor " + where.Value.Level + ", tile " + where.Value.X + "," + where.Value.Y + "." : ". They could not be told where to walk, so they are left to themselves.")));
             return sim;
+        }
+
+        //game minutes: how soon a neighbour with nothing to do is found something, and how soon again if nothing was found
+        private const int ActivityEvery = 10, ActivityRetry = 30;
+
+        /// <summary>Whether a Sim is doing nothing: nothing in their queue but the game's idling.</summary>
+        private static bool HasNothingToDo(VMAvatar sim)
+        {
+            var queue = sim.Thread?.Queue;
+            if (queue == null) return false;
+            foreach (var action in queue)
+            {
+                if (action == null) continue;
+                if (action.Mode != VMQueueMode.Idle && action.Priority > (short)VMQueuePriority.Idle) return false;
+            }
+            return true;
+        }
+
+        //what a neighbour is never sent to do: what costs or earns money, looks after the place, takes things, or belongs
+        //to the household being played. (Anything that would cost money is refused anyway: see the money hook.)
+        private static readonly string[] NotForNeighbours =
+        {
+            "buy", "sell", "purchase", "order", "pay", "bill", "mail", "rent", "trade", "stock", "invest",
+            "clean", "repair", "fix", "unclog", "mop", "empty", "refill", "fill", "upgrade", "throw", "kick", "steal",
+            "pick up", "take", "move", "delete", "lock", "knock", "go here", "call", "phone", "hire", "fire", "adopt", "evict",
+            "cook", "prepare", "serve", "make", "feed", "bathe", "wash", "shower", "bath", "sleep", "nap", "woohoo", "change",
+        };
+
+        public static bool IsForNeighbours(string interaction)
+        {
+            if (string.IsNullOrWhiteSpace(interaction)) return false;
+            var name = interaction.Trim().ToLowerInvariant();
+            var leaf = name.Contains('/') ? name.Substring(name.LastIndexOf('/') + 1) : name;
+            if (leaf.Contains(';')) leaf = leaf.Substring(0, leaf.LastIndexOf(';'));
+            return leaf.Trim() != "" && !NotForNeighbours.Any(word => leaf.Contains(word));
+        }
+
+        /// <summary>
+        /// Give a neighbour who is out something to do: one of the things in the shared rooms or outdoors that they could
+        /// choose themselves (the game's own menu for them, with its own checks), not in any apartment. It is given at
+        /// the priority of something chosen by themselves, so anything the game wants of them comes first. Returns what,
+        /// for the log, or null if there was nothing.
+        /// </summary>
+        private static string SomethingToDo(VM vm, LotState state, VMAvatar sim)
+        {
+            FreshRooms(vm, state);
+            var seen = new HashSet<VMEntity>();
+            var things = new List<VMEntity>();
+            foreach (var part in vm.Context.ObjectQueries.WithAutonomy.ToList())
+            {
+                if (part is VMAvatar || part.Dead || part.Position == LotTilePos.OUT_OF_WORLD) continue;
+                var thing = part.MultitileGroup?.GetInteractionGroupLeader(part) ?? part;
+                if (!seen.Add(thing) || thing.Position == LotTilePos.OUT_OF_WORLD) continue;
+                if (thing is VMGameObject game && game.Disabled > 0) continue;
+                var guid = thing.Object?.OBJ?.GUID ?? 0;
+                if (guid == 0xEF121974 || guid == 0x1D95C9B0 || Doors.IsDoor(thing) || Bills.IsBill(thing)) continue;
+                if (state.RoomApts.ContainsKey(vm.Context.GetRoomAt(thing.Position))) continue; //in an apartment, lived in or not
+                things.Add(thing);
+            }
+            //nearer things are likelier, but any may be chosen
+            var picks = things.OrderBy(x => (Math.Abs(x.Position.x - sim.Position.x) + Math.Abs(x.Position.y - sim.Position.y)) / 16 + Dice.Next(40)).Take(12).ToList();
+            foreach (var thing in picks)
+            {
+                List<VMPieMenuInteraction> menu;
+                try { menu = thing.GetPieMenu(vm, sim, false, false); } catch { continue; }
+                var choices = menu?.Where(x => !x.Global && IsForNeighbours(x.Name)).ToList();
+                if (choices == null || choices.Count == 0) continue;
+                var choice = choices[Dice.Next(choices.Count)];
+                var action = thing.GetAction(choice.ID, sim, vm.Context, false, new short[] { choice.Param0, 0, 0, 0 });
+                if (action == null) continue;
+                action.Priority = (short)VMQueuePriority.Autonomous;
+                sim.Thread.EnqueueAction(action);
+                var name = choice.Name ?? "";
+                return "\"" + (name.Contains('/') ? name.Substring(name.LastIndexOf('/') + 1) : name) + "\" on " + thing.ToString();
+            }
+            return null;
         }
 
         /// <summary>Somewhere a neighbour can go: a tile in an indoor room that is nobody's apartment, or else outdoors near the mailbox.</summary>
@@ -705,7 +795,17 @@ namespace Apartments
                     }
                 }
 
-                if (now < outing.Ends) continue;
+                if (now < outing.Ends)
+                {
+                    //nothing to do: find them something, in the shared rooms or outdoors
+                    if (now >= outing.NextActivity && HasNothingToDo(sim))
+                    {
+                        var activity = SomethingToDo(vm, state, sim);
+                        outing.NextActivity = now + ((activity == null) ? ActivityRetry : ActivityEvery);
+                        if (activity != null) AptLog.Write(sim.Name + " goes to " + activity + ".");
+                    }
+                    continue;
+                }
                 var room = (sim.Position == LotTilePos.OUT_OF_WORLD) ? (ushort)0 : vm.Context.GetObjectRoom(sim);
                 var atHome = state.RoomOwners.TryGetValue(room, out var owner) && owner == outing.Family;
                 if (atHome)

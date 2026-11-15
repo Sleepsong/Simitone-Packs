@@ -222,6 +222,11 @@ Check("writing nothing removes the file", PackStore.Write("sample.apartments", n
 Check("a bill is known by its name", Bills.IsBillName("Bills") && Bills.IsBillName("Bill - Electric") && Bills.IsBillName("*Bills") && Bills.IsBillName("Mailbox Bills"));
 Check("...and billiards, billboards and nothing are not bills", !Bills.IsBillName("Table - Billiards") && !Bills.IsBillName("Billboard") && !Bills.IsBillName("") && !Bills.IsBillName(null) && !Bills.IsBillName("Mailbox"));
 
+// ---- what neighbours may be sent to do ----
+Check("neighbours may watch, sit, play and swim", Neighbours.IsForNeighbours("Watch TV") && Neighbours.IsForNeighbours("Sit") && Neighbours.IsForNeighbours("Play") && Neighbours.IsForNeighbours("Swim") && Neighbours.IsForNeighbours("Dance/Solo"));
+Check("...but nothing that costs, looks after the place, or takes things", !Neighbours.IsForNeighbours("Buy Soda") && !Neighbours.IsForNeighbours("Clean") && !Neighbours.IsForNeighbours("Repair") && !Neighbours.IsForNeighbours("Pick Up") && !Neighbours.IsForNeighbours("Sell") && !Neighbours.IsForNeighbours("Order Pizza") && !Neighbours.IsForNeighbours("Get Mail"));
+Check("...and a menu's category does not count, its last part does", Neighbours.IsForNeighbours("Buy/Watch") && !Neighbours.IsForNeighbours("Fun/Buy Ticket") && !Neighbours.IsForNeighbours("") && !Neighbours.IsForNeighbours(null));
+
 // ---- the question dialog's layout ----
 Check("a short message is one line", UIChoiceDialog.LinesOf("Which apartment?", 800, 15) == 1);
 Check("each paragraph is at least a line, blank ones too", UIChoiceDialog.LinesOf("one\n\nthree", 800, 15) == 3);

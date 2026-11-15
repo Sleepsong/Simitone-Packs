@@ -124,9 +124,15 @@ apartment they are not on the lot at all, and the apartment is dimmed, as if nob
 
 Now and then one comes out: about every three hours of the game's day (**Sometimes**) or every 45
 minutes (**Often**), between 8 in the morning and 10 at night, and never more than two at once. They
-appear in their apartment, walk to a shared room (or outdoors, if there is none), and spend an hour
-or two there as any visiting Sim would. Then they walk home and are gone again. You can talk to them
-while they are out.
+appear in their apartment and go to do something in the shared rooms or outdoors: one of the things
+there they could choose for themselves (the game's own menu for them), such as watching a TV,
+sitting, playing, swimming or looking at a painting. Whenever they have nothing to do, they are
+found something else. They are never sent to do anything that costs or earns money, looks after the
+place, or takes things, nor to anything inside an apartment. After an hour or two they walk home and
+are gone again. You can talk to them while they are out.
+
+A neighbour can never spend the played household's money: anything a neighbour does that would cost
+(or earn) money is refused, as the game refuses anyone who cannot afford a thing.
 
 When you change household, the one you were playing goes home in the same way, and the one you now
 play is found in its apartment.
@@ -193,7 +199,8 @@ to a door that is not your apartment's is about to be planned, it is planned to 
 instead: to the spot just outside it, or one beside that. What they do on getting there (ringing,
 waiting to be let in) is the game's own. A Sim walking *through* a door is never touched, and nor is
 anyone who lives in the building. Anything a visitor is given to do at the wrong door is moved to
-yours too, and a visitor still found standing waiting at the front of the lot is walked to your door.
+yours too. They stand at your door facing it, and when several come at once (the welcome wagon)
+each is sent to a different spot beside it.
 
 A visitor waits outside until they are greeted. When you greet one (or do anything else with them)
 while they wait, your Sim walks out to them first: in a house the game has the visitor come to your
@@ -222,7 +229,7 @@ Then send `Apartments.log` (the **Settings** page says where it is). It answers 
 | Did the building's layout survive the save? | The `--- House ...` line each time the lot loads lists its apartments and who is in them |
 | Did each family land in the apartment it chose? | `moved into Apartment ... of house ...`, then `is at home, in their apartment` |
 | Does a neighbour who comes out walk to the shared rooms? | `came out for ... minutes, walking to ...`, then the lines for where they are |
-| Do they do anything while out? | A line each time what they are doing changes; all `idle` means they only stand about |
+| Do they do anything while out? | `came out ..., to "..." on ...` and `goes to "..." on ...`, then a line each time what they are doing changes |
 | Do they walk home when their time is up? | `is walking home`, then `went home`; or `had not got there after 30 minutes` |
 | Do neighbours stay out of your apartment now? | No `THE APARTMENT OF ...` in a neighbour's line |
 | Does knocking work? | `is going to knock at ...`, then `knocked at ... answered` |

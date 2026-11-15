@@ -355,7 +355,7 @@ namespace Apartments
             var doors = DoorsOf(vm, state, home);
             if (doors.Count == 0) return false;
             var nearest = doors.OrderBy(x => Math.Abs(x.Outside.x - sim.Position.x) + Math.Abs(x.Outside.y - sim.Position.y) + Math.Abs(x.Outside.Level - sim.Position.Level) * 1000).First();
-            var spots = SpotsOutside(vm, nearest);
+            var spots = SpotsOutside(vm, nearest, sim);
             if (spots.Count == 0) return false;
             planned = frame.InitRoutes(spots);
             AptLog.Write("Visitor " + sim.Name + " was walking to " + Describe(target) + ". Sent to the door of " + home.Name + " instead" + (planned ? "." : ", but no way there was found."));
@@ -393,7 +393,7 @@ namespace Apartments
             var doors = DoorsOf(vm, state, home);
             if (doors.Count == 0) return false;
             var door = doors.OrderBy(x => Math.Abs(x.Outside.x - visitor.Position.x) + Math.Abs(x.Outside.y - visitor.Position.y) + Math.Abs(x.Outside.Level - visitor.Position.Level) * 1000).First();
-            var spots = SpotsOutside(vm, door);
+            var spots = SpotsOutside(vm, door, visitor);
             if (spots.Count == 0) return false;
             planned = frame.InitRoutes(spots);
             Once(vm, 8, visitor.ObjectID, () => visitor.Name + " was coming to " + host.Name + ", who is still at home: they wait at the door of " + home.Name + " instead.");
@@ -438,23 +438,46 @@ namespace Apartments
         }
 
         /// <summary>Where to stand at a door, from the hall: the spot just outside it, the ones around that, and the doorway itself last.</summary>
-        public static List<VMFindLocationResult> SpotsOutside(VM vm, Doorstep door)
+        public static List<VMFindLocationResult> SpotsOutside(VM vm, Doorstep door, VMAvatar walker = null)
         {
             var result = new List<VMFindLocationResult>();
             var seen = new HashSet<Tile>();
+            //standing there facing the door, as someone ringing does
+            var face = (door.Hall ?? door.Door)?.Position ?? door.Outside;
             void Add(LotTilePos pos, double score)
             {
                 var tile = new Tile(pos.Level, pos.TileX, pos.TileY);
                 if (!seen.Add(tile)) return;
                 var centre = tile.ToPos();
                 if (vm.Context.GetRoomAt(centre) != door.OutsideRoom) return; //the hall side only
-                result.Add(new VMFindLocationResult() { Position = centre, FaceAnywhere = true, Score = score });
+                var facing = (float)Math.Atan2(face.x - centre.x, -(face.y - centre.y));
+                var faceAnywhere = face.x == centre.x && face.y == centre.y;
+                result.Add(new VMFindLocationResult() { Position = centre, RadianDirection = facing, FaceAnywhere = faceAnywhere, Score = score });
             }
             Add(door.Outside, 3);
             for (int dx = -1; dx <= 1; dx++)
                 for (int dy = -1; dy <= 1; dy++)
                     if (dx != 0 || dy != 0) Add(new LotTilePos((short)(door.Outside.x + dx * 16), (short)(door.Outside.y + dy * 16), door.Outside.Level), 2);
             if (door.Hall != null && door.Hall.Position != LotTilePos.OUT_OF_WORLD) Add(door.Hall.Position, 1);
+            if (walker == null) return result;
+
+            //spots someone else stands on, or is on the way to, go last: two visitors sent to one spot made one of them move
+            var state = Neighbours.StateOf(vm);
+            var now = Neighbours.Clock(vm);
+            var taken = new HashSet<Tile>();
+            foreach (var other in vm.Context.ObjectQueries.Avatars)
+            {
+                if (other == walker || other.Dead || other.Position == LotTilePos.OUT_OF_WORLD) continue;
+                taken.Add(new Tile(other.Position.Level, other.Position.TileX, other.Position.TileY));
+            }
+            if (state != null)
+            {
+                foreach (var pair in state.SpotsTaken)
+                    if (pair.Value.Key != walker.ObjectID && pair.Value.Value > now) taken.Add(pair.Key);
+            }
+            Func<VMFindLocationResult, Tile> tileOf = x => new Tile(x.Position.Level, x.Position.TileX, x.Position.TileY);
+            result = result.OrderBy(x => taken.Contains(tileOf(x)) ? 1 : 0).ToList();
+            if (state != null && result.Count > 0) state.SpotsTaken[tileOf(result[0])] = new KeyValuePair<short, long>(walker.ObjectID, now + 30);
             return result;
         }
 
@@ -645,48 +668,9 @@ namespace Apartments
                 Answer(vm, state, sim, apartment);
             }
 
-            if (ShowVisitors) ShowVisitorsToDoor(vm, state, played);
+            //(visitors are no longer walked to the door afterwards: their walk there is planned to it in the first place,
+            //and a second walk given to a visitor waiting to be greeted cut their visit short)
         }
 
-        /// <summary>
-        /// The game sends a visitor to the front of the lot to wait to be greeted. In a building that is the street
-        /// door, not the household's own. A visitor who is waiting there with nothing to do is walked to the played
-        /// household's door instead, once, and waits there.
-        /// </summary>
-        private static void ShowVisitorsToDoor(VM vm, Neighbours.LotState state, FAMI played)
-        {
-            var home = state.File.ApartmentOf(played.ChunkID);
-            if (home == null) return;
-            List<Doorstep> doors = null;
-            var residents = state.ResidentIds;
-            var seen = new HashSet<long>();
-            //(a copy: sending a Sim walking puts a go-here marker on the lot, which changes the lot's own list)
-            foreach (var entity in vm.Entities.ToList())
-            {
-                if (!(entity is VMAvatar sim) || sim.Dead || sim.IsPet || sim.Position == LotTilePos.OUT_OF_WORLD) continue;
-                if (state.ShownToDoor.Contains(sim.ObjectID)) continue;
-                if (sim.GetPersonData(VMPersonDataVariable.PersonType) != 1 || residents.Contains(FamilyOf(sim))) continue; //a visitor, and not one of the neighbours
-                if (sim.GetPersonData(VMPersonDataVariable.GreetStatus) != 0) continue;                                    //waiting to be greeted
-                if (sim.Thread?.ActiveAction != null || (sim.Thread?.Queue?.Count ?? 0) > 0) continue;                      //with nothing to do
-                if (state.RoomApts.ContainsKey(vm.Context.GetRoomAt(sim.Position))) continue;                              //and not already inside an apartment
-                //...and standing still: someone walking past the lot, or on their way home, is all of the above too
-                var who = ((long)GuidHash(sim) << 16) | (ushort)sim.ObjectID;
-                seen.Add(who);
-                var stood = (state.Waiting.TryGetValue(who, out var before) && before.Key == sim.Position) ? before.Value + 1 : 0;
-                state.Waiting[who] = new KeyValuePair<LotTilePos, int>(sim.Position, stood);
-                if (stood < 2) continue;
-
-                doors = doors ?? DoorsOf(vm, state, home);
-                if (doors.Count == 0) return;
-                if (doors.Any(x => x.Outside.Level == sim.Position.Level && Math.Abs(x.Outside.x - sim.Position.x) <= 2 * 16 && Math.Abs(x.Outside.y - sim.Position.y) <= 2 * 16)) continue; //at the door already
-                var nearest = doors.OrderBy(x => Math.Abs(x.Outside.x - sim.Position.x) + Math.Abs(x.Outside.y - sim.Position.y) + Math.Abs(x.Outside.Level - sim.Position.Level) * 1000).First();
-                state.ShownToDoor.Add(sim.ObjectID);
-                var walking = Neighbours.Walk(vm, sim, TileOf(nearest.Outside));
-                AptLog.Write("Visitor " + sim.Name + " was waiting at the front of the lot" + (walking ? ", and is walking to the door of " + home.Name + "." : ". They could not be told to walk to the door of " + home.Name + "."));
-            }
-            //forget those who have gone (the game uses a Sim's number on the lot again for the next to come)
-            foreach (var gone in state.Waiting.Keys.Where(x => !seen.Contains(x)).ToList()) state.Waiting.Remove(gone);
-            state.ShownToDoor.RemoveWhere(x => !(vm.GetObjectById(x) is VMAvatar));
-        }
     }
 }

@@ -474,7 +474,7 @@ namespace Apartments
                 .Button(priv ? "On" : "Off", () => Do(() => { Actions.SetPrivate(!priv); return null; }), priv));
 
             var showVisitors = Doors.ShowVisitors;
-            rows.Add(new Row("Visitors come to your door", "A visitor waiting to be greeted at the front of the lot walks to your apartment's door and waits there instead.")
+            rows.Add(new Row("Visitors come to your door", "Visitors, the welcome wagon and deliveries walk to your apartment's door, ring there and wait to be greeted, instead of at the street door")
                 .Button(showVisitors ? "On" : "Off", () => Do(() => { Actions.SetShowVisitors(!showVisitors); return null; }), showVisitors));
 
             var mailbox = Neighbours.MovableMailbox;
