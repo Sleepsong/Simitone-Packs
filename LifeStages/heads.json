@@ -1,0 +1,15 @@
+// Which of the game's adult heads are for elders.
+//
+// A head's name is shown under the panel in Create a Sim, and under the heads in the elder head picker,
+// for example "c005ma_kaj". Capitals do not matter. One name covers every skin colour of that head.
+//
+//   "elder"  heads only for elders: they are taken out of Adult in Create a Sim, and are not given to a
+//            child who grows up.
+//   "both"   heads offered for adults and for elders: helmets, bald heads and others that suit either.
+//
+// While both lists are empty, elders are offered every adult head.
+// Edit this file in the pack's folder, then restart Simitone.
+{
+  "elder": [],
+  "both": []
+}

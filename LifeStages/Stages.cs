@@ -165,8 +165,6 @@ namespace LifeStages
         public bool Ageing { get; set; } = true;
         /// <summary>Whether children become teens before adults.</summary>
         public bool Teens { get; set; } = true;
-        /// <summary>Whether an elder's hair is drawn grey.</summary>
-        public bool GreyHair { get; set; } = true;
         public int ChildDays { get; set; } = 8;
         public int TeenDays { get; set; } = 15;
         public int AdultDays { get; set; } = 29;

@@ -13,7 +13,7 @@ Back up your Simitone user directory before you switch it on.
 | Child | 8 days | The game's own child. |
 | Teen | 15 days | Still a child to the game: goes to school, and cannot take a job, marry or have a baby. Drawn larger than a child. |
 | Adult | 29 days | The game's own adult. |
-| Elder | for good | Still an adult to the game, with grey hair. |
+| Elder | for good | Still an adult to the game. You choose an elder's head as they become one. |
 
 The lengths are The Sims 2's. A baby is still the game's own bassinet, and becomes a child as it always
 has; from there the pack takes over.
@@ -26,11 +26,35 @@ has; from there the pack takes over.
 - **Sims you already have** start at the beginning of the stage they are in: a child is on the first
   day of childhood, an adult on the first day of adulthood.
 - **Growing up** gives a child an adult's head and body, of the same sex and skin colour, picked by
-  chance from the ones the game has, leaving out heads that are old already. The Sims has no grown-up version of a child's face, so the adult
-  does not look like the child did. If you do not like the look, `age look` in the console picks
-  another. Their name, skills, personality, relationships and needs carry over.
+  chance from the ones the game has, leaving out the elders' heads. The Sims has no grown-up version of
+  a child's face, so the adult does not look like the child did. If you do not like the head, `age look`
+  in the console lets you choose another. Their name, skills, personality, relationships and needs carry
+  over.
+- **Growing old** opens a head picker once the birthday message is closed, like the game's dresser:
+  drag to turn the ring of heads, then OK. The Sim's own head is first, so Cancel, or OK on it, keeps
+  it. The heads offered are the elders' heads (below), in the Sim's sex and skin colour.
 - **Sims from a household you played before** keep their stage when they visit: a teen is still drawn
-  as a teen and an elder still has grey hair. They do not get older while you play someone else.
+  as a teen. They do not get older while you play someone else.
+
+## Elders' heads
+
+The Sims has only adult heads, some of which look old. Which are for elders is up to you, in
+`heads.json` in the pack's folder:
+
+```json
+{
+  "elder": ["c005ma_example"],
+  "both": ["c010ma_helmet"]
+}
+```
+
+- **elder**: heads for elders only. They are not offered for adults in Create a Sim, and a child who
+  grows up is not given one.
+- **both**: heads for adults and elders, such as helmets and bald heads.
+
+A head's name is shown under the panel in Create a Sim while you scroll the heads, and under the heads
+in the head picker. One name covers every skin colour of a head, and capitals do not matter. Restart
+Simitone after changing the file. While both lists are empty, elders are offered every adult head.
 
 ## Making Sims of each age
 
@@ -39,10 +63,9 @@ In Create a Sim the two age buttons are four, in the order of a life: **child** 
 
 - A teen is made from a child's heads and bodies, and an elder from an adult's: The Sims has no others.
   Teens are shown larger than children, as they will be in the game.
-- The game's adult heads that are old already, with grey or white hair, are the elders' heads: they come
-  first when Elder is chosen, and are not offered for adults. The other heads are offered to elders with
-  grey hair.
-- In the family being made, a teen stands larger than a child, and an elder has grey hair.
+- Elders are offered the elders' heads, and adults every head but those for elders only (see Elders'
+  heads). The name of the head shown is under the panel.
+- In the family being made, a teen stands larger than a child.
 - Each Sim starts on the first day of their stage. The first time the family is played, the teens take
   on a teen's age and size and the elders an elder's.
 
@@ -70,12 +93,11 @@ Open the cheat console (Ctrl+Shift+C):
 |---|---|
 | `age` | See everyone in your household: stage, day, and days left |
 | `age up` | Move a Sim to the next stage now |
-| `age look` | Give a grown Sim another adult head and body, picked afresh. Type it again for another |
+| `age look` | Choose another head for a grown Sim, in the head picker: from the adults' heads for an adult, the elders' for an elder |
 | `age day 5` | Put a Sim on a day of the stage they are in, for example to spread out a family's birthdays |
 | `age days` | See how long the stages last. `age days adult 40` changes one |
 | `age off` / `age on` | Stop and start the days counting. Nothing is forgotten while it is off |
 | `age teens off` | Have children grow straight into adults |
-| `age grey off` | Leave elders the hair they had |
 | `age help` | See this list in the game |
 
 `age up`, `age look` and `age day` are for the selected Sim. To name one instead, put the name last:
@@ -91,13 +113,9 @@ The settings are kept for each neighbourhood, as soon as you change them.
   A child drawn small would still be sent to school by the game.
 - **A teen is a large child.** It has a child's proportions and a child's clothes, and the game lets it
   do exactly what a child may do. Nothing is teen-only.
-- **An elder is an adult with grey hair.** They keep their job, and walk as they did.
-- **Grey hair is a guess.** A head's hair and face are one picture, so the pack looks for the hair in
-  it: large patches that are not the colour of the Sim's skin, and are a colour hair can be. Eyes, lips,
-  the inside of the ears and the shine on a cheek are left as they were, and so are brows and a small
-  moustache. A hat that is blue, green, purple or a bright colour keeps its colour; a black, brown or grey
-  hat looks like hair, and turns silver. A head whose skin cannot be told (paint, a mask) is left as it
-  is. `age grey off` if a head comes out badly.
+- **An elder is an adult with an older head, if you give them one.** They keep their job, and walk as
+  they did.
+- **The head picker shows the whole Sim**, as the dresser does, so the heads are small.
 - **A new adult's other outfits** (formal, swimwear and so on) are the game's defaults for a new Sim.
 - Growing up while in the middle of something may look wrong until the Sim starts their next action.
 
@@ -110,31 +128,32 @@ so if you leave a lot without saving, the days played there are not counted.
 It does change the game's own files in two ways, when the game saves:
 
 - A Sim who leaves childhood has an adult's head and body written into their character file, in the
-  way the game writes one when a Sim buys clothes. This cannot be undone.
+  way the game writes one when a Sim buys clothes. So does a head chosen in the head picker. This cannot
+  be undone, except by choosing again.
 - A teen's age (15) and size, and an elder's age (65), are written where the game keeps a Sim's age.
 
-So if you switch the pack off: adults and elders stay grown, elders get their own hair colour back, and
+So if you switch the pack off: adults and elders stay grown, with the heads they were given, and
 a teen stays a large child until the pack is on again. Sims who never changed stage are not written to.
 
 ## How it works
 
-The engine is not changed. The pack patches it with Harmony in four places it needs:
+The engine is not changed. The pack patches it with Harmony in three places it needs:
 
 1. **Each tick of a lot**, it watches the clock for midnight and for the evening, and every few seconds
-   checks that each Sim it knows is at the age and size, and has the hair, of their stage.
-2. **When the game looks up a skin texture**, it answers for the grey copies of heads, which it makes
-   from the Sim's own head while the game runs. No picture is written to disk.
-3. **When the game loads a neighbourhood**, it forgets the ages of the one before.
-4. **When the game saves**, it writes its own file.
+   checks that each Sim it knows is at the age and size of their stage.
+2. **When the game loads a neighbourhood**, it forgets the ages of the one before.
+3. **When the game saves**, it writes its own file.
 
 and some it can do without, so a version of Simitone they do not fit costs only what they do:
 
-5. **When a lot is left**, it reads its file again, so days that were not saved are dropped.
-6. **When the live panel changes what it shows**, it adds the age display to the Personality panel, in
+4. **When a lot is left**, it reads its file again, so days that were not saved are dropped.
+5. **When the live panel changes what it shows**, it adds the age display to the Personality panel, in
    the space Simitone leaves empty there.
-7. **In Create a Sim**, it puts four age buttons in place of two, shows elders' heads grey and teens
-   larger, and when the family is made, writes each Sim's stage into its file. These patches are put
-   on together and taken off together.
+6. **In Create a Sim**, it puts four age buttons in place of two, offers each stage its heads, shows
+   teens larger and the head's name, and when the family is made, writes each Sim's stage into its file.
+   These patches are put on together and taken off together.
+
+The head picker is Simitone's own outfit picker with heads in place of bodies, and needs no patch.
 
 The game's scripts ask one thing of a Sim's age: under 18 is a child. So a teen is given 15 and an
 elder 65, and every object in the game goes on working. A teen's size is the game's own size setting
@@ -146,7 +165,8 @@ for a Sim.
 | `Ledger.cs` | What is remembered for a neighbourhood, and the log |
 | `Life.cs` | What is done in the game: counting days, and putting a stage on a Sim |
 | `Body.cs` | Choosing the head and body a child grows into |
-| `GreyHair.cs` | The grey copy of a head |
+| `Heads.cs` | Reading `heads.json`: which heads are for elders |
+| `UIHeadPicker.cs` | The head picker |
 | `AgeView.cs` | What the age display shows: its words, the bar's segments, and the figures |
 | `CreateASim.cs` | Making teens and elders in Create a Sim |
 | `UIAgeDisplay.cs` | Drawing the age display, in Simitone's UI colours and with figures drawn in code |
@@ -163,5 +183,5 @@ dotnet run --project LifeStages/tests
 
 They need no copy of The Sims. They check that the pack's patches fit the engine it is built
 against, and the pack's own rules: a whole life day by day, the clock, the file, the body chosen for a
-grown child, grey hair on made-up colours, and what the age display shows. They do not load a lot or a Sim, so they say nothing
+grown child, the head lists and the heads the picker offers, and what the age display shows. They do not load a lot or a Sim, so they say nothing
 about how it looks or plays.

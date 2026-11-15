@@ -26,7 +26,7 @@ var apply = typeof(LifeStagesPack).GetMethod("Apply", BindingFlags.NonPublic | B
 try { apply.Invoke(null, new object[] { h }); }
 catch (TargetInvocationException e) { Console.WriteLine("FAILED: " + e.InnerException); return 1; }
 var patched = h.GetPatchedMethods().Select(m => m.DeclaringType.Name + "." + m.Name).ToList();
-foreach (var needed in new[] { "VM.Tick", "TS1AvatarTextureProvider.Get", "TS1NeighborhoodProvider.InitSpecific", "TS1GameScreen.Save", "TS1GameScreen.ExitLot", "UIMainPanel.SetSubpanel" })
+foreach (var needed in new[] { "VM.Tick", "TS1NeighborhoodProvider.InitSpecific", "TS1GameScreen.Save", "TS1GameScreen.ExitLot", "UIMainPanel.SetSubpanel" })
     Check("patched " + needed, patched.Contains(needed));
 // the Create a Sim patches are optional to the pack, but should fit the Simitone this is built against
 {
@@ -34,7 +34,7 @@ foreach (var needed in new[] { "VM.Tick", "TS1AvatarTextureProvider.Get", "TS1Ne
     try { CreateASim.Apply(cas); Check("the Create a Sim patches fit", true); }
     catch (Exception e) { Check("the Create a Sim patches fit: " + e.Message, false); }
     var casPatched = cas.GetPatchedMethods().Select(m => m.DeclaringType.Name + "." + m.Name).ToList();
-    foreach (var needed in new[] { "UISimCASPanel..ctor", "UISimCASPanel.UpdateType", "UISimCASPanel.SetTab", "TS1CASScreen.BuildMember", "TS1CASScreen.PrepareEdit", "TS1CASScreen.PopulateSimType", "TS1CASScreen.SetHead", "TS1CASScreen.SetFamilyMember", "TS1CASScreen.CASToNeighGen", "SimitoneNeighbourGenerator.CreateFamily" })
+    foreach (var needed in new[] { "UISimCASPanel..ctor", "UISimCASPanel.UpdateType", "UISimCASPanel.SetTab", "TS1CASScreen.BuildMember", "TS1CASScreen.PrepareEdit", "TS1CASScreen.PopulateSimType", "TS1CASScreen.Update", "TS1CASScreen.SetFamilyMember", "TS1CASScreen.CASToNeighGen", "SimitoneNeighbourGenerator.CreateFamily" })
         Check("patched " + needed, casPatched.Contains(needed));
 }
 // the per-tick hook must be harmless on a lot it knows nothing about
@@ -109,10 +109,10 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     Check("a Sim is met at the start of the stage its age says", fresh.Meet(0x1234abcd, 9).Stage == Stage.Child && fresh.Meet(7, 27).Stage == Stage.Adult && fresh.Meet(8, 65).Stage == Stage.Elder && fresh.Meet(9, 15).Stage == Stage.Teen);
     fresh.Meet(0x1234abcd, 9).Days = 5;
     Check("meeting again does not start over", fresh.Meet(0x1234abcd, 27).Days == 5 && fresh.Meet(0x1234abcd, 27).Stage == Stage.Child);
-    fresh.Settings.TeenDays = 20; fresh.Settings.GreyHair = false;
+    fresh.Settings.TeenDays = 20; fresh.Settings.Teens = false;
     Check("written", fresh.Write("sample.lifestages", hood));
     var again = Ledger.Read("sample.lifestages", hood);
-    Check("read back", again.Sims.Count == 4 && again.Find(0x1234abcd).Days == 5 && again.Find(8).Stage == Stage.Elder && again.Settings.TeenDays == 20 && !again.Settings.GreyHair);
+    Check("read back", again.Sims.Count == 4 && again.Find(0x1234abcd).Days == 5 && again.Find(8).Stage == Stage.Elder && again.Settings.TeenDays == 20 && !again.Settings.Teens);
     Check("another neighbourhood has its own", Ledger.Read("sample.lifestages", other).Sims.Count == 0 && Ledger.PathFor("sample.lifestages", hood) != Ledger.PathFor("sample.lifestages", other));
     Check("the file is beside the saves, not in them", Ledger.PathFor("sample.lifestages", hood).Replace('\\', '/').Contains("/LocalHouse/PackData/sample.lifestages/"));
 
@@ -152,159 +152,61 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     var dark = Body.ChooseAdult(true, "drk", heads, bodies, textures, random);
     Check("a dark-skinned woman gets what there is for her", dark != null && dark[2].StartsWith("C001FA_Annie") && dark[14] == "drk");
     Check("nothing to wear: no growing up", Body.ChooseAdult(true, "med", heads, bodies, textures, random) == null && Body.ChooseAdult(false, "lgt", new string[0], new string[0], textures, random) == null);
-    var noOld = Enumerable.Range(0, 100).Select(i => Body.ChooseAdult(true, "lgt", heads, bodies, textures, random, tex => tex.StartsWith("C001", StringComparison.OrdinalIgnoreCase))).ToList();
-    Check("a head that is old already is not given to a young adult", noOld.All(x => x[2].StartsWith("C002FA_Bea")));
-    Check("unless there is no other", Body.ChooseAdult(true, "lgt", heads, bodies, textures, random, tex => true) != null);
+    Heads.Use(new HeadLists() { Elder = new List<string>() { " c001fa_annie " } });
+    var noOld = Enumerable.Range(0, 100).Select(i => Body.ChooseAdult(true, "lgt", heads, bodies, textures, random)).ToList();
+    Check("a head for elders only is not given to a young adult", noOld.All(x => x[2].StartsWith("C002FA_Bea")));
+    Heads.Use(new HeadLists() { Elder = new List<string>() { "C001FA_Annie", "c002fa_bea" } });
+    Check("unless there is no other", Body.ChooseAdult(true, "lgt", heads, bodies, textures, random) != null);
+    Heads.Use(new HeadLists());
     Check("a costume or uniform is not an everyday body", Body.BuildOf("B900FACop_Uniform") == null && Body.BuildOf("odd") == null && Body.BuildOf("b001mafit_01") == "fit" && Body.BuildOf("B002FAFat_02") == "Fat");
     var lower = Body.ChooseAdult(false, "lgt", new[] { "c010ma_bob" }, new[] { "b010mafit_01" }, new[] { "C010MALGT_BOB.BMP", "B010MAFITLGT_01.BMP" }, random);
     Check("names are matched whatever their case", lower != null && lower[12] == "male" && lower[17] == "HmLO,HAND=huaolgt");
     Check("skin colour, from the strings or else the person data", Body.SkinColour("MED", 0) == "med" && Body.SkinColour("", 2) == "drk" && Body.SkinColour(null, 9) == "drk" && Body.SkinColour("purple", -3) == "lgt");
 }
 
-// ---- grey hair ----
+// ---- which heads are elders' ----
 {
-    int Spread(Color c) => Math.Max(c.R, Math.Max(c.G, c.B)) - Math.Min(c.R, Math.Min(c.G, c.B));
-    int Far(Color a, Color b) => Math.Max(Math.Abs(a.R - b.R), Math.Max(Math.Abs(a.G - b.G), Math.Abs(a.B - b.B)));
-    // a made-up head, 64 by 64: skin in light and shade, a mop of hair across the top, two eyes (white, with a
-    // dark iris), lips, brows, and the shine of light on a cheek. Each part is listed so it can be checked
-    const int HW = 64, HH = 64;
-    var hairColours = new[] { new Color(20, 16, 14), new Color(70, 40, 22), new Color(214, 180, 90), new Color(150, 60, 30), new Color(110, 110, 112) };
-    (Color[] pixels, Dictionary<string, List<int>> parts) Head(Color skin, Color hair)
-    {
-        var px = new Color[HW * HH];
-        var parts = new Dictionary<string, List<int>>() { ["hair"] = new List<int>(), ["skin"] = new List<int>(), ["eyes"] = new List<int>(), ["lips"] = new List<int>(), ["shine"] = new List<int>(), ["brows"] = new List<int>(), ["ears"] = new List<int>() };
-        Color Mul(Color c, float f) => new Color(Math.Min(255, (int)(c.R * f)), Math.Min(255, (int)(c.G * f)), Math.Min(255, (int)(c.B * f)), 255);
-        void Put(int x, int y, Color c, string part) { px[y * HW + x] = c; foreach (var l in parts.Values) l.Remove(y * HW + x); parts[part].Add(y * HW + x); }
-        for (int y = 0; y < HH; y++) for (int x = 0; x < HW; x++) Put(x, y, Mul(skin, 0.75f + 0.33f * x / (HW - 1)), "skin");
-        for (int y = 0; y < 18; y++) for (int x = 0; x < HW; x++) Put(x, y, Mul(hair, 0.85f + 0.3f * ((x + y) % 7) / 6f), "hair");
-        foreach (var ex in new[] { 18, 40 })
-        {
-            for (int y = 28; y < 31; y++) for (int x = ex; x < ex + 6; x++) Put(x, y, new Color(232, 230, 222), "eyes");
-            for (int y = 28; y < 31; y++) for (int x = ex + 2; x < ex + 4; x++) Put(x, y, new Color(60, 70, 110), "eyes");
-            for (int x = ex; x < ex + 6; x++) Put(x, 25, Mul(hair, 0.8f), "brows");
-        }
-        for (int y = 46; y < 49; y++) for (int x = 26; x < 38; x++) Put(x, y, new Color((int)(skin.R * 0.72f) + 20, (int)(skin.G * 0.5f), (int)(skin.B * 0.5f)), "lips");
-        for (int y = 36; y < 42; y++) for (int x = 48; x < 55; x++) Put(x, y, Mul(skin, 1.4f), "shine");
-        // the inside of each ear: the skin, shaded and redder, right against the hair
-        foreach (var ex in new[] { 2, 58 })
-            for (int y = 18; y < 25; y++) for (int x = ex; x < ex + 4; x++) Put(x, y, new Color((int)(skin.R * 0.84f), (int)(skin.G * 0.68f), (int)(skin.B * 0.68f)), "ears");
-        return (px, parts);
-    }
-    foreach (var tone in Body.SkinColours)
-    {
-        var skin = GreyHair.FallbackSkin(tone);
-        var hand = new Color(Math.Min(255, skin.R + 14), Math.Max(0, skin.G - 8), skin.B); //a hand is not quite the face
-        foreach (var hair in hairColours)
-        {
-            var (px, parts) = Head(skin, hair);
-            var grey = GreyHair.Process(px, HW, HH, hand);
-            bool Same(string part) => parts[part].All(i => Far(px[i], grey[i]) <= 6);
-            var what = tone + ", hair " + hair.R + "," + hair.G + "," + hair.B + ": ";
-            Check(what + "the hair is silver", parts["hair"].Where(i => i % HW > 2 && i % HW < HW - 3 && i / HW < 15).All(i => Spread(grey[i]) <= 26 && grey[i].R >= 100));
-            var changed = new[] { "skin", "eyes", "lips", "shine", "ears" }.Where(x => !Same(x)).Select(x => x + " (" + parts[x].Count(i => Far(px[i], grey[i]) > 6) + " of " + parts[x].Count + ")").ToList();
-            Check(what + "skin, eyes, lips, ears and the shine on a cheek are left" + (changed.Count == 0 ? "" : ": NOT " + string.Join(", ", changed)), changed.Count == 0);
-            Check(what + "the shading in hair is kept", grey[3 * HW + 3].R != grey[3 * HW + 6].R);
-        }
-    }
-    // the head in the report: an orange-brown face, with the hand's dark skin as the guess
-    {
-        var face = new Color(160, 88, 52);
-        var (px, parts) = Head(face, hairColours[0]);
-        var grey = GreyHair.Process(px, HW, HH, GreyHair.FallbackSkin("drk"));
-        var changed = new[] { "skin", "eyes", "lips", "shine" }.Where(x => parts[x].Any(i => Far(px[i], grey[i]) > 6)).ToList();
-        Check("a face far from the hand's colour keeps its skin, eyes and lips" + (changed.Count == 0 ? "" : ": NOT " + string.Join(", ", changed)), changed.Count == 0);
-        Check("...and its hair still goes silver", parts["hair"].Where(i => i % HW > 2 && i % HW < HW - 3 && i / HW < 15).All(i => Spread(grey[i]) <= 26 && grey[i].R >= 100));
-    }
-    // a head that is mostly hair: the face is still the skin, not the hair
-    {
-        var face = GreyHair.FallbackSkin("med");
-        var (px, parts) = Head(face, hairColours[1]);
-        for (int y = 18; y < 40; y++) for (int x = 0; x < 12; x++) px[y * HW + x] = hairColours[1];
-        for (int y = 18; y < 40; y++) for (int x = 56; x < HW; x++) px[y * HW + x] = hairColours[1];
-        for (int y = 52; y < HH; y++) for (int x = 0; x < HW; x++) px[y * HW + x] = hairColours[1];
-        var grey = GreyHair.Process(px, HW, HH, face);
-        Check("a head that is mostly hair keeps its face", parts["eyes"].Concat(parts["lips"]).All(i => Far(px[i], grey[i]) <= 6) && Enumerable.Range(0, 6).All(k => Far(px[(30 + k) * HW + 30], grey[(30 + k) * HW + 30]) <= 6));
-    }
-    // hats: a hat over the hair is left, and the hair under it is still grey
-    foreach (var hat in new[] { new Color(40, 60, 160), new Color(40, 140, 60), new Color(130, 40, 150), new Color(230, 120, 30), new Color(210, 30, 30) })
-    {
-        var face = GreyHair.FallbackSkin("lgt");
-        var (px, parts) = Head(face, hairColours[1]);
-        var hatPixels = new List<int>();
-        for (int y = 0; y < 9; y++) for (int x = 0; x < HW; x++) { var f = 0.7f + 0.3f * ((x + 2 * y) % 5) / 4f; px[y * HW + x] = new Color((int)(hat.R * f), (int)(hat.G * f), (int)(hat.B * f)); hatPixels.Add(y * HW + x); }
-        var grey = GreyHair.Process(px, HW, HH, face);
-        var what = "a hat of " + hat.R + "," + hat.G + "," + hat.B + ": ";
-        Check(what + "the hat keeps its colour", hatPixels.All(i => Far(px[i], grey[i]) <= 6));
-        Check(what + "and the hair under it goes silver", Enumerable.Range(10, 5).SelectMany(y => Enumerable.Range(4, HW - 8).Select(x => y * HW + x)).All(i => Spread(grey[i]) <= 26 && grey[i].R >= 100));
-    }
-    // a face whose skin cannot be told (paint, a mask) is left whole, not greyed all over
-    {
-        var (px, _) = Head(new Color(80, 150, 80), hairColours[0]);
-        var grey = GreyHair.Process(px, HW, HH, GreyHair.FallbackSkin("lgt"));
-        Check("a painted face is left as it is", Enumerable.Range(0, px.Length).All(i => px[i] == grey[i]));
-    }
-    // heads that are old already: grey or white hair. Not black, brown or blond, and not bald
-    foreach (var tone in Body.SkinColours)
-    {
-        var skin = GreyHair.FallbackSkin(tone);
-        foreach (var white in new[] { new Color(200, 200, 205), new Color(235, 235, 232), new Color(150, 150, 150) })
-            Check(tone + ": a head with hair of " + white.R + "," + white.G + "," + white.B + " is old already", GreyHair.LooksGrey(Head(skin, white).pixels, HW, HH, skin));
-        foreach (var young in new[] { hairColours[0], hairColours[1], hairColours[2], hairColours[3] })
-            Check(tone + ": a head with hair of " + young.R + "," + young.G + "," + young.B + " is not", !GreyHair.LooksGrey(Head(skin, young).pixels, HW, HH, skin));
-        var (bald, _) = Head(skin, skin);
-        Check(tone + ": a bald head is not", !GreyHair.LooksGrey(bald, HW, HH, skin));
-    }
-    Check("a skin colour guessed a little wrong is put right from the face", Far(GreyHair.FaceSkin(Head(GreyHair.FallbackSkin("med"), hairColours[0]).pixels, new Color(205, 130, 95)), GreyHair.FallbackSkin("med")) <= 30);
-    var odd = new Color[] { Color.Black, Color.Black };
-    var refused = false;
-    try { GreyHair.Process(odd, 3, 3, GreyHair.FallbackSkin("lgt")); } catch (ArgumentException) { refused = true; }
-    Check("a picture of the wrong size is refused, not misread", refused);
+    var heads = new List<string>() { "c001ma_kaj", "c002ma_ben", "c003ma_old", "c004ma_helmet", "c005ma_bald" };
+    Heads.Use(new HeadLists());
+    Check("with no lists, adults and elders are offered every head", Heads.Offer(heads, Stage.Adult).Count == 5 && Heads.Offer(heads, Stage.Elder).Count == 5);
+    Heads.Use(new HeadLists() { Elder = new List<string>() { "C003MA_Old", "", null }, Both = new List<string>() { "c004ma_helmet ", "c005MA_bald" } });
+    Check("an elder's head is not offered to adults", Heads.Offer(heads, Stage.Adult).Select(i => heads[i]).SequenceEqual(new[] { "c001ma_kaj", "c002ma_ben", "c004ma_helmet", "c005ma_bald" }));
+    Check("elders are offered theirs and those for both, in the game's order", Heads.Offer(heads, Stage.Elder).Select(i => heads[i]).SequenceEqual(new[] { "c003ma_old", "c004ma_helmet", "c005ma_bald" }));
+    Check("names are matched whatever their capitals and spaces", Heads.ElderOnly("C003ma_OLD") && !Heads.ElderOnly("c004ma_helmet") && Heads.Suits("C005MA_BALD", Stage.Elder));
+    Check("children's and teens' heads are not sorted", Heads.Suits("c003ma_old", Stage.Child) && Heads.Suits("c003ma_old", Stage.Teen));
+    Check("elders with none of their own in a list are offered every head", Heads.Offer(new List<string>() { "c001ma_kaj", "c002ma_ben" }, Stage.Elder).Count == 2);
 
-    // for a look at it without the game: --preview writes a head before and after, as pictures
-    var pat = Array.IndexOf(args, "--preview");
-    if (pat >= 0 && pat + 1 < args.Length)
-    {
-        Directory.CreateDirectory(args[pat + 1]);
-        int row = 0;
-        var sheet = new byte[(HW * 2 + 4) * (HH + 4) * 3 * 3 * 3];
-        var lines = new List<byte[]>();
-        foreach (var tone in Body.SkinColours)
-        {
-            var (px, _) = Head(GreyHair.FallbackSkin(tone), hairColours[row % 2 == 0 ? 0 : 2]);
-            var grey = GreyHair.Process(px, HW, HH, GreyHair.FallbackSkin(tone));
-            var ppm = new List<byte>(System.Text.Encoding.ASCII.GetBytes("P6\n" + (HW * 2 + 4) + " " + HH + "\n255\n"));
-            for (int y = 0; y < HH; y++)
-            {
-                for (int x = 0; x < HW; x++) { var c = px[y * HW + x]; ppm.Add(c.R); ppm.Add(c.G); ppm.Add(c.B); }
-                for (int x = 0; x < 4; x++) { ppm.Add(40); ppm.Add(60); ppm.Add(50); }
-                for (int x = 0; x < HW; x++) { var c = grey[y * HW + x]; ppm.Add(c.R); ppm.Add(c.G); ppm.Add(c.B); }
-            }
-            File.WriteAllBytes(Path.Combine(args[pat + 1], "head-" + tone + ".ppm"), ppm.ToArray());
-            row++;
-        }
-    }
-    var clear = GreyHair.Process(new[] { new Color(70, 40, 22, 0), new Color(70, 40, 22, 99) }, 2, 1, GreyHair.FallbackSkin("lgt"));
-    Check("what is see-through stays so", clear[0].A == 0 && clear[1].A == 99);
-    Check("a hand's average is its skin", GreyHair.Average(new[] { new Color(0, 0, 0, 255), new Color(200, 150, 100, 255), new Color(220, 170, 120, 255), new Color(9, 9, 9, 0) }) == new Color(210, 160, 110) && GreyHair.Average(new Color[] { Color.Black }) == null);
+    // the file, as shipped and as a player might leave it
+    var dir = Path.Combine(Path.GetTempPath(), "age-heads-" + Guid.NewGuid().ToString("n"));
+    Directory.CreateDirectory(dir);
+    var shipped = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", Heads.FileName);
+    if (!File.Exists(shipped)) shipped = Path.Combine(Directory.GetCurrentDirectory(), "LifeStages", Heads.FileName);
+    File.Copy(shipped, Path.Combine(dir, Heads.FileName));
+    var said = Heads.Load(dir);
+    Check("the heads.json the pack ships reads: " + said, said.StartsWith(Heads.FileName + ": 0 heads"));
+    File.WriteAllText(Path.Combine(dir, Heads.FileName), "// mine\n{ \"elder\": [\"c003ma_old\", \"c009fa_gran\",], \"Both\": [\"c004ma_helmet\"] }");
+    said = Heads.Load(dir);
+    Check("a file with notes, a trailing comma and a capital is read: " + said, Heads.Lists.Elder.Count == 2 && Heads.Lists.Both.Count == 1 && Heads.ElderOnly("c009fa_gran"));
+    File.WriteAllText(Path.Combine(dir, Heads.FileName), "{ elder: oops");
+    said = Heads.Load(dir);
+    Check("a broken file is said to be, and leaves the lists empty: " + said, said.Contains("could not be read") && Heads.Lists.Elder.Count == 0);
+    File.Delete(Path.Combine(dir, Heads.FileName));
+    Check("no file, no lists", Heads.Load(dir).StartsWith("No ") && Heads.Lists.Both.Count == 0);
+    Directory.Delete(dir, true);
 
-    // the engine gives a head's picture to the part of the head whose own picture has the same name, with the skin
-    // colours taken out. A grey copy's name must do the same, or a head of several parts gives it to the wrong one
-    var avatar = (FSO.Vitaboy.Avatar)System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(FSO.Vitaboy.SimAvatar));
-    var uniform = typeof(FSO.Vitaboy.Avatar).GetMethod("UniformName", BindingFlags.NonPublic | BindingFlags.Instance);
-    string Uniform(string x) => (string)uniform.Invoke(avatar, new object[] { x });
-    foreach (var original in new[] { "c003falgt_annie", "C107MAdrk_Goatee", "c050famed_d", "x" })
-        foreach (var tone in Body.SkinColours)
-            Check("the engine takes the grey copy of " + original + " (" + tone + ") for the picture itself", Uniform(GreyHair.NameFor(original, tone)) == Uniform(original));
-
-    var name = GreyHair.NameFor("c003falgt_annie", "lgt");
-    Check("a grey head's name reads back", GreyHair.TryParse(name, out var tex, out var sk) && tex == "c003falgt_annie" && sk == "lgt");
-    Check("no other name is taken for one", !GreyHair.TryParse("c003falgt_annie", out _, out _) && !GreyHair.TryParse(null, out _, out _) && !GreyHair.TryParse(GreyHair.Marker + "lgt", out _, out _));
-    var asked = new List<string>();
-    var real = new FSO.Content.Model.LoadedTextureRef(null);
-    FSO.Content.Model.ITextureRef Lookup(string n) { asked.Add(n); return n == "c003falgt_annie" ? real : null; }
-    var made = GreyHair.Find(name, Lookup);
-    Check("a grey copy is made of a head that exists, once", made != null && made != real && GreyHair.Find(name, Lookup) == made && asked.Count == 1);
-    Check("and not of one that does not", GreyHair.Find(GreyHair.NameFor("nosuchhead", "lgt"), Lookup) == null && GreyHair.Find("c003falgt_annie", Lookup) == null);
+    // the heads offered in the picker: the one worn first, then the stage's, each once
+    Heads.Use(new HeadLists() { Elder = new List<string>() { "c003ma_old" }, Both = new List<string>() { "c004ma_helmet" } });
+    var textures = new[] { "c001malgt_kaj.bmp", "c002malgt_ben.bmp", "c003malgt_old.bmp", "c003madrk_old.bmp", "c004malgt_helmet.bmp" };
+    var worn = Body.Worn("c001ma_kaj,HEAD-HEAD=c001malgt_kaj");
+    Check("the head worn is read from the Sim's head line", worn.Mesh == "c001ma_kaj" && worn.Tex == "c001malgt_kaj" && Body.Worn(null).Mesh == null);
+    var elderChoices = Body.Choices(worn.Mesh, worn.Tex, heads, Stage.Elder, "lgt", textures);
+    Check("an elder is offered their own head first, then the elders' heads in their skin colour: " + string.Join(", ", elderChoices.Select(x => x.Mesh)),
+        elderChoices.Select(x => x.Mesh).SequenceEqual(new[] { "c001ma_kaj", "c003ma_old", "c004ma_helmet" }) && elderChoices[1].Tex == "c003malgt_old");
+    var adultChoices = Body.Choices("c002ma_ben", "c002malgt_ben", heads, Stage.Adult, "lgt", textures);
+    Check("an adult is offered their own once, and no elder's: " + string.Join(", ", adultChoices.Select(x => x.Mesh)),
+        adultChoices.Select(x => x.Mesh).SequenceEqual(new[] { "c002ma_ben", "c001ma_kaj", "c004ma_helmet" }));
+    Check("a head with no picture in the skin colour is not offered", Body.Choices(null, null, heads, Stage.Elder, "drk", textures).Select(x => x.Mesh).SequenceEqual(new[] { "c003ma_old" }));
+    Heads.Use(new HeadLists());
 }
 
 // ---- the age display ----

@@ -7,6 +7,7 @@ http://mozilla.org/MPL/2.0/.
 using FSO.Client;
 using FSO.Client.UI.Controls;
 using FSO.Client.UI.Framework;
+using FSO.Common.Utils;
 using FSO.Files.Formats.IFF.Chunks;
 using FSO.LotView.Components;
 using FSO.SimAntics;
@@ -35,8 +36,8 @@ namespace LifeStages
     /// and teen above, adult and elder below. A teen is made as a child and an elder as an adult, and the pack
     /// remembers which stage each Sim was given. When the family is made it writes them into its record, and the
     /// first time the family is played the Sims take on their stage (Life.Reconcile): a teen's age and size, an
-    /// elder's age and grey hair. Create a Sim shows them so too: teens larger, and elders with grey hair. The game's
-    /// adult heads that are old already (grey or white hair) are offered for elders, first, and not for adults.
+    /// elder's age. Create a Sim shows teens larger. The heads offered to adults and to elders are the pack's lists
+    /// in heads.json (Heads.cs), and the name of the head chosen is shown under the panel, to fill them in by.
     ///
     /// Every patch here is Harmony's, on Create a Sim's own methods. They are put on together and taken off together:
     /// if one does not fit a version of Simitone, Create a Sim is left as it was, and the rest of the pack runs.
@@ -52,6 +53,8 @@ namespace LifeStages
             public UIStencilButton Teen, Elder;
             /// <summary>The stage's name, under the buttons: the column's title is too narrow for it.</summary>
             public UILabel Name;
+            /// <summary>The name of the head chosen, under the panel: the names heads.json lists heads by.</summary>
+            public UILabel HeadName;
         }
 
         private static readonly ConditionalWeakTable<UISimCASPanel, PanelAges> Panels = new ConditionalWeakTable<UISimCASPanel, PanelAges>();
@@ -85,7 +88,7 @@ namespace LifeStages
             harmony.Patch(Need(AccessTools.Method(screen, "BuildMember"), "TS1CASScreen.BuildMember"), postfix: Mine(nameof(AfterBuildMember)));
             harmony.Patch(Need(AccessTools.Method(screen, "PrepareEdit"), "TS1CASScreen.PrepareEdit"), prefix: Mine(nameof(BeforePrepareEdit)), postfix: Mine(nameof(AfterPrepareEdit)));
             harmony.Patch(Need(AccessTools.Method(screen, "PopulateSimType"), "TS1CASScreen.PopulateSimType"), postfix: Mine(nameof(AfterPopulateSimType)));
-            harmony.Patch(Need(AccessTools.Method(screen, "SetHead"), "TS1CASScreen.SetHead"), postfix: Mine(nameof(AfterSetHead)));
+            harmony.Patch(Need(AccessTools.Method(screen, "Update"), "TS1CASScreen.Update"), postfix: Mine(nameof(AfterScreenUpdate)));
             harmony.Patch(Need(AccessTools.Method(screen, "SetFamilyMember"), "TS1CASScreen.SetFamilyMember"), postfix: Mine(nameof(AfterSetFamilyMember)));
             harmony.Patch(Need(AccessTools.Method(screen, "CASToNeighGen"), "TS1CASScreen.CASToNeighGen"), postfix: Mine(nameof(AfterCASToNeighGen)));
             harmony.Patch(Need(AccessTools.Method(typeof(SimitoneNeighbourGenerator), "CreateFamily", new[] { typeof(string), typeof(int), typeof(SimTemplateCreateInfo[]) }),
@@ -126,6 +129,16 @@ namespace LifeStages
                 ages.Name.Alignment = TextAlignment.Middle | TextAlignment.Center;
                 ages.Name.Position = new Vector2(244, below + ButtonSize + 8);
                 __instance.Add(ages.Name);
+
+                ages.HeadName = new UILabel();
+                ages.HeadName.CaptionStyle = __instance.SimAgeTitle.CaptionStyle.Clone();
+                ages.HeadName.CaptionStyle.Size = 14;
+                ages.HeadName.CaptionStyle.Shadow = true;
+                ages.HeadName.Size = Vector2.One;
+                ages.HeadName.Alignment = TextAlignment.Middle | TextAlignment.Center;
+                ages.HeadName.Position = new Vector2(295, 285); //the middle of the panel, just under it
+                ages.HeadName.Caption = "";
+                __instance.Add(ages.HeadName);
 
                 // the game's own two still do what they did (child or adult bodies); this says which stage
                 __instance.SimChildBtn.OnButtonClick += (b) => Choose(__instance, Stage.Child);
@@ -187,7 +200,7 @@ namespace LifeStages
 
         /// <summary>
         /// The panel is about to tell Create a Sim what to offer. A body changed some other way (the game's own child
-        /// and adult buttons) moves the stage with it first, so that a child is never offered an elder's grey heads.
+        /// and adult buttons) moves the stage with it first, so that a child is never offered an elder's heads.
         /// </summary>
         private static void BeforeUpdateType(UISimCASPanel __instance)
         {
@@ -236,9 +249,9 @@ namespace LifeStages
         }
 
         /// <summary>
-        /// What Create a Sim offers has been chosen. For adults and elders the pack sorts the heads: those old already
-        /// are elders', first in their list and not in adults'. New lists, not the old ones changed: Create a Sim's
-        /// lists are the game's own, which the rest of the game uses too.
+        /// What Create a Sim offers has been chosen. For adults and elders the pack keeps the heads for the stage, by
+        /// heads.json. New lists, not the old ones changed: Create a Sim's lists are the game's own, which the rest of
+        /// the game uses too.
         /// </summary>
         private static void AfterPopulateSimType(TS1CASScreen __instance, string simtype)
         {
@@ -250,13 +263,11 @@ namespace LifeStages
                 {
                     var heads = __instance.ActiveHeads;
                     var textures = __instance.ActiveHeadTex;
-                    var old = Enumerable.Range(0, heads.Count).Where(i => GreyHair.IsOldHead(textures[i], __instance.CurrentSkin)).ToList();
-                    if (old.Count > 0)
+                    var offer = Heads.Offer(heads, ages.Stage);
+                    if (offer.Count < heads.Count)
                     {
-                        var young = Enumerable.Range(0, heads.Count).Except(old).ToList();
-                        var order = ages.Stage == Stage.Elder ? old.Concat(young).ToList() : (young.Count > 0 ? young : old);
-                        __instance.ActiveHeads = order.Select(i => heads[i]).ToList();
-                        __instance.ActiveHeadTex = order.Select(i => textures[i]).ToList();
+                        __instance.ActiveHeads = offer.Select(i => heads[i]).ToList();
+                        __instance.ActiveHeadTex = offer.Select(i => textures[i]).ToList();
                         ShowAgain.Invoke(__instance, null); //straight after PopulateSimType: the carousels are still unturned
                     }
                 }
@@ -295,16 +306,21 @@ namespace LifeStages
             });
         }
 
-        /// <summary>The heads on offer: an elder's are shown with grey hair.</summary>
-        private static void AfterSetHead(TS1CASScreen __instance, VMAvatar head)
+        /// <summary>While a Sim is being made, the head chosen is named under the panel: the name heads.json uses.</summary>
+        private static void AfterScreenUpdate(TS1CASScreen __instance, UICASMode ___Mode)
         {
             var ages = AgesOf(__instance);
-            if (ages == null) return;
-            LifeStagesPack.Guard("showing an elder's head", () =>
-                Grey(head, ages.Stage == Stage.Elder && !GreyHair.IsOldHead(head.HeadOutfit?.OftData?.TS1TextureID, __instance.CurrentSkin), __instance.CurrentSkin));
+            if (ages?.HeadName == null) return;
+            var heads = __instance.ActiveHeads;
+            var show = ___Mode == UICASMode.SimEdit && heads != null && heads.Count > 0;
+            ages.HeadName.Visible = show;
+            if (!show) return;
+            var chosen = heads[(int)DirectionUtils.PosMod(Math.Round(__instance.HeadPosition + 8), heads.Count)];
+            var caption = "Head: " + chosen;
+            if (ages.HeadName.Caption != caption) ages.HeadName.Caption = caption;
         }
 
-        /// <summary>A Sim of the family being made, standing with the others: at their stage's size, and grey if an elder.</summary>
+        /// <summary>A Sim of the family being made, standing with the others: at their stage's size.</summary>
         private static void AfterSetFamilyMember(TS1CASScreen __instance, int index)
         {
             LifeStagesPack.Guard("showing the family being made", () =>
@@ -314,22 +330,6 @@ namespace LifeStages
                 var sim = __instance.RepresentFamily[index];
                 var stage = StageOf(data);
                 if (sim.WorldUI is AvatarComponent drawn) drawn.Scale = Stages.Size(stage) / 100f;
-                Grey(sim, stage == Stage.Elder && (Life.Ledger?.Settings.GreyHair ?? true) && !GreyHair.IsOldHead(data.HeadTex, data.SkinColor), data.SkinColor);
-            });
-        }
-
-        /// <summary>Give a head the grey copy of its picture, or its own back.</summary>
-        private static void Grey(VMAvatar head, bool grey, string skin)
-        {
-            var outfit = head.HeadOutfit?.OftData;
-            var texture = outfit?.TS1TextureID;
-            if (texture == null) return;
-            var isGrey = GreyHair.TryParse(texture, out var own, out _);
-            if (grey == isGrey) return;
-            head.HeadOutfit = new VMOutfitReference(new Outfit()
-            {
-                TS1AppearanceID = outfit.TS1AppearanceID,
-                TS1TextureID = grey ? GreyHair.NameFor(texture, Body.SkinColour(skin, 0)) : own
             });
         }
 

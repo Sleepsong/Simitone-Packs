@@ -26,12 +26,11 @@ namespace LifeStages
     /// <summary>
     /// Life Stages, a first stage: the Sims you play grow older. Child, teen, adult, elder.
     ///
-    /// The engine is not changed. The pack hangs on it in four places, each a Harmony patch:
+    /// The engine is not changed. The pack hangs on it in three places, each a Harmony patch:
     ///
     ///  1. A lot has ticked: watch its clock for midnight (a day lived) and the evening (birthdays).
-    ///  2. The game looks up a skin texture: answer for the grey copies of heads that elders wear.
-    ///  3. The game has loaded a neighbourhood: forget the ages of the one before.
-    ///  4. The game has saved: keep the ages with it.
+    ///  2. The game has loaded a neighbourhood: forget the ages of the one before.
+    ///  3. The game has saved: keep the ages with it.
     ///
     /// and more which the pack can do without: a lot is left, so that days played and not saved are forgotten with
     /// it; the live panel changes what it shows, so that the Personality panel can be given the age display
@@ -57,10 +56,14 @@ namespace LifeStages
                 harmony.UnpatchAll(harmony.Id); //all or nothing
                 throw;
             }
-            Life.Announce = (vm, message) =>
+            Log.Write(Heads.Load(pack.Folder));
+            Life.Announce = (vm, message, elders) =>
             {
-                if (Screen?.vm == vm) Say("Birthday", message);
+                if (Screen?.vm != vm) return;
+                //the news first, then each new elder chooses their head, one after another
+                Say("Birthday", message, () => PickInTurn(vm, elders, 0));
             };
+            Life.ChooseHead = OpenPicker;
             PackManager.RegisterCommand("age", Command);
             Log.Write("Life Stages loaded. Console: age help");
         }
@@ -80,10 +83,8 @@ namespace LifeStages
             // 1
             harmony.Patch(Find(typeof(VM), "Tick"), postfix: Mine(nameof(AfterTick)));
             // 2
-            harmony.Patch(Find(typeof(TS1AvatarTextureProvider), "Get", typeof(string)), postfix: Mine(nameof(AfterTextureLookup)));
-            // 3
             harmony.Patch(Find(typeof(TS1NeighborhoodProvider), "InitSpecific"), postfix: Mine(nameof(AfterNeighbourhoodLoad)));
-            // 4
+            // 3
             harmony.Patch(Find(typeof(TS1GameScreen), "Save"), postfix: Mine(nameof(AfterSave)));
 
             // what the pack can do without. a version of Simitone one of these does not fit costs only that
@@ -143,19 +144,6 @@ namespace LifeStages
             Guard("counting the days", () => Life.AfterTick(__instance));
         }
 
-        private static void AfterTextureLookup(TS1AvatarTextureProvider __instance, string name, ref ITextureRef __result)
-        {
-            if (__result != null || name == null || !name.Contains(GreyHair.Marker)) return;
-            try
-            {
-                __result = GreyHair.Find(name, __instance.Get);
-            }
-            catch (Exception e)
-            {
-                Guard("finding a grey head", () => throw e);
-            }
-        }
-
         private static void AfterNeighbourhoodLoad()
         {
             Life.Forget();
@@ -183,6 +171,40 @@ namespace LifeStages
         private const int MostFailuresLogged = 20;
         private static int Failures;
 
+        // ---- choosing a head ----
+
+        private static void PickInTurn(VM vm, List<VMAvatar> sims, int index)
+        {
+            if (sims == null || index >= sims.Count) return;
+            if (!OpenPicker(vm, sims[index], () => PickInTurn(vm, sims, index + 1))) PickInTurn(vm, sims, index + 1);
+        }
+
+        /// <summary>
+        /// The head picker for a grown Sim on the lot being played: their own head first, then the heads for their
+        /// stage in their skin colour. False if it cannot be shown.
+        /// </summary>
+        public static bool OpenPicker(VM vm, VMAvatar avatar, Action closed)
+        {
+            var opened = false;
+            Guard("opening the head picker", () =>
+            {
+                if (vm == null || Screen?.vm != vm || !VM.UseWorld || avatar == null || avatar.Dead) return;
+                var body = Life.BodyStrings(avatar);
+                if (body == null || body.Length <= 14) return;
+                var stage = Life.RecordOf(avatar)?.Stage ?? Stage.Adult;
+                var skin = Body.SkinColour(body.GetString(14), avatar.GetPersonData(FSO.SimAntics.Model.VMPersonDataVariable.SkinColor));
+                var worn = Body.Worn(body.GetString(2));
+                var textures = ((TS1AvatarTextureProvider)FSO.Content.Content.Get().AvatarTextures).GetAllNames();
+                var heads = Body.Choices(worn.Mesh, worn.Tex, Life.AdultHeads(avatar), stage, skin, textures);
+                if (heads.Count == 0) return;
+                var title = stage == Stage.Elder ? avatar.Name + " is an elder: choose a head" : "Choose a head for " + avatar.Name;
+                var picker = new UIHeadPicker(avatar, vm, heads, title, closed);
+                GameThread.NextUpdate(x => UIScreen.GlobalShowDialog(picker, true));
+                opened = true;
+            });
+            return opened;
+        }
+
         // ---- the console ----
 
         private static TS1GameScreen Screen => GameFacade.Screens?.CurrentUIScreen as TS1GameScreen;
@@ -190,12 +212,12 @@ namespace LifeStages
         private const string Help =
             "age - everyone in your household: stage, day, and days left\n" +
             "age up [name] - move a Sim to the next stage now\n" +
-            "age look [name] - give a grown Sim another adult head and body\n" +
+            "age look [name] - choose another head for a grown Sim\n" +
             "age day [number] [name] - put a Sim on a day of their stage\n" +
             "age days [child|teen|adult] [number] - how many days a stage lasts\n" +
             "age on / age off - whether days count\n" +
             "age teens on|off - whether children become teens first\n" +
-            "age grey on|off - whether elders have grey hair\n" +
+
             "Without a name, a command is for the selected Sim.";
 
         private static bool Command(string[] words)
@@ -272,19 +294,14 @@ namespace LifeStages
                     return settings.Ageing ? "Ageing is on." : "Ageing is off. Your Sims stay as they are, and their days are remembered.";
 
                 case "teens":
-                case "grey":
-                case "gray":
-                    var teens = word == "teens";
                     if (words.Length > 1 && (words[1].ToLowerInvariant() == "on" || words[1].ToLowerInvariant() == "off"))
                     {
-                        var on = words[1].ToLowerInvariant() == "on";
-                        if (teens) settings.Teens = on; else settings.GreyHair = on;
+                        settings.Teens = words[1].ToLowerInvariant() == "on";
                         Life.SettingsChanged();
                         if (vm != null) Life.Reconcile(vm);
                     }
                     else if (words.Length > 1) { understood = false; return null; }
-                    if (teens) return settings.Teens ? "Children become teens, then adults." : "Children grow straight into adults. A Sim who is a teen now stays one until grown.";
-                    return settings.GreyHair ? "Elders have grey hair." : "Elders keep the hair they had.";
+                    return settings.Teens ? "Children become teens, then adults." : "Children grow straight into adults. A Sim who is a teen now stays one until grown.";
 
                 case "days":
                     const string AllLengths = "To change one: age days adult 40";
@@ -305,7 +322,13 @@ namespace LifeStages
                     var grower = Who(vm, words.Skip(1), out problem);
                     if (grower == null) return problem;
                     var news = new List<string>();
-                    Life.GrowUp(vm, grower, news);
+                    var elders = new List<VMAvatar>();
+                    Life.GrowUp(vm, grower, news, elders);
+                    if (elders.Count > 0)
+                    {
+                        Say("Life Stages", string.Join("\n", news), () => PickInTurn(vm, elders, 0));
+                        return null;
+                    }
                     return string.Join("\n", news);
 
                 case "look":
@@ -327,9 +350,10 @@ namespace LifeStages
 
         // ---- telling the player ----
 
-        public static void Say(string title, string message)
+        /// <summary>A message with an OK button; then, once it is closed, what follows, if anything.</summary>
+        public static void Say(string title, string message, Action then = null)
         {
-            if (string.IsNullOrEmpty(message)) return;
+            if (string.IsNullOrEmpty(message)) { if (then != null) Guard("after a message", then); return; }
             Log.Write(title + ": " + message.Replace("\n", " | "));
             GameThread.NextUpdate(x =>
             {
@@ -338,7 +362,11 @@ namespace LifeStages
                 {
                     Title = title,
                     Message = message,
-                    Buttons = UIAlertButton.Ok((btn) => UIScreen.RemoveDialog(alert))
+                    Buttons = UIAlertButton.Ok((btn) =>
+                    {
+                        UIScreen.RemoveDialog(alert);
+                        if (then != null) Guard("after a message", then);
+                    })
                 });
                 UIScreen.GlobalShowDialog(alert, true);
             });

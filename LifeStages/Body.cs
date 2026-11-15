@@ -32,21 +32,15 @@ namespace LifeStages
         /// <param name="heads">The game's adult heads for this sex (its "c" collection, type "ma" or "fa").</param>
         /// <param name="bodies">The game's adult bodies for this sex (its "b" collection, types starting "ma" or "fa").</param>
         /// <param name="textures">The names of all the game's skin textures.</param>
-        /// <param name="oldHead">Whether a head, by its texture's name, is old already: those are not given to a young adult.</param>
-        public static Dictionary<int, string> ChooseAdult(bool female, string skin, IEnumerable<string> heads, IEnumerable<string> bodies, IEnumerable<string> textures, Random random, Func<string, bool> oldHead = null)
+        public static Dictionary<int, string> ChooseAdult(bool female, string skin, IEnumerable<string> heads, IEnumerable<string> bodies, IEnumerable<string> textures, Random random)
         {
             var sex = female ? "f" : "m";
             var texnames = textures.ToList();
 
-            //as Create a Sim does: a head or body can be worn if it has a texture in this skin colour
-            var headChoices = heads.Distinct()
-                .Select(x => new { Mesh = x, Tex = RemoveExt(texnames.FirstOrDefault(y => y.StartsWith(ExtractID(x, skin), StringComparison.OrdinalIgnoreCase))) })
-                .Where(x => x.Tex != null).ToList();
-            if (oldHead != null)
-            {
-                var young = headChoices.Where(x => !oldHead(x.Tex)).ToList();
-                if (young.Count > 0) headChoices = young;
-            }
+            //heads for elders only are not given to a young adult
+            var headList = heads.Distinct().ToList();
+            var headChoices = Wearable(Heads.Offer(headList, Stage.Adult).Select(i => headList[i]), skin, texnames);
+            if (headChoices.Count == 0) headChoices = Wearable(headList, skin, texnames); //none of the rest in this skin colour
             //the game files other things with its bodies (costumes, uniforms). only the three builds are everyday
             //bodies, and only they have the naked and underwear bodies an adult also needs
             var bodyChoices = bodies.Distinct()
@@ -70,6 +64,44 @@ namespace LifeStages
             strings[21] = "H" + sex + "LO,HAND=huao" + hands;
             strings[22] = "H" + sex + "RC,HAND=huao" + hands;
             return strings;
+        }
+
+        /// <summary>
+        /// The heads that can be worn in a skin colour, with their pictures: as Create a Sim does, those that have a
+        /// picture in it. In the order given.
+        /// </summary>
+        public static List<(string Mesh, string Tex)> Wearable(IEnumerable<string> heads, string skin, IEnumerable<string> textures)
+        {
+            var texnames = textures as IList<string> ?? textures.ToList();
+            return heads.Distinct()
+                .Select(x => (Mesh: x, Tex: RemoveExt(texnames.FirstOrDefault(y => y.StartsWith(ExtractID(x, skin), StringComparison.OrdinalIgnoreCase)))))
+                .Where(x => x.Tex != null).ToList();
+        }
+
+        /// <summary>
+        /// The heads to offer a Sim choosing a new look: the one they wear first, so that keeping it is the choice
+        /// already made, then the wearable heads for their stage.
+        /// </summary>
+        public static List<(string Mesh, string Tex)> Choices(string wornMesh, string wornTex, IEnumerable<string> heads, Stage stage, string skin, IEnumerable<string> textures)
+        {
+            var list = heads.Distinct().ToList();
+            var offered = Wearable(Heads.Offer(list, stage).Select(i => list[i]), skin, textures);
+            if (offered.Count == 0) offered = Wearable(list, skin, textures); //none for the stage in this skin colour: all
+            var result = new List<(string Mesh, string Tex)>();
+            if (!string.IsNullOrEmpty(wornMesh) && !string.IsNullOrEmpty(wornTex)) result.Add((wornMesh, wornTex));
+            result.AddRange(offered.Where(x => !string.Equals(x.Mesh, wornMesh, StringComparison.OrdinalIgnoreCase)));
+            return result;
+        }
+
+        /// <summary>The head a Sim wears, from their body strings' head line ("mesh,HEAD-HEAD=picture").</summary>
+        public static (string Mesh, string Tex) Worn(string headLine)
+        {
+            if (string.IsNullOrEmpty(headLine)) return (null, null);
+            var comma = headLine.IndexOf(',');
+            var equals = headLine.IndexOf('=');
+            var mesh = comma > 0 ? headLine.Substring(0, comma) : headLine;
+            var tex = equals > 0 ? headLine.Substring(equals + 1) : null;
+            return (mesh, tex);
         }
 
         public static readonly string[] Builds = { "fat", "fit", "skn" };

@@ -29,7 +29,8 @@ namespace LifeStages
     ///   teen   still a child to the game (age 15: school, a child's interactions), drawn larger.
     ///   adult  the game's own adult. Leaving childhood is the one real change: the Sim's own file is given an
     ///          adult's head, body and hands (Body.cs), as the game does itself when a Sim buys clothes.
-    ///   elder  still an adult to the game (age 65), with grey hair (GreyHair.cs).
+    ///   elder  still an adult to the game (age 65). The player chooses an elder's head as they become one
+    ///          (UIHeadPicker.cs), from the heads heads.json names for elders (Heads.cs).
     ///
     /// The pack's own record (Ledger.cs) says which stage a Sim is in and how many days into it. What the game holds
     /// (the Sim's file, its person data on the lot and in the neighbourhood) can fall behind that, for example in a
@@ -179,22 +180,35 @@ namespace LifeStages
             var news = new List<string>();
             var ledger = Ledger;
             if (ledger == null || !ledger.Settings.Ageing || !AtHome(vm)) return news;
+            var elders = new List<VMAvatar>();
             foreach (var avatar in Household(vm))
             {
                 if (CouldNotGrow.Contains(avatar.Object.OBJ.GUID)) continue;
-                if (Stages.Due(RecordOf(avatar), ledger.Settings)) GrowUp(vm, avatar, news);
+                if (Stages.Due(RecordOf(avatar), ledger.Settings)) GrowUp(vm, avatar, news, elders);
             }
-            if (news.Count > 0) Announce?.Invoke(vm, string.Join("\n", news));
+            if (news.Count > 0) Announce?.Invoke(vm, string.Join("\n", news), elders);
             return news;
         }
 
-        /// <summary>Tells the player something happened on this lot. Set by the pack; nothing is told without it.</summary>
-        public static Action<VM, string> Announce;
+        /// <summary>
+        /// Tells the player something happened on this lot, then lets them choose a head for each Sim who has just
+        /// become an elder. Set by the pack; nothing is told without it.
+        /// </summary>
+        public static Action<VM, string, List<VMAvatar>> Announce;
+
+        /// <summary>
+        /// Opens the head picker for a grown Sim, offering the heads for their stage; when it is closed, calls the
+        /// action given, if any. Set by the pack; false where there is nothing to show it on.
+        /// </summary>
+        public static Func<VM, VMAvatar, Action, bool> ChooseHead;
 
         // ---- putting a stage on a Sim ----
 
-        /// <summary>Move a Sim to the next stage now. False, with the reason in news, if it cannot be done.</summary>
-        public static bool GrowUp(VM vm, VMAvatar avatar, List<string> news)
+        /// <summary>
+        /// Move a Sim to the next stage now. False, with the reason in news, if it cannot be done. A Sim who has
+        /// become an elder is added to elders, to choose their head.
+        /// </summary>
+        public static bool GrowUp(VM vm, VMAvatar avatar, List<string> news, List<VMAvatar> elders = null)
         {
             var ledger = Ledger;
             var sim = RecordOf(avatar);
@@ -221,22 +235,45 @@ namespace LifeStages
             var length = Stages.Length(sim.Stage, ledger.Settings);
             if (length > 0) line += " " + length + " days until " + Stages.Name(Stages.Next(sim.Stage, ledger.Settings).Value) + ".";
             news.Add(line);
-            if (newBody) news.Add("Not the look you wanted? Type age look in the console for another.");
+            if (newBody) news.Add("Not the look you wanted? Type age look in the console to choose another head.");
+            if (sim.Stage == Stage.Elder) elders?.Add(avatar);
             return true;
         }
 
         /// <summary>
-        /// Give a grown Sim another adult head and body, picked afresh. Growing up picks by chance, and the player
-        /// may not like what chance gave. Returns what to tell the player.
+        /// Give a Sim another head, one of the game's: written into the Sim's file (kept when the game is saved)
+        /// and worn at once.
+        /// </summary>
+        public static void SetHead(VMAvatar avatar, string mesh, string texture)
+        {
+            var body = BodyStrings(avatar);
+            if (body == null || body.Length <= 2 || string.IsNullOrEmpty(mesh) || string.IsNullOrEmpty(texture)) return;
+            var line = mesh + ",HEAD-HEAD=" + texture;
+            if (body.GetString(2) == line) return;
+            body.SetString(2, line);
+            Content.Get().Neighborhood.AvatarChanged(avatar.Object.OBJ.GUID);
+            avatar.HeadOutfit = new VMOutfitReference(body, true);
+            Log.Write(avatar.Name + " has a new head: " + mesh + ".");
+        }
+
+        /// <summary>The adult heads of a Sim's sex, as the game files them.</summary>
+        public static List<string> AdultHeads(VMAvatar avatar)
+        {
+            var type = avatar.GetPersonData(VMPersonDataVariable.Gender) == 1 ? "fa" : "ma";
+            return Content.Get().BCFGlobal.CollectionsByName["c"].ClothesByAvatarType.TryGetValue(type, out var heads) ? heads.ToList() : new List<string>();
+        }
+
+        /// <summary>
+        /// Let the player choose another head for a grown Sim: an adult's from the adults' heads, an elder's from the
+        /// elders'. Growing up picks one by chance, and the player may not like what chance gave. Returns what to
+        /// tell the player.
         /// </summary>
         public static string NewLook(VM vm, VMAvatar avatar)
         {
             var sim = RecordOf(avatar);
-            if (Stages.IsChildToGame(sim.Stage)) return avatar.Name + " is " + Article(sim.Stage) + ". Only a grown Sim can be given another look.";
-            if (!GiveAdultBody(vm, avatar)) return avatar.Name + " could not be given another look. LifeStages.log says why.";
-            FitData(vm, avatar, sim);
-            FitLooks(avatar, sim, Ledger.Settings);
-            return avatar.Name + " has a new look. It is kept when the game is saved. For another, type age look again.";
+            if (Stages.IsChildToGame(sim.Stage)) return avatar.Name + " is " + Article(sim.Stage) + ". Only a grown Sim can choose another head.";
+            if (ChooseHead == null || !ChooseHead(vm, avatar, null)) return "The head picker could not be opened. LifeStages.log says why.";
+            return null;
         }
 
         /// <summary>Put a Sim on a day of the stage they are in (1 is the first). Returns what to tell the player.</summary>
@@ -341,8 +378,8 @@ namespace LifeStages
         }
 
         /// <summary>
-        /// Make a Sim look their stage on this lot: a teen's size and an elder's hair. Only what is drawn is
-        /// changed, and nothing that is already right.
+        /// Make a Sim look their stage on this lot: a teen's size. Only what is drawn is changed, and nothing that is
+        /// already right.
         /// </summary>
         public static void FitLooks(VMAvatar avatar, SimAge sim, Settings settings)
         {
@@ -354,21 +391,6 @@ namespace LifeStages
             var teenSize = Stages.Size(Stage.Teen) / 100f;
             if (avatar.WorldUI is AvatarComponent drawn && drawn.Scale != size && (size != 1f || Math.Abs(drawn.Scale - teenSize) < 0.001f))
                 drawn.Scale = size;
-
-            // hair
-            var body = BodyStrings(avatar);
-            if (body == null || body.Length <= 14) return;
-            var head = body.GetString(2) ?? "";
-            var worn = avatar.HeadOutfit?.OftData?.TS1TextureID;
-            var isGrey = worn != null && GreyHair.TryParse(worn, out _, out _);
-            var ownTexture = head.Contains('=') ? head.Substring(head.IndexOf('=') + 1) : null;
-            var skin = Body.SkinColour(body.GetString(14), avatar.GetPersonData(VMPersonDataVariable.SkinColor));
-            //a head that is old already keeps its own hair
-            var wantGrey = sim.Stage == Stage.Elder && settings.GreyHair && ownTexture != null && !GreyHair.IsOldHead(ownTexture, skin);
-            if (wantGrey && !isGrey)
-                avatar.HeadOutfit = new VMOutfitReference(GreyHair.NameFor(head, skin), true);
-            else if (!wantGrey && isGrey)
-                avatar.HeadOutfit = new VMOutfitReference(body, true);
         }
 
         /// <summary>
@@ -391,8 +413,7 @@ namespace LifeStages
                 var bodies = collections["b"].GeneralAvatarType(type);
                 var textures = ((TS1AvatarTextureProvider)content.AvatarTextures).GetAllNames();
 
-                Func<string, bool> oldHead = VM.UseWorld ? (tex => GreyHair.IsOldHead(tex, skin)) : (Func<string, bool>)null;
-                var strings = Body.ChooseAdult(female, skin, heads, bodies, textures, new Random(), oldHead);
+                var strings = Body.ChooseAdult(female, skin, heads, bodies, textures, new Random());
                 if (strings == null) throw new Exception("no adult " + (female ? "female" : "male") + " head and body with a \"" + skin + "\" texture were found (" + heads.Count + " heads, " + bodies.Count + " bodies looked at)");
 
                 foreach (var item in strings)
