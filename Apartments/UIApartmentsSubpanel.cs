@@ -234,13 +234,15 @@ namespace Apartments
 
         /// <summary>
         /// Every frame on a lot: the apartments are drawn on the lot while build mode is open on an apartment building,
-        /// and not otherwise.
+        /// and not otherwise, nor while the floor tool is out.
         /// </summary>
         public static void KeepOverlay()
         {
             var screen = Actions.Screen;
             var vm = screen?.vm;
             var wanted = vm != null && screen.Frontend?.MainPanel?.Mode == UIMainPanelMode.BUILD && Neighbours.FileOf(vm) != null;
+            //while the floor tool is out the colours would hide the floor being laid: they are not drawn, but kept
+            LotOverlay.Paused = wanted && screen.LotControl?.CustomControl is FSO.Client.UI.Panels.LotControls.UIFloorPainter;
             if (wanted == LotOverlay.On) return;
             if (wanted) Neighbours.Show(vm, true, Current?.Choosing);
             else

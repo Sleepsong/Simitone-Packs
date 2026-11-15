@@ -32,7 +32,8 @@ screen. If the window does not come up or looks wrong, everything still works fr
    While build mode is open, each apartment's floor is drawn on the lot in its colour, with a line
    round it (while you choose rooms for one, the others are faint), and the room under the cursor is
    shown in white. Rooms with no colour are shared. Floors above the one you are looking at are not
-   drawn. In live mode nothing is drawn.
+   drawn, and nothing is drawn while the floor tool is out, so you can see the floor you lay. In live
+   mode nothing is drawn.
 4. **Save**, and go back to the neighbourhood.
 5. **Move households in.** Choose a family to move in, as usual, and pick the building. Its panel
    says how many apartments are free. After the game's own "move in?" question you are asked which

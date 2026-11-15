@@ -63,6 +63,9 @@ namespace Apartments
         /// <summary>Whether the apartments are being drawn on a lot.</summary>
         public static bool On => Vm != null;
 
+        /// <summary>Kept, but not drawn for now (while the floor tool is out, so the floor being laid can be seen).</summary>
+        public static bool Paused;
+
         /// <summary>One of the shapes the overlay is made of, in tiles: a wash over a run of tiles, or a line along an edge.</summary>
         public struct Shape
         {
@@ -224,7 +227,7 @@ namespace Apartments
         /// <summary>Draw, in place of the empty set of lines. Floors above the one being looked at are not drawn.</summary>
         public static void Draw(GraphicsDevice gd, WorldState state)
         {
-            if (Vm == null || Broken) return;
+            if (Vm == null || Broken || Paused) return;
             try
             {
                 if (++Age > 60) Rebuild(); //about once a second
