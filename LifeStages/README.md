@@ -29,13 +29,13 @@ has; from there the pack takes over.
   the ones the game has (but not the elders' own), and then lets you choose their head (below). The Sims has no grown-up version
   of a child's face, so the adult does not look like the child did. Their name, skills, personality,
   relationships and needs carry over.
-- **Choosing a head, and an elder's outfit.** When a Sim becomes an adult or an elder, a head picker
-  opens once the birthday message is closed, like the game's dresser: drag to turn the ring, then OK.
-  What the Sim has now is first (for a new adult, a head picked by chance), so Cancel, or OK on it,
-  keeps it. A new adult is offered the adults' heads and a new elder the elders' heads (Elders' heads and
-  clothes), in the Sim's sex and skin colour. A new elder then chooses an everyday outfit the same way,
-  from the outfits of their build that are not kept for adults. `age look` and `age outfit` in the
-  console open the pickers again for any grown Sim.
+- **Choosing a head and an outfit.** When a Sim becomes an adult or an elder, a head picker opens once
+  the birthday message is closed, like the game's dresser: drag to turn the ring, then OK. Then an
+  outfit picker, the same way. What the Sim has now is first in each (for a new adult, what chance
+  picked), so Cancel, or OK on it, keeps it. A new adult is offered the adults' heads and a new elder the
+  elders' heads (Elders' heads and clothes), in the Sim's sex and skin colour; and the everyday outfits
+  of their build that are not kept for the other age. `age look` and `age outfit` in the console open
+  the pickers again for any grown Sim.
 - **Sims from a household you played before** keep their stage when they visit: a teen is still drawn
   as a teen. They do not get older while you play someone else.
 
@@ -65,8 +65,8 @@ So elders choose from a short list of heads, and from every body but those kept 
 lists leave elders of a sex no head (or no body), they are offered every adult one.
 
 A head's and a body's names are shown under the panel in Create a Sim while you scroll them, and
-under the ring in the head and outfit pickers. One name covers every skin colour, and capitals do not
-matter. Restart Simitone after changing the file.
+under the ring in the head and outfit pickers. One name covers every skin colour, even for the outfits the game files once for
+each (`b640fafitlgt_sakura` covers the `med` and `drk` ones too), and capitals do not matter. Restart Simitone after changing the file.
 
 The pack comes with fifteen heads for elders only, chosen in the game: seven men's (`c029ma_elwd`,
 `c032ma_warn`, `c202ma_oldgypsyman`, `c207ma_oldtraveler`, `c631ma_mobius`, `c803ma_gunter`,
@@ -143,7 +143,7 @@ The settings are kept for each neighbourhood, as soon as you change them.
 - **An elder is an adult with an older head, if you give them one.** They keep their job, and walk as
   they did.
 - **The pickers show the whole Sim**, as the dresser does, so the heads are small.
-- **An elder's outfit is of their own build**, as the dresser offers. Their other outfits (formal,
+- **A new outfit is of the Sim's own build**, as the dresser offers. Their other outfits (formal,
   swimwear and so on) are not changed.
 - **A new adult's other outfits** (formal, swimwear and so on) are the game's defaults for a new Sim.
 - Growing up while in the middle of something may look wrong until the Sim starts their next action.

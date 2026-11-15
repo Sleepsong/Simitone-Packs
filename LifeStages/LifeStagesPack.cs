@@ -174,8 +174,7 @@ namespace LifeStages
         // ---- choosing a head and an outfit ----
 
         /// <summary>
-        /// Each Sim who has just grown up chooses, one after another: a new adult their head, a new elder their head
-        /// and then their everyday outfit.
+        /// Each Sim who has just grown up chooses, one after another: their head, and then their everyday outfit.
         /// </summary>
         private static void PickInTurn(VM vm, List<VMAvatar> sims, int index)
         {
@@ -188,8 +187,7 @@ namespace LifeStages
             {
                 if (!OpenPicker(vm, sim, LookKind.Body, next, now + ": choose an outfit")) next();
             };
-            var then = elder ? outfit : next;
-            if (!OpenPicker(vm, sim, LookKind.Head, then, now + ": choose a head")) then();
+            if (!OpenPicker(vm, sim, LookKind.Head, outfit, now + ": choose a head")) outfit();
         }
 
         /// <summary>

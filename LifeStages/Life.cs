@@ -29,9 +29,10 @@ namespace LifeStages
     ///   teen   still a child to the game (age 15: school, a child's interactions), drawn larger.
     ///   adult  the game's own adult. Leaving childhood is the one real change: the Sim's own file is given an
     ///          adult's head, body and hands (Body.cs), as the game does itself when a Sim buys clothes. The
-    ///          player then chooses the head (UIHeadPicker.cs); the one chance gave is offered first.
+    ///          player then chooses the head and the everyday outfit (UILookPicker.cs); those chance gave are
+    ///          offered first.
     ///   elder  still an adult to the game (age 65). The player chooses an elder's head as they become one
-    ///          (UIHeadPicker.cs), from the heads looks.json names for elders (Looks.cs).
+    ///          (UILookPicker.cs), from those looks.json names for elders (Looks.cs), and then their outfit.
     ///
     /// The pack's own record (Ledger.cs) says which stage a Sim is in and how many days into it. What the game holds
     /// (the Sim's file, its person data on the lot and in the neighbourhood) can fall behind that, for example in a

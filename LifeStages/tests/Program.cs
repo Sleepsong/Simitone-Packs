@@ -195,6 +195,13 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     Check("and so is a child's own body", !Looks.Bodies.Suits("b013mcchd_wizd", Stage.Teen) && Looks.Bodies.Suits("b013mcchd_wizd", Stage.Child) && Looks.Bodies.Suits("b001mcchd_jeans", Stage.Teen));
     Check("children's lists change nothing for adults and elders", Looks.Heads.Suits("c009mc_wizd", Stage.Adult) && Looks.Bodies.Suits("b013mcchd_wizd", Stage.Elder));
     Looks.Use(new LooksFile() { Bodies = new AgeList() { Elder = new List<string>() { "b800fafit_eldenmama" }, Adult = new List<string>() { "B001FAFIT_jeans " } } });
+    // the game files some outfits and heads once for each skin colour: one name in a list is all of them
+    Looks.Use(new LooksFile() { Bodies = new AgeList() { Adult = new List<string>() { "b640fafitlgt_sakura", "B812FAFIT" } } });
+    Check("an outfit listed in one skin colour is listed in all three",
+        Looks.Bodies.AdultOnly("b640fafitlgt_sakura") && Looks.Bodies.AdultOnly("b640fafitmed_sakura") && Looks.Bodies.AdultOnly("B640FAFITDRK_Sakura") && Looks.Bodies.AdultOnly("b640fafit_sakura")
+        && !Looks.Bodies.Suits("b640fafitdrk_sakura", Stage.Elder) && Looks.Bodies.AdultOnly("b812fafitmed") && !Looks.Bodies.AdultOnly("b812mafit"));
+    Check("names that only end like a skin colour are left as they are", AgeList.Plain("c010ma_med") == "c010ma_med" && AgeList.Plain("b001fafit_01") == "b001fafit_01" && AgeList.Plain("lgt") == "lgt" && AgeList.Plain(" C805MA_Brad ") == "c805ma_brad");
+    Looks.Use(new LooksFile() { Bodies = new AgeList() { Elder = new List<string>() { "b800fafit_eldenmama" }, Adult = new List<string>() { "B001FAFIT_jeans " } } });
     Check("heads and bodies are listed apart", !Looks.Heads.ElderOnly("b800fafit_eldenmama") && Looks.Bodies.Offer(new List<string>() { "b001mafit_suit" }, Stage.Elder).Count == 1);
     Looks.Use(new LooksFile() { Heads = new AgeList() { Elder = new List<string>() { "C003MA_Old", "", null }, Both = new List<string>() { "c004ma_helmet ", "c005MA_bald" } } });
     Check("elders with none of their own in a list are offered every head", Looks.Heads.Offer(new List<string>() { "c001ma_kaj", "c002ma_ben" }, Stage.Elder).Count == 2);
