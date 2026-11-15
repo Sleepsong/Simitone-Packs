@@ -58,8 +58,9 @@ in the head picker. One name covers every skin colour of a head, and capitals do
 Simitone after changing the file. If neither list has a head of a Sim's sex and skin colour, elders are
 offered every adult head.
 
-The pack comes with twelve heads for elders only, chosen in the game: four men's (`c202ma_oldgypsyman`,
-`c207ma_oldtraveler`, `c803ma_gunter`, `c805ma_brad`) and eight women's (`c004fa_gma1`, `c028fa_delo`,
+The pack comes with fifteen heads for elders only, chosen in the game: seven men's (`c029ma_elwd`,
+`c032ma_warn`, `c202ma_oldgypsyman`, `c207ma_oldtraveler`, `c631ma_mobius`, `c803ma_gunter`,
+`c805ma_brad`) and eight women's (`c004fa_gma1`, `c028fa_delo`,
 `c029fa_lynn`, `c205fa_madame`, `c800fa_eldenmama`, `c802fa_cornelia`, `c804fa_tiffany`,
 `c807fa_ginia`).
 

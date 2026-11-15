@@ -12,8 +12,11 @@
 // Edit this file in the pack's folder, then restart Simitone.
 {
   "elder": [
+    "c029ma_elwd",
+    "c032ma_warn",
     "c202ma_oldgypsyman",
     "c207ma_oldtraveler",
+    "c631ma_mobius",
     "c803ma_gunter",
     "c805ma_brad",
 
