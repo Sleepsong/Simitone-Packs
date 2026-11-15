@@ -55,7 +55,13 @@ The Sims has only adult heads, some of which look old. Which are for elders is u
 
 A head's name is shown under the panel in Create a Sim while you scroll the heads, and under the heads
 in the head picker. One name covers every skin colour of a head, and capitals do not matter. Restart
-Simitone after changing the file. While both lists are empty, elders are offered every adult head.
+Simitone after changing the file. If neither list has a head of a Sim's sex and skin colour, elders are
+offered every adult head.
+
+The pack comes with twelve heads for elders only, chosen in the game: four men's (`c202ma_oldgypsyman`,
+`c207ma_oldtraveler`, `c803ma_gunter`, `c805ma_brad`) and eight women's (`c004fa_gma1`, `c028fa_delo`,
+`c029fa_lynn`, `c205fa_madame`, `c800fa_eldenmama`, `c802fa_cornelia`, `c804fa_tiffany`,
+`c807fa_ginia`).
 
 ## Making Sims of each age
 

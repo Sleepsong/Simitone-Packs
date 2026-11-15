@@ -7,9 +7,24 @@
 //            child who grows up.
 //   "both"   heads offered for adults and for elders: helmets, bald heads and others that suit either.
 //
-// While both lists are empty, elders are offered every adult head.
+// Elders are offered the heads in both lists. If neither has one of a Sim's sex and skin colour, they
+// are offered every adult head.
 // Edit this file in the pack's folder, then restart Simitone.
 {
-  "elder": [],
+  "elder": [
+    "c202ma_oldgypsyman",
+    "c207ma_oldtraveler",
+    "c803ma_gunter",
+    "c805ma_brad",
+
+    "c004fa_gma1",
+    "c028fa_delo",
+    "c029fa_lynn",
+    "c205fa_madame",
+    "c800fa_eldenmama",
+    "c802fa_cornelia",
+    "c804fa_tiffany",
+    "c807fa_ginia"
+  ],
   "both": []
 }
