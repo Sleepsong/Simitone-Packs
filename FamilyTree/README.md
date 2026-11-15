@@ -7,10 +7,10 @@ The Sims 1 keeps no family ties at all. It only knows how well two Sims get on, 
 made in Create a Family begin as two strangers who share a house. With this pack you say what they
 are to each other, and they begin that way.
 
-**It has not been run in the game.** It has been compiled, its patches checked against the engine,
-and its rules, its saving and the layout of the tree checked without the game (below). Its windows
-have not been seen on a screen, and how it follows babies and marriages rests on a reading of the engine that only play can
-confirm. **Back up your `UserData` folders before trying it.**
+**Where it stands.** Version 0.3 has been played: making a family with ties and the tree window
+work. The drag-and-drop Relationships window is new in 0.4 and has not yet been tried in the game.
+How the tree follows babies and marriages rests on a reading of the engine that has not been
+reported on from play yet. **Back up your `UserData` folders before trying it.**
 
 ## Using it
 
@@ -18,19 +18,23 @@ confirm. **Back up your `UserData` folders before trying it.**
 
 The tree is put together in **Create a Family**, as in The Sims 2, and nowhere else.
 
-Once the family you are making has two Sims, a **Relationships** button appears at the top right. It
-opens the family's portraits in a row:
+Once the family you are making has two Sims, a **Relationships** button appears at the top right.
+It opens the family's portraits in a row along the bottom, as in The Sims 2:
 
-1. Choose a Sim.
-2. Choose the Sim they are related to.
-3. Say what the first is to the second: **Spouse**, **Sibling**, **Parent**, **Child**, or
-   **Roommate** (no tie, which is what every pair starts as).
+1. **Drag** one Sim's portrait and **drop** it on another's. While you drag, the portrait under it is
+   outlined in green.
+2. A question asks what the first is to the second, for example "Pa is Ma's:", with an answer named
+   for the Sim you dragged: **Husband**, **Brother**, **Father**, **Son** or **Roommate** (no tie,
+   which is what every pair starts as). What the two are now is shown in green. Tap outside the
+   question, or **Cancel**, to leave things as they were.
 
-Once a Sim is chosen, each of the other portraits says what that Sim is to them: Wife, Son, Brother.
-That includes what follows from the rest. Give two children the same parent and they are brother
-and sister without being told.
+Above the row is the family tree as it stands, drawn around one Sim (outlined in yellow), and under
+each portrait is what that Sim is to them: Wife, Son, Brother. That includes what follows from the
+rest. Give two children the same parent and they are brother and sister without being told. Tap
+any portrait, in the row or the tree, to draw the tree around that Sim. After an answer, the tree
+is drawn around the Sim you dragged.
 
-A choice the rules do not allow is refused, and the window says why. The rules:
+An answer the rules do not allow is greyed out, with a line under the answers saying why. The rules:
 
 - Only adults marry or are parents, and a Sim has one spouse and at most two parents.
 - Family by birth cannot marry: parents, children, siblings, grandparents, aunts and uncles, cousins.
@@ -146,7 +150,8 @@ Sims had earned them.
 - `UITreeView.cs` puts that picture on the screen, with Simitone's own portrait button and lines
   drawn from a stretched square, so the pack has no artwork.
 - `UIFamilyTreeDialog.cs` is the window in play, and `UIFamilyTiesDialog.cs` the one in Create a
-  Family.
+  Family. `UIDragHead.cs` is the portrait you drag there: it tells the window when it is pressed and
+  let go, and the window follows the pointer in between.
 
 The baby is recognised by its scripts, not by name: it is the object whose scripts can make a new
 Sim. So nothing here depends on which expansion packs are installed. Until it grows up it is an
@@ -167,7 +172,7 @@ This needs no copy of The Sims. It checks that every patch attaches to the Simit
 built against, the rules above, the file, and a family of four made with ties in a made-up
 neighbourhood: the neighbourhood is saved with the game's own code and read back, to see the scores
 are in it. It checks the picture of the tree (who is in which row, that parents are over
-their children, that nothing overlaps or leaves the picture), the steps of the window in Create a
-Family, and that nothing in the window you see in play can change the tree. For following play it
+their children, that nothing overlaps or leaves the picture), the window in Create a Family (which
+portrait a drop lands on, a tap told from a drag, the answers offered and which are refused), and that nothing in the window you see in play can change the tree. For following play it
 checks how a baby is recognised, how its parents are chosen, that it is kept until it grows up and
-the child then given them, and when a Sim who moves in is married. What it cannot check is the game's own scripts doing those things.
+the child then given them, and when a Sim who moves in is married. Nor can it press and drag a portrait: that part is only tried in the game. What it cannot check is the game's own scripts doing those things.

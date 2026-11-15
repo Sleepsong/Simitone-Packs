@@ -233,28 +233,49 @@ Draft.Keep(family, infos);
 Check("a tie the rules refuse is not kept", KinStore.Get().Between(0x1002, 0x1003) == Tie.Sibling);
 
 // the ties window's words
-// ---- the Family Relationships window in Create a Family: choose a Sim, then another, then what they are ----
+// ---- the Family Relationships window in Create a Family: drag one Sim onto another, then say what they are ----
 {
     var chosenKin = new Kin();
     int changes = 0;
     var names = new[] { "Ma", "Pa", "Kid" };
     var subject = new TiesSubject() { Kin = chosenKin, Sims = new List<uint>() { 0, 1, 2 }, Name = i => names[i], IsAdult = i => i != 2, IsFemale = i => i == 0, Changed = () => changes++ };
-    uint? first = null, second = null;
-    Check("it starts by asking for a Sim", UIFamilyTiesDialog.Prompt(subject, first, second) == "Choose a Sim.");
-    UIFamilyTiesDialog.Pick(ref first, ref second, 1);
-    Check("then for the Sim they are related to", first == 1 && second == null && UIFamilyTiesDialog.Prompt(subject, first, second).Contains("Pa"));
-    UIFamilyTiesDialog.Pick(ref first, ref second, 0);
-    Check("then what the first is to the second", first == 1 && second == 0 && UIFamilyTiesDialog.Prompt(subject, first, second) == "Pa is Ma's:");
+
+    // where a portrait is dropped: portraits 80 wide, 120 apart
+    var row = new List<(uint, Microsoft.Xna.Framework.Vector2)>() { (0, new(100, 300)), (1, new(220, 300)), (2, new(340, 300)) };
+    Check("dropped on a portrait: that Sim", UIFamilyTiesDialog.HeadAt(row, new(225, 290), 0) == 1 && UIFamilyTiesDialog.HeadAt(row, new(139, 339), 1) == 0);
+    Check("dropped between portraits, or off the row: nobody", UIFamilyTiesDialog.HeadAt(row, new(160, 300), 0) == null && UIFamilyTiesDialog.HeadAt(row, new(220, 400), 0) == null);
+    Check("dropped back on itself: nobody", UIFamilyTiesDialog.HeadAt(row, new(100, 300), 0) == null);
+    var tight = new List<(uint, Microsoft.Xna.Framework.Vector2)>() { (0, new(100, 300)), (1, new(150, 300)) };
+    Check("where portraits overlap, the nearer one", UIFamilyTiesDialog.HeadAt(tight, new(135, 300), 2) == 1 && UIFamilyTiesDialog.HeadAt(tight, new(120, 300), 2) == 0);
+    Check("a press let go where it started is a tap, one that moved is a drag",
+        UIFamilyTiesDialog.IsTap(new(100, 300), new(105, 305)) && !UIFamilyTiesDialog.IsTap(new(100, 300), new(100, 300 + UIFamilyTiesDialog.DragDistance)));
+
+    Check("the line at the top says what to do, and who is being dragged", UIFamilyTiesDialog.Hint(subject, null).StartsWith("Drag") && UIFamilyTiesDialog.Hint(subject, 1).Contains("Drop Pa"));
+    Check("the question names the two", UIFamilyTiesDialog.Question(subject, 1, 0) == "Pa is Ma's:");
+
+    var answers = UIFamilyTiesDialog.Options(subject, 1, 0);
+    Check("an answer for each choice, in the order of the buttons", answers.Select(o => o.Choice).SequenceEqual(UIFamilyTiesDialog.Choices.Select(c => c.Item1))
+        && UIFamilyTiesDialog.Choices.Select(c => c.Item1).OrderBy(c => c).SequenceEqual(Enum.GetValues<Choice>().OrderBy(c => c)));
+    Check("answers are named for the Sim who was dragged", answers.Select(o => o.Label).SequenceEqual(new[] { "Husband", "Brother", "Father", "Son", "Roommate" })
+        && UIFamilyTiesDialog.Options(subject, 0, 1).Select(o => o.Label).SequenceEqual(new[] { "Wife", "Sister", "Mother", "Daughter", "Roommate" }));
+    Check("roommates is what they are to begin with", answers.Single(o => o.Current).Choice == Choice.Housemate && answers.All(o => o.WhyNot == null));
+
     Check("a choice the rules allow is made", UIFamilyTiesDialog.Choose(subject, 1, 0, Choice.Spouse) == null && chosenKin.Between(1, 0) == Tie.Spouse && changes == 1);
-    Check("under a portrait, what that Sim is to the first", UIFamilyTiesDialog.Under(subject, first, 0) == "Wife" && UIFamilyTiesDialog.Under(subject, first, 1) == "" && UIFamilyTiesDialog.Under(subject, first, 2) == "" && UIFamilyTiesDialog.Under(subject, null, 0) == "");
-    UIFamilyTiesDialog.Pick(ref first, ref second, 2);
-    Check("choosing a third Sim makes them the second", first == 1 && second == 2);
-    Check("a choice the rules refuse says why, and changes nothing", UIFamilyTiesDialog.Choose(subject, 1, 2, Choice.Child) != null && chosenKin.Links.Count == 1 && changes == 1);
+    Check("and said", UIFamilyTiesDialog.Said(subject, 1, 0, Choice.Spouse) == "Pa is Ma's husband.");
+    answers = UIFamilyTiesDialog.Options(subject, 1, 0);
+    Check("the answer they have is marked", answers.Single(o => o.Current).Choice == Choice.Spouse);
+    Check("under a portrait, what that Sim is to the one in focus", UIFamilyTiesDialog.Under(subject, 1, 0) == "Wife" && UIFamilyTiesDialog.Under(subject, 1, 1) == "" && UIFamilyTiesDialog.Under(subject, 1, 2) == "" && UIFamilyTiesDialog.Under(subject, null, 0) == "");
+
+    // Pa dropped on Kid, a child: Kid cannot be his wife, and he cannot be Kid's child
+    var toKid = UIFamilyTiesDialog.Options(subject, 1, 2);
+    Check("answers the rules refuse say why", toKid.Single(o => o.Choice == Choice.Spouse).WhyNot != null && toKid.Single(o => o.Choice == Choice.Child).WhyNot != null
+        && toKid.Single(o => o.Choice == Choice.Parent).WhyNot == null && toKid.Single(o => o.Choice == Choice.Sibling).WhyNot == null);
+    Check("a choice the rules refuse changes nothing", UIFamilyTiesDialog.Choose(subject, 1, 2, Choice.Child) != null && chosenKin.Links.Count == 1 && changes == 1);
     Check("parent of the child", UIFamilyTiesDialog.Choose(subject, 1, 2, Choice.Parent) == null && UIFamilyTiesDialog.Under(subject, 2, 1) == "Father" && UIFamilyTiesDialog.Under(subject, 2, 0) == "Stepmother");
-    Check("roommate takes the tie away", UIFamilyTiesDialog.Choose(subject, 1, 2, Choice.Housemate) == null && chosenKin.Links.Count == 1 && changes == 3);
-    UIFamilyTiesDialog.Pick(ref first, ref second, 1);
-    Check("choosing the first Sim again starts over", first == null && second == null);
-    Check("a button for each choice", UIFamilyTiesDialog.Choices.Select(c => c.Item1).OrderBy(c => c).SequenceEqual(Enum.GetValues<Choice>().OrderBy(c => c)));
+    // Kid dropped on Pa: the same tie, from the other side
+    Check("dropped the other way, the same tie is marked from the other side", UIFamilyTiesDialog.Options(subject, 2, 1).Single(o => o.Current).Label == "Son");
+    Check("roommate takes the tie away", UIFamilyTiesDialog.Choose(subject, 1, 2, Choice.Housemate) == null && chosenKin.Links.Count == 1 && changes == 3
+        && UIFamilyTiesDialog.Said(subject, 1, 2, Choice.Housemate) == "Pa and Kid are roommates.");
 }
 
 // a household that already exists: its ties go straight into the tree, and they then start as family

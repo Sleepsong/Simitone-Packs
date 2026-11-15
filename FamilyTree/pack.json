@@ -1,9 +1,9 @@
 {
   "id": "sample.familytree",
   "name": "Family Tree",
-  "version": "0.3",
+  "version": "0.4",
   "author": "Simitone",
-  "description": "The Sims 2's family tree. In Create a Family, choose who is married and whose child is whose: they start out getting on as family, not as strangers. In a lot, see a Sim's tree, drawn as The Sims 2 draws it (Options > Family Tree, or F8). Babies are given their parents, and a proposal is a marriage. Not yet run in the game.",
+  "description": "The Sims 2's family tree. In Create a Family, drag one Sim's portrait onto another to say who is married and whose child is whose: they start out getting on as family, not as strangers. In a lot, see a Sim's tree, drawn as The Sims 2 draws it (Options > Family Tree, or F8). Babies are given their parents, and a proposal is a marriage. The drag-and-drop window is new and not yet tried in the game.",
   "minSimitoneVersion": "0.8.22",
   "assembly": "FamilyTree.dll"
 }
