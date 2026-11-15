@@ -22,7 +22,7 @@ foreach (var m in h.GetPatchedMethods()) {
 }
 // the two ways into the Apartments window are optional to the pack, but should fit the Simitone this is built against
 foreach (var needed in new[] { "TS1GameScreen.Save", "VMContext.RefreshLighting", "UILotControl.Update", "UIMainPanel.AddPacksButton", "UIHouseSelectPanel..ctor", "TS1GameScreen.MoveInAndPlay", "TS1GameScreen.PlayHouse",
-    "VMRoutingFrame.DoRoomRoute", "VMFindBestAction.Execute", "VMThread.Tick", "VMThread.EnqueueAction", "UILotControl.ShowPieMenu", "VMRoutingFrame.InitRoutes", "VMEntity.GetPieMenu", "VMNetInteractionCmd.Verify", "VMNetInteractionCmd.Execute", "VMEntity.IndividualUserMovable" }) {
+    "VMRoutingFrame.DoRoomRoute", "VMFindBestAction.Execute", "VMThread.Tick", "VMThread.EnqueueAction", "UILotControl.ShowPieMenu", "VMRoutingFrame.InitRoutes", "VMEntity.GetPieMenu", "VMNetInteractionCmd.Verify", "VMNetInteractionCmd.Execute", "VMEntity.IndividualUserMovable", "VMFindBestObjectForFunction.Execute", "VMEntity.Delete" }) {
     if (!h.GetPatchedMethods().Any(m => m.DeclaringType.Name + "." + m.Name == needed)) { Console.WriteLine("FAILED: the patch on " + needed + " did not attach"); return 1; }
 }
 // the per-tick hook must be harmless on a VM it knows nothing about
@@ -223,6 +223,9 @@ Check("writing nothing removes the file", PackStore.Write("sample.apartments", n
 // ---- the game's bills, by name ----
 Check("a bill is known by its name", Bills.IsBillName("Bills") && Bills.IsBillName("Bill - Electric") && Bills.IsBillName("*Bills") && Bills.IsBillName("Mailbox Bills"));
 Check("...and billiards, billboards and nothing are not bills", !Bills.IsBillName("Table - Billiards") && !Bills.IsBillName("Billboard") && !Bills.IsBillName("") && !Bills.IsBillName(null) && !Bills.IsBillName("Mailbox"));
+Check("a trash can is known by its name", Doors.AboutTrash("Trashcan - Cheap") && Doors.AboutTrash("Trash Compactor") && Doors.AboutTrash("Garbage Can - Outdoor") && Doors.AboutTrash("Throw Away"));
+Check("...and a plate, a sink and nothing are not", !Doors.AboutTrash("Plate") && !Doors.AboutTrash("Sink - Kitchen") && !Doors.AboutTrash("") && !Doors.AboutTrash(null));
+Check("nothing and no one is the edge of the lot", !Neighbours.IsLotEdge(null) && !Neighbours.Removing);
 
 // ---- the apartment's part of the building's bill ----
 Check("the bill is shared by the value of what is in the apartment", Bills.PartOf(1101, 5000, 100000) == 55 && Bills.PartOf(1000, 50000, 100000) == 500);

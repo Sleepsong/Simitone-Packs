@@ -15,6 +15,7 @@ using FSO.Content.TS1;
 using FSO.Files.Formats.IFF.Chunks;
 using FSO.SimAntics;
 using FSO.SimAntics.Engine;
+using FSO.SimAntics.Engine.Primitives;
 using FSO.SimAntics.Model.TS1Platform;
 using FSO.SimAntics.Primitives;
 using FSO.Common.Rendering.Framework.IO;
@@ -181,6 +182,8 @@ namespace Apartments
             // apartments are private (Doors.cs), and the rest of living in a building. each stands alone: without one,
             // the pack is as it was before it
             Optional(() => harmony.Patch(Find(typeof(VMRoutingFrame), "DoRoomRoute"), prefix: Mine(nameof(BeforeRoomRoute))), "keeping Sims out of other households' apartments");
+            Optional(() => harmony.Patch(Find(typeof(VMFindBestObjectForFunction), "Execute"), prefix: Mine(nameof(BeforeBestThing)), postfix: Mine(nameof(AfterBestThing))),
+                "looking for the nearest trash can, sink and so on only where a Sim may go");
             Optional(() => harmony.Patch(Find(typeof(VMFindBestAction), "Execute"), prefix: Mine(nameof(BeforeBestAction)), finalizer: Mine(nameof(AfterBestAction))),
                 "keeping Sims from wanting things in apartments they cannot enter");
             Optional(() =>
@@ -191,6 +194,8 @@ namespace Apartments
             }, "knocking at an apartment's door");
             Optional(() => harmony.Patch(Find(typeof(VMEntity), "IndividualUserMovable"), postfix: Mine(nameof(AfterUserMovable))), "moving the mailbox in a building");
             Optional(() => harmony.Patch(Find(typeof(VMThread), "EnqueueAction"), prefix: Mine(nameof(BeforeEnqueue))), "sending visitors' business at a door to the apartment's door");
+            Optional(() => harmony.Patch(AccessTools.Method(typeof(VMEntity), "Delete", new[] { typeof(bool), typeof(VMContext) }) ?? throw new Exception("VMEntity.Delete was not found."),
+                prefix: Mine(nameof(BeforeDelete))), "noticing when the game takes a neighbour off the lot");
             Optional(() => harmony.Patch(AccessTools.Method(typeof(VMRoutingFrame), "InitRoutes", new[] { typeof(SLOTItem), typeof(VMEntity) })
                     ?? throw new Exception("VMRoutingFrame.InitRoutes(SLOTItem, VMEntity) was not found."), prefix: Mine(nameof(BeforeWalkToThing))),
                 "walking visitors to the apartment's door");
@@ -320,6 +325,58 @@ namespace Apartments
             context.VM.Context.ObjectQueries.WithAutonomy = own;
         }
 
+        // ---- the nearest thing for a job (a trash can for trash, a sink for dishes) ----
+
+        [ThreadStatic] private static bool LookingAgain;
+
+        public static void BeforeBestThing(VMStackFrame context, out VMEntity __state)
+        {
+            __state = context.StackObject;
+        }
+
+        /// <summary>
+        /// The game has looked for the nearest thing that does a job, by a straight line through walls, wherever it is:
+        /// in a building that can be inside someone else's apartment, which the Sim may not walk into. They would carry
+        /// their trash to the can, find no way there, and put it down. If that is what was found, the game looks again
+        /// among the things the Sim can reach only; if there are none, it found nothing, which the game knows what to do with.
+        /// </summary>
+        public static void AfterBestThing(VMFindBestObjectForFunction __instance, VMStackFrame context, VMPrimitiveOperand args, VMEntity __state, ref VMPrimitiveExitCode __result)
+        {
+            if (LookingAgain || __result != VMPrimitiveExitCode.GOTO_TRUE || !Doors.Private) return;
+            var vm = context.VM;
+            if (!Neighbours.IsShared(vm) || !(context.Caller is VMAvatar sim)) return; //nearly always
+            var found = context.StackObject;
+            if (found == null || found.Position == FSO.LotView.Model.LotTilePos.OUT_OF_WORLD) return;
+            var result = __result;
+            Guard("looking for a thing a Sim can reach", () =>
+            {
+                var closed = Doors.ClosedRooms(vm, sim);
+                if (closed.Count == 0 || !closed.Contains(vm.Context.GetRoomAt(found.Position))) return;
+                var all = vm.Entities;
+                var reachable = Doors.Reachable(vm, sim, all);
+                if (reachable == null) return;
+                var given = new List<VMEntity>(reachable);
+                LookingAgain = true;
+                try
+                {
+                    vm.Entities = reachable;
+                    result = __instance.Execute(context, args);
+                }
+                finally
+                {
+                    vm.Entities = all;
+                    LookingAgain = false;
+                    //(a check cannot make or delete things, but if one did, the lot's own list has it too)
+                    foreach (var added in reachable.Except(given).ToList()) if (!all.Contains(added)) all.Add(added);
+                }
+                if (result != VMPrimitiveExitCode.GOTO_TRUE) context.StackObject = __state;
+                var job = NameOf(found);
+                Doors.Once(vm, 14, (int)((uint)sim.ObjectID * 31 ^ found.ObjectID), () => sim.Name + " looked for the nearest " + job + ", which is in a room closed to them: "
+                    + (result == VMPrimitiveExitCode.GOTO_TRUE ? "used " + NameOf(context.StackObject) + " instead." : "there is none they can reach."));
+            });
+            __result = result;
+        }
+
         // the pie menu. an interaction of the pack's own is marked by a number no object's menu uses, and the parameter
         // says which. (Open for Business does the same with 254.)
         private const byte MenuID = 253;
@@ -386,6 +443,14 @@ namespace Apartments
             Doors.Once(__instance.vm, 4, closed.Id, () => "Something inside " + closed.Name + " was clicked, and the player was told to knock first.");
         }
 
+        // ---- the game taking a neighbour off the lot ----
+
+        public static void BeforeDelete(VMEntity __instance)
+        {
+            if (!(__instance is VMAvatar) || Neighbours.Removing) return;
+            Guard("noticing a neighbour taken off the lot", () => Neighbours.BeforeRemoved(__instance));
+        }
+
         // ---- visitors at the door ----
 
         /// <summary>A walk to a thing is about to be planned (both the game's walk-to-object primitives come here).</summary>
@@ -422,6 +487,7 @@ namespace Apartments
             Guard("sending a visitor to the apartment's door", () =>
             {
                 Doors.Watch(vm, sim, invocation);
+                Doors.WatchTrash(vm, sim, invocation);
                 var done = Doors.SendToOwnDoor(vm, sim, invocation) ?? Doors.WalkOutToMeet(vm, sim, invocation);
                 if (done != null) AptLog.Write(done);
             });

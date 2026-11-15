@@ -334,6 +334,8 @@ namespace Apartments
                 + (others.Count == 0 ? "none" : string.Join(", ", others.Select(Residency.NameOf))) + ". Apartments: "
                 + (state.File.Apartments.Count == 0 ? "none" : string.Join(", ", state.File.Apartments.Select(x => x.Name + (x.Vacant ? " (vacant)" : " (family " + x.Tenant + ")")))) + ".");
 
+            Doors.ListTrash(vm, state);
+
             foreach (var guid in (played == null) ? new uint[0] : played.FamilyGUIDs)
             {
                 if (!present.TryGetValue(guid, out var sim)) continue;
@@ -382,7 +384,7 @@ namespace Apartments
                 if (mailbox == null || !VMFindLocationFor.FindLocationFor(sim, mailbox, vm.Context, VMPlaceRequestFlags.Default))
                 {
                     AptLog.Write("  Nowhere to put " + sim.Name + ": no apartment, and no room by the mailbox.");
-                    sim.Delete(true, vm.Context);
+                    Remove(vm, sim);
                     return null;
                 }
             }
@@ -452,7 +454,7 @@ namespace Apartments
             var guid = GuidOf(sim);
             var name = sim.Name;
             Keep(state, sim, family);
-            sim.Delete(true, vm.Context);
+            Remove(vm, sim);
             state.Out.Remove(guid);
             AptLog.Write("  " + name + " of " + Residency.NameOf(family) + " " + how + ".");
         }
@@ -502,7 +504,7 @@ namespace Apartments
             {
                 if (!family.FamilyGUIDs.Contains(pair.Key)) continue;
                 if (state?.File != null) Keep(state, pair.Value, family);
-                pair.Value.Delete(true, vm.Context);
+                Remove(vm, pair.Value);
                 count++;
             }
             if (state != null)
@@ -588,9 +590,9 @@ namespace Apartments
             planned = false;
             var vm = frame.VM;
             if (!Lots.TryGetValue(vm, out var state) || !state.Out.TryGetValue(GuidOf(sim), out var outing)) return false;
-            string name;
-            try { name = target.Object?.OBJ?.ChunkLabel ?? target.ToString(); } catch { return false; }
-            if (name == null || !name.TrimStart().StartsWith("*Portal", StringComparison.OrdinalIgnoreCase)) return false;
+            //(by the name the game shows: the object's own label can be empty, and was, so 0.17 never knew the portal)
+            if (!IsLotEdge(target)) return false;
+            var name = target.ToString();
             var now = Now(vm);
             var spots = HomeSpots(vm, state, outing.Family);
             outing.Ends = Math.Min(outing.Ends, now);
@@ -599,6 +601,63 @@ namespace Apartments
             planned = frame.InitRoutes(spots);
             AptLog.Write(sim.Name + " was leaving the lot by " + name + " (the game sends visitors home that way), " + (now - outing.Started) + " minutes after coming out. They live here: walking home to their apartment instead.");
             return true;
+        }
+
+        /// <summary>Whether a thing is one of the lot's edges, where Sims come onto it and leave it (the game's "*Portal" objects).</summary>
+        public static bool IsLotEdge(VMEntity thing)
+        {
+            if (thing == null || thing is VMAvatar) return false;
+            string shown = null, label = null;
+            try { shown = thing.ToString(); } catch { }
+            try { label = thing.Object?.OBJ?.ChunkLabel; } catch { }
+            return (shown != null && shown.TrimStart().StartsWith("*Portal", StringComparison.OrdinalIgnoreCase))
+                || (label != null && label.TrimStart().StartsWith("*Portal", StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>Set while the pack itself takes a Sim off the lot, so that it is not mistaken for the game doing it.</summary>
+        [ThreadStatic] public static bool Removing;
+
+        private static void Remove(VM vm, VMAvatar sim)
+        {
+            Removing = true;
+            try { sim.Delete(true, vm.Context); }
+            finally { Removing = false; }
+        }
+
+        /// <summary>
+        /// Something is about to take an entity off the lot. If it is a neighbour who is out, and it is not the pack,
+        /// it is the game. Their needs and relationships are kept, and their outing ends. If they were home, that is the
+        /// end of the game's visitor script (which the pack walked home instead of off the lot); anywhere else, write down
+        /// which of the game's scripts did it, so that it can be stopped.
+        /// </summary>
+        public static void BeforeRemoved(VMEntity entity)
+        {
+            if (Removing || !(entity is VMAvatar sim)) return;
+            var vm = sim.Thread?.Context?.VM;
+            if (vm == null || !Lots.TryGetValue(vm, out var state) || !state.Out.TryGetValue(GuidOf(sim), out var outing)) return;
+            var scripts = new List<string>();
+            try
+            {
+                foreach (var frame in sim.Thread.Stack) scripts.Add((frame.Routine?.Rti?.Name ?? "?") + " (" + (frame.CodeOwner?.OBJ?.ChunkLabel ?? frame.Callee?.ToString() ?? "?") + ")");
+            }
+            catch { }
+            var room = (sim.Position == LotTilePos.OUT_OF_WORLD) ? (ushort)0 : vm.Context.GetObjectRoom(sim);
+            var atHome = state.RoomOwners.TryGetValue(room, out var owner) && owner == outing.Family;
+
+            //whatever took them, what they did while out is theirs to keep, and their outing is over
+            var family = Others(vm).FirstOrDefault(x => x.ChunkID == outing.Family);
+            if (family != null) Keep(state, sim, family);
+            state.Out.Remove(outing.Guid);
+
+            if (atHome)
+            {
+                //the game's own visitor script ending: it had walked them to the lot's edge, which for them is home
+                AptLog.Write("  " + sim.Name + " of " + Residency.NameOf(family) + " went home (the game's visitor script finished at their door).");
+                return;
+            }
+            var at = sim.Position == LotTilePos.OUT_OF_WORLD ? "off the map" : ("floor " + sim.Position.Level + ", tile " + sim.Position.TileX + "," + sim.Position.TileY + ", room " + room);
+            AptLog.Write("The game took " + sim.Name + " (a neighbour, out) off the lot, at " + at + ", " + (Now(vm) - outing.Started) + " minutes after coming out. Their scripts: " + (scripts.Count == 0 ? "none" : string.Join(" > ", scripts))
+                + ". .NET: " + string.Join(" < ", Environment.StackTrace.Split('\n').Select(x => x.Trim()).Where(x => x.StartsWith("at FSO") || x.StartsWith("at Apartments")).Take(6)));
         }
 
         /// <summary>Tiles inside a household's apartment to walk to: near the tile that marks it, in the same room.</summary>

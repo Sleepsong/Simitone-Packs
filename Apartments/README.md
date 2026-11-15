@@ -135,7 +135,11 @@ A neighbour can never spend the played household's money: anything a neighbour d
 (or earn) money is refused, as the game refuses anyone who cannot afford a thing.
 
 When the game sends a neighbour who is out off the lot (it sends visitors home by walking them to
-the edge of the lot), they walk home to their apartment instead.
+the edge of the lot), they walk home to their apartment instead. (Until 0.18 the edge of the lot was
+looked for by an internal name that the game leaves blank, so this never happened and neighbours
+walked off; it is now known by the name the game shows, `*Portal ...`.) If the game takes a neighbour
+off the lot any other way, what they did while out is kept all the same, and the log names the
+game's scripts that did it.
 
 When you change household, the one you were playing goes home in the same way, and the one you now
 play is found in its apartment.
@@ -193,7 +197,12 @@ to themselves, Sims do not even want the things in an apartment they cannot ente
 A Sim who is already inside is never trapped: the way out is always open.
 
 The game's scripts often pick "the nearest" of something by distance, through walls, so they can pick
-one in an apartment your Sim cannot enter (the nearest trash can, say). Then your Sim goes to the
+one in an apartment your Sim cannot enter: the nearest trash can for trash, the nearest sink for
+dishes. Your Sim then carried the trash over, found no way to the can, and put it down. Since 0.18,
+when the game looks for the nearest thing for a job and finds one in a room closed to your Sim, it
+looks again among the ones your Sim can reach (`looked for the nearest ..., which is in a room closed
+to them: used ... instead`). If there is none, it found nothing, and the game does what it does when
+there is no trash can. When your Sim walks to a thing in a closed room some other way, they go to the
 nearest one of the same kind they can reach instead, and the log says so; if there is none, it says
 that too. That goes for a room that
 is in no apartment but opens only into one, too (a cupboard, or a room cut off by a new wall).
@@ -256,8 +265,8 @@ Then send `Apartments.log` (the **Settings** page says where it is). It answers 
 | Does rent build up each day, and come with the mail's bills? | `Rent:`, `The mail brought a bill` and `Rent bill with the mail` lines |
 | What do the bills come to? | `Wrote ... on the bill (Apartment ...'s part of the building's ... is ...)`, then `Bills paid as written` |
 | Do bills come at all? | `[mailbox]` lines: who walks to the mailbox, and when |
-| Why can my Sim not throw the trash away? | `[trash]` lines, and `was sent to ..., in Apartment ...` |
-| Do neighbours still leave the lot? | `was leaving the lot by ... walking home to their apartment instead`, or `the game took them` |
+| Why can my Sim not throw the trash away? | `looked for the nearest ..., which is in a room closed to them`; `[trash]` lines: where each trash can is (whose apartment, or shared) when the lot loads, what your household is given to do about trash, and where they walk with it |
+| Do neighbours still leave the lot? | `was leaving the lot by *Portal ... walking home to their apartment instead`, then `went home (the game's visitor script finished at their door)`. If not: `The game took ... off the lot, at ...` and the scripts that did it |
 | Does your Sim walk out to greet a visitor? | `... walks out to meet ... at the door` |
 | Does a visitor wait at your door instead of walking in? | `... was coming to ..., who is still at home: they wait at the door` |
 

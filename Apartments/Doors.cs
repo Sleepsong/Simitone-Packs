@@ -547,6 +547,51 @@ namespace Apartments
             return (sent == null) ? null : sent + " (for \"" + action.Name + "\")";
         }
 
+        /// <summary>Whether a name is about trash.</summary>
+        public static bool AboutTrash(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return false;
+            var t = text.ToLowerInvariant();
+            return t.Contains("trash") || t.Contains("garbage") || t.Contains("throw") || t.Contains("dispose") || t.Contains("rubbish") || t.Contains("compactor");
+        }
+
+        /// <summary>When a lot is looked at, write down where its trash cans are, and whose rooms they are in.</summary>
+        internal static void ListTrash(VM vm, Neighbours.LotState state)
+        {
+            var seen = new HashSet<VMEntity>();
+            foreach (var part in vm.Entities.ToList())
+            {
+                if (part is VMAvatar || part.Dead || part.Position == LotTilePos.OUT_OF_WORLD) continue;
+                var thing = part.MultitileGroup?.GetInteractionGroupLeader(part) ?? part;
+                if (!seen.Add(thing)) continue;
+                string name;
+                try { name = thing.ToString(); } catch { continue; }
+                if (!AboutTrash(name)) continue;
+                var room = vm.Context.GetRoomAt(thing.Position);
+                var whose = state.RoomApts.TryGetValue(room, out var apartment) ? (apartment.Name + (apartment.Vacant ? " (vacant)" : ", family " + apartment.Tenant)) : (Units.IndoorRoomAt(vm, thing.Position) == 0 ? "outdoors" : "a shared room");
+                Once(vm, 12, thing.ObjectID, () => "[trash] " + name + " is at floor " + thing.Position.Level + ", tile " + thing.Position.TileX + "," + thing.Position.TileY + ": " + whose + ".");
+            }
+        }
+
+        /// <summary>Write down, once each, anything the household is given to do about trash, and with what.</summary>
+        public static void WatchTrash(VM vm, VMAvatar sim, VMQueuedAction action)
+        {
+            var played = vm.TS1State?.CurrentFamily;
+            if (played == null || FamilyOf(sim) != played.ChunkID || action == null) return;
+            string callee = null;
+            try { callee = action.Callee?.ToString(); } catch { }
+            if (!AboutTrash(action.Name) && !AboutTrash(callee)) return;
+            var where = "";
+            if (action.Callee != null && action.Callee.Position != LotTilePos.OUT_OF_WORLD)
+            {
+                var state = Neighbours.StateOf(vm);
+                var room = vm.Context.GetRoomAt(action.Callee.Position);
+                where = " (" + ((state != null && state.RoomApts.TryGetValue(room, out var a)) ? a.Name : "not in an apartment") + (ClosedRooms(vm, sim).Contains(room) ? ", CLOSED to them" : "") + ")";
+            }
+            Once(vm, 13, (int)((uint)sim.ObjectID * 31 ^ (uint)(action.Name ?? "").GetHashCode() ^ (uint)(callee ?? "").GetHashCode()),
+                () => "[trash] " + sim.Name + " was given \"" + action.Name + "\" on " + (callee ?? "nothing") + where + ".");
+        }
+
         /// <summary>Write down, once for each visitor and each thing, where the game walks an arriving visitor to.</summary>
         public static void WatchWalk(VMRoutingFrame frame, VMEntity target)
         {
@@ -559,7 +604,7 @@ namespace Apartments
             //things that do not happen in a building should show in the log
             var guid = target.Object?.OBJ?.GUID ?? 0;
             string label = null;
-            try { label = (target.Object?.OBJ?.ChunkLabel ?? "") + " " + (frame.Routine?.Rti?.Name ?? ""); } catch { }
+            try { label = target.ToString() + " " + (target.Object?.OBJ?.ChunkLabel ?? "") + " " + (frame.Routine?.Rti?.Name ?? ""); } catch { }
             var aboutTrash = label != null && (label.IndexOf("trash", StringComparison.OrdinalIgnoreCase) >= 0 || label.IndexOf("garbage", StringComparison.OrdinalIgnoreCase) >= 0);
             if (guid == 0xEF121974 || guid == 0x1D95C9B0 || aboutTrash)
             {
