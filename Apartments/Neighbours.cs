@@ -122,7 +122,6 @@ namespace Apartments
             public HashSet<short> ShownToDoor = new HashSet<short>();
             /// <summary>While apartments are being shown on the lot: the one picked out (null: none is), or not showing at all.</summary>
             public bool Showing;
-            public Apartment ShowingOne;
             /// <summary>The engine's room table the room numbers above were worked out from. It is replaced whenever walls change.</summary>
             public object RoomsSeen;
             /// <summary>The rooms closed to each Sim, as worked out this tick (Doors.ClosedRooms): Sims plan many walks a tick.</summary>
@@ -132,7 +131,6 @@ namespace Apartments
             public Dictionary<long, KeyValuePair<LotTilePos, int>> Waiting = new Dictionary<long, KeyValuePair<LotTilePos, int>>();
             public string RentNote; //(no longer used: rent is billed)
             /// <summary>While showing: what each lit room is (by the room its light is worked out with). 0: shared, 1: the one picked out, 2: another apartment.</summary>
-            public Dictionary<ushort, int> ShowRooms = new Dictionary<ushort, int>();
         }
 
         internal static LotState StateOf(VM vm) => (vm != null && Lots.TryGetValue(vm, out var state)) ? state : null;
@@ -333,8 +331,6 @@ namespace Apartments
             AptLog.Write("--- House " + house + " (" + why + "). " + (played == null ? "Nobody is being played. Households: " : ("Played: " + Residency.NameOf(played) + ". Neighbours: "))
                 + (others.Count == 0 ? "none" : string.Join(", ", others.Select(Residency.NameOf))) + ". Apartments: "
                 + (state.File.Apartments.Count == 0 ? "none" : string.Join(", ", state.File.Apartments.Select(x => x.Name + (x.Vacant ? " (vacant)" : " (family " + x.Tenant + ")")))) + ".");
-
-            Doors.ListTrash(vm, state);
 
             foreach (var guid in (played == null) ? new uint[0] : played.FamilyGUIDs)
             {
@@ -970,7 +966,7 @@ namespace Apartments
             var dim = new HashSet<ushort>();
             var played = vm.TS1State?.CurrentFamily?.ChunkID ?? 0;
             var rooms = vm.Context.RoomInfo;
-            if (Dim && rooms != null && played != 0) //(with nobody played the building is being laid out: all of it is shown)
+            if (Dim && !state.Showing && rooms != null && played != 0) //(with nobody played the building is being laid out: all of it is shown)
             {
                 var now = Now(vm);
                 foreach (var pair in state.RoomOwners)
@@ -997,12 +993,12 @@ namespace Apartments
             return owed + (account.Accrued > 0 ? " Since the last bill: " + account.Accrued + "." : "") + " The rent comes with the mail's bills, and is paid with them.";
         }
 
-        /// <summary>Whether apartments are being shown on the lot by light.</summary>
+        /// <summary>Whether apartments are being drawn on the lot.</summary>
         public static bool IsShowing(VM vm) => StateOf(vm)?.Showing ?? false;
 
         /// <summary>
-        /// Show the apartments on the lot itself, by light: the one picked out is fully lit, the others are dark, and
-        /// shared rooms are in between. With none picked out, every apartment is lit and shared rooms are darkened.
+        /// Draw the apartments on the lot itself, each in its colour (see LotOverlay); with one picked out, the others
+        /// are drawn faintly. Apartments are not dimmed meanwhile, so that the colours are true.
         /// </summary>
         public static void Show(VM vm, bool on, Apartment one = null)
         {
@@ -1010,20 +1006,13 @@ namespace Apartments
             if (state == null) return;
             if (!on && !state.Showing) return;
             state.Showing = on;
-            state.ShowingOne = on ? one : null;
-            state.ShowRooms.Clear();
-            var rooms = vm.Context.RoomInfo;
-            if (on && rooms != null)
+            if (on)
             {
                 state.RoomApts = Units.RoomApartments(vm, state.File);
-                state.ResidentIds = new HashSet<int>(Residency.Residents(state.House).Select(x => (int)x.ChunkID));
-                foreach (var pair in state.RoomApts)
-                {
-                    if (pair.Key >= rooms.Length) continue;
-                    state.ShowRooms[rooms[pair.Key].Room.LightBaseRoom] = (one == null || pair.Value == one) ? 1 : 2;
-                }
+                LotOverlay.Show(vm, one);
             }
-            Relight(vm);
+            else LotOverlay.Hide();
+            SetDimRooms(vm, state);
         }
 
         /// <summary>The Dim setting changed: light the lot being played again.</summary>
@@ -1045,30 +1034,11 @@ namespace Apartments
         public static void AfterRoomLit(VMContext context, ushort room)
         {
             var vm = context?.VM;
-            if (vm == null || !Lots.TryGetValue(vm, out var state) || (state.DimRooms.Count == 0 && !state.Showing)) return;
+            if (vm == null || !Lots.TryGetValue(vm, out var state) || state.DimRooms.Count == 0) return;
             var rooms = context.RoomInfo;
             if (rooms == null || room == 0 || room >= rooms.Length) return;
             var lit = rooms[room].Room.LightBaseRoom;
             if (lit >= rooms.Length) return;
-            if (state.Showing)
-            {
-                //apartments are being shown on the lot: light says which rooms are which
-                var shown = rooms[lit].Light;
-                if (shown == null || rooms[lit].Room.IsOutside) return;
-                state.ShowRooms.TryGetValue(lit, out var kind);
-                if (kind == 1)
-                {
-                    shown.AmbientLight = 100;
-                    shown.OutsideLight = 100;
-                }
-                else
-                {
-                    shown.Lights.Clear();
-                    shown.AmbientLight = (ushort)(kind == 2 ? ShowOtherAmbient : ShowSharedAmbient);
-                    shown.OutsideLight = (ushort)(kind == 2 ? ShowOtherOutside : ShowSharedOutside);
-                }
-                return;
-            }
             if (!state.DimRooms.Contains(lit)) return;
             var light = rooms[lit].Light;
             if (light == null) return;
@@ -1081,8 +1051,6 @@ namespace Apartments
         private const ushort DimAmbient = 10;
         private const ushort DimOutside = 30;
         //while apartments are shown on the lot: shared rooms are darkened, and apartments other than the one picked out are darker still
-        private const int ShowSharedAmbient = 30, ShowSharedOutside = 45;
-        private const int ShowOtherAmbient = 5, ShowOtherOutside = 12;
 
         /// <summary>Say so, once, when a wall coming down (or anything else) leaves part of an apartment marking no room.</summary>
         private static void ReportLostRooms(VM vm, LotState state)

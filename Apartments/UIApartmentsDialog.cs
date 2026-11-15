@@ -302,19 +302,13 @@ namespace Apartments
                     else PickRoom(made, false);
                 }, true));
 
-            rows.Add(new Row("Which rooms are whose", "Plan: a plan of the lot, each apartment in its own colour. On the lot: the apartments are lit and the shared rooms darkened, until you open this window again.")
-                .Button("Plan", () =>
-                {
-                    var level = Actions.Screen?.LotControl?.World?.State?.Level ?? (sbyte)1;
-                    CloseMe();
-                    UIMapDialog.Show(vm, level, () => Open(Tab.Apartments));
-                }, true, false, 190)
-                .Button("On the lot", () =>
+            rows.Add(new Row("Which rooms are whose", "Draws each apartment's floor on the lot in its own colour, until you open this window again.")
+                .Button("Show on the lot", () =>
                 {
                     CloseMe();
                     Neighbours.Show(vm, true);
                     UIPickPanel.OpenShowing(vm);
-                }, false, false, 190));
+                }, true, false, 275));
 
             var rate = file.Rate;
             rows.Add(new Row("Rent: " + (rate == 0 ? "none" : rate + " a tile a day"), Actions.RentLine(file) + " Moving in costs " + Units.DepositDays + " days' rent; after that the rent comes with the mail's bills, and is paid with them.")
@@ -367,9 +361,9 @@ namespace Apartments
         }
 
         /// <summary>
-        /// Put the window away and let the player click in rooms, one after another, until Esc. Meanwhile the lot
-        /// itself shows which rooms are the apartment's (they are lit, and the rest darkened), and a small plan in
-        /// the corner shows the same and says how each click went.
+        /// Put the window away and let the player click in rooms, one after another, until Esc. Meanwhile each
+        /// apartment's floor is drawn on the lot in its colour (this one strongly), the room under the cursor in white,
+        /// and a panel in the corner says how each click went and which colour is which.
         /// </summary>
         private void PickRoom(Apartment apartment, bool remove)
         {

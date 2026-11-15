@@ -23,9 +23,10 @@ screen. If the window does not come up or looks wrong, everything still works fr
 2. **Make it an apartment building.** Open the **Apartments** window (below), go to the
    **Apartments** page and press **Make building**.
 3. **Lay out the apartments.** Press **Add** on "New apartment", then click inside each room that
-   belongs to it, one after another, and press Esc when you have finished. While you choose, the
-   rooms of that apartment are lit and the rest of the building is darkened, and a small plan in the
-   corner of the screen shows the same and says how each click went. **Add room** adds more rooms
+   belongs to it, one after another, and press Esc when you have finished. While you choose, each
+   apartment's floor is drawn on the lot in its own colour (the one you are choosing for strongly,
+   the others faintly, with a line round each), the room under the cursor is shown in white, and a
+   panel in the corner says how each click went and which colour is which apartment. **Add room** adds more rooms
    later. To choose a room on another floor, change floor before clicking. Every room you leave out
    is shared by everyone, and so is outdoors.
 4. **Save**, and go back to the neighbourhood.
@@ -68,8 +69,7 @@ Moving a household out, deleting an apartment and making the lot an ordinary hou
 | **Make building** | Makes this lot an apartment building |
 | **Add** (on "New apartment") | Adds an apartment, then lets you click its first room |
 | **Add room** | Lets you click rooms to add to that apartment, until you press Esc |
-| **Plan** | A plan of the lot, floor by floor, with each apartment in its own colour |
-| **On the lot** | Shows the apartments on the lot itself: they are lit, and the shared rooms darkened, with the plan in a corner, until you open the window again |
+| **Show on the lot** | Draws each apartment's floor on the lot in its own colour, with a key in the corner, until you open the window again. Rooms with no colour are shared. Floors above the one you are looking at are not drawn |
 | **More > Remove room** | Lets you click rooms to take out of the apartment |
 | **More > Rename** | Gives the apartment a name of its own |
 | **More > Tenant** | Chooses which of the households living here has that apartment, or nobody |
@@ -196,16 +196,8 @@ to themselves, Sims do not even want the things in an apartment they cannot ente
 
 A Sim who is already inside is never trapped: the way out is always open.
 
-The game's scripts often pick "the nearest" of something by distance, through walls, so they can pick
-one in an apartment your Sim cannot enter: the nearest trash can for trash, the nearest sink for
-dishes. Your Sim then carried the trash over, found no way to the can, and put it down. Since 0.18,
-when the game looks for the nearest thing for a job and finds one in a room closed to your Sim, it
-looks again among the ones your Sim can reach (`looked for the nearest ..., which is in a room closed
-to them: used ... instead`). If there is none, it found nothing, and the game does what it does when
-there is no trash can. When your Sim walks to a thing in a closed room some other way, they go to the
-nearest one of the same kind they can reach instead, and the log says so; if there is none, it says
-that too. That goes for a room that
-is in no apartment but opens only into one, too (a cupboard, or a room cut off by a new wall).
+A room that is in no apartment but opens only into one (a cupboard, or a room cut off by a new wall)
+can only be reached through that apartment, so it is out of bounds too.
 
 Click anything inside an apartment your Sim cannot enter, or the floor in it, and nothing happens
 but a warning by the cursor, as the game gives for a thing it will not let you use: "That's
@@ -265,7 +257,6 @@ Then send `Apartments.log` (the **Settings** page says where it is). It answers 
 | Does rent build up each day, and come with the mail's bills? | `Rent:`, `The mail brought a bill` and `Rent bill with the mail` lines |
 | What do the bills come to? | `Wrote ... on the bill (Apartment ...'s part of the building's ... is ...)`, then `Bills paid as written` |
 | Do bills come at all? | `[mailbox]` lines: who walks to the mailbox, and when |
-| Why can my Sim not throw the trash away? | `looked for the nearest ..., which is in a room closed to them`; `[trash]` lines: where each trash can is (whose apartment, or shared) when the lot loads, what your household is given to do about trash, and where they walk with it |
 | Do neighbours still leave the lot? | `was leaving the lot by *Portal ... walking home to their apartment instead`, then `went home (the game's visitor script finished at their door)`. If not: `The game took ... off the lot, at ...` and the scripts that did it |
 | Does your Sim walk out to greet a visitor? | `... walks out to meet ... at the door` |
 | Does a visitor wait at your door instead of walking in? | `... was coming to ..., who is still at home: they wait at the door` |
@@ -303,8 +294,8 @@ misbehaves, switch it off: the rest of the pack carries on without it.
   needs are as they were when they went home. Relationships are the exception. The game keeps those
   for each Sim, so they change as usual.
 - **A dimmed apartment is only dimmed.** You can still look into it, and nothing in it moves.
-- **Not yet seen working in the game:** private apartments and knocking, moving the mailbox, the
-  plan of the lot, and the lighting while rooms are chosen. (A visitor was seen being walked to the
+- **Not yet seen working in the game:** private apartments and knocking, moving the mailbox, and
+  the apartments drawn on the lot in colour (new in 0.19). (A visitor was seen being walked to the
   door.) Each has a switch
   on the Settings page or is only used when you ask for it, and each fails on its own: the log says
   if one could not be added.
@@ -343,6 +334,11 @@ On the lot, the rest is seven Harmony patches:
 6. The lot is saved: keep the pack's file for the lot with it.
 7. A room's light has been worked out: turn it down if it is another household's apartment.
 
+Others are optional: each one that does not attach only turns its own feature off, and the log says
+which. They close apartment doors to the routes Sims plan, leave closed rooms out of what Sims choose
+to do, send visitors to the apartment's door, show the knock warning, write the household's part on
+the mail's bills, notice the game taking a neighbour off the lot, and draw the apartments on the lot.
+
 On the neighbourhood screen there are three more (`Hood.cs`): a building's panel says what it is and
 lets a family move in while an apartment is free; the game's move-in asks which apartment, and
 charges nothing; and entering a building where several households live asks which to play. The
@@ -363,7 +359,10 @@ It uses only what every Simitone with code packs has, so it does not need the ne
 - `Hood.cs` is apartment buildings on the neighbourhood screen.
 - `Doors.cs` is who may walk into which apartment, knocking, and showing visitors to the door. Doors
   are closed by leaving them out when the engine plans a walk from room to room.
-- `UIApartmentMap.cs` is the plan of the lot: in a window, and in the corner while rooms are chosen.
+- `LotOverlay.cs` draws the apartments on the lot, each floor in its colour. The engine draws a list of
+  line sets over the lot every frame (its own use is showing the routes Sims plan); the overlay adds
+  an empty one, and a patch on its drawing draws the coloured floor in its place.
+- `UIPickPanel.cs` is the panel in the corner while the apartments are drawn: what to do, and the key.
 - `Settings.cs` keeps the Settings page's switches between runs.
 - `UIChoiceDialog.cs` is a question with a button for each answer. The game's own message box takes
   only one button of each kind, so the pack has its own.

@@ -60,9 +60,7 @@ namespace Apartments
             if (!Down || Done) return;
             Down = false;
             //the tile under the cursor, on the floor being looked at (as the floor tool finds it)
-            var world = Lot.World;
-            var at = world.EstTileAtPosWithScroll(new Vector2(MousePosition.X, MousePosition.Y));
-            var pos = LotTilePos.FromBigTile((short)Math.Floor(at.X), (short)Math.Floor(at.Y), world.State.Level);
+            var pos = TileUnderCursor();
             var picked = Picked;
             if (!KeepGoing) Finish(false);
             ApartmentsPack.Guard("choosing a room", () => picked?.Invoke(pos));
@@ -70,6 +68,16 @@ namespace Apartments
 
         public override void Update(UpdateState state, bool scrolled)
         {
+            //the room under the cursor is shown on the lot, so it can be seen what a click would choose
+            if (Done) return;
+            ApartmentsPack.Guard("showing the room under the cursor", () => LotOverlay.HoverAt(TileUnderCursor()));
+        }
+
+        private LotTilePos TileUnderCursor()
+        {
+            var world = Lot.World;
+            var at = world.EstTileAtPosWithScroll(new Vector2(MousePosition.X, MousePosition.Y));
+            return LotTilePos.FromBigTile((short)Math.Floor(at.X), (short)Math.Floor(at.Y), world.State.Level);
         }
 
         /// <summary>The lot is putting the tool away (Esc, or another tool was taken out).</summary>
@@ -79,6 +87,7 @@ namespace Apartments
             Done = true;
             if (Current == this) Current = null;
             Lot.LiveMode = WasLive;
+            LotOverlay.HoverAt(null);
             var cancelled = Cancelled;
             ApartmentsPack.Guard("putting the room chooser away", () => cancelled?.Invoke());
         }
@@ -90,6 +99,7 @@ namespace Apartments
             if (Current == this) Current = null;
             if (Lot.CustomControl == this) Lot.CustomControl = null;
             Lot.LiveMode = WasLive;
+            LotOverlay.HoverAt(null);
             if (cancel) Cancelled?.Invoke();
         }
     }

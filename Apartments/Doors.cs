@@ -408,38 +408,6 @@ namespace Apartments
             return true;
         }
 
-        /// <summary>
-        /// A Sim is about to walk to a thing in a room closed to them (the game's scripts pick "the nearest trash can"
-        /// by distance, through walls, and that can be in someone else's apartment). If there is another of the same kind
-        /// they can reach, they go to that instead, and the script carries on with it: returns it. Null if not.
-        /// </summary>
-        public static VMEntity InsteadOf(VMRoutingFrame frame, VMEntity target)
-        {
-            if (!Private || target == null || target is VMAvatar || !(frame.Caller is VMAvatar sim) || target.Position == LotTilePos.OUT_OF_WORLD) return null;
-            var vm = frame.VM;
-            var closed = ClosedRooms(vm, sim);
-            if (closed.Count == 0 || !closed.Contains(vm.Context.GetRoomAt(target.Position))) return null;
-            var state = Neighbours.StateOf(vm);
-            var guid = target.Object?.OBJ?.GUID ?? 0;
-            VMEntity best = null;
-            var bestDistance = int.MaxValue;
-            foreach (var other in vm.Entities.ToList())
-            {
-                if (other == target || other.Dead || other.Position == LotTilePos.OUT_OF_WORLD || (other.Object?.OBJ?.GUID ?? 1) != guid) continue;
-                if (closed.Contains(vm.Context.GetRoomAt(other.Position))) continue;
-                var d = Math.Abs(other.Position.x - sim.Position.x) + Math.Abs(other.Position.y - sim.Position.y) + Math.Abs(other.Position.Level - sim.Position.Level) * 160;
-                if (d < bestDistance) { best = other; bestDistance = d; }
-            }
-            var apartment = (state != null && state.RoomApts.TryGetValue(vm.Context.GetRoomAt(target.Position), out var a)) ? a : null;
-            Once(vm, 10, (int)((uint)sim.ObjectID << 16 | (ushort)target.ObjectID), () => sim.Name + " was sent to " + target.ToString() + ", in " + (apartment?.Name ?? "a room closed to them")
-                + ", by the script \"" + (frame.Routine?.Rti?.Name ?? "?") + "\". " + (best == null ? "There is no other of the same kind they can reach, so they cannot get there." : "Sent to the one at floor " + best.Position.Level + ", tile " + best.Position.TileX + "," + best.Position.TileY + " instead."));
-            if (best == null) return null;
-            //the script carries on with the one they went to
-            var stack = sim.Thread?.Stack;
-            if (stack != null && stack.Count >= 2 && stack[stack.Count - 2].StackObject == target) stack[stack.Count - 2].StackObject = best;
-            return best;
-        }
-
         /// <summary>Whether a visitor has been let in: greeted, for a guest; for one of the game's own characters, not waiting at the door.</summary>
         public static bool IsLetIn(VMAvatar visitor)
         {
@@ -547,51 +515,6 @@ namespace Apartments
             return (sent == null) ? null : sent + " (for \"" + action.Name + "\")";
         }
 
-        /// <summary>Whether a name is about trash.</summary>
-        public static bool AboutTrash(string text)
-        {
-            if (string.IsNullOrEmpty(text)) return false;
-            var t = text.ToLowerInvariant();
-            return t.Contains("trash") || t.Contains("garbage") || t.Contains("throw") || t.Contains("dispose") || t.Contains("rubbish") || t.Contains("compactor");
-        }
-
-        /// <summary>When a lot is looked at, write down where its trash cans are, and whose rooms they are in.</summary>
-        internal static void ListTrash(VM vm, Neighbours.LotState state)
-        {
-            var seen = new HashSet<VMEntity>();
-            foreach (var part in vm.Entities.ToList())
-            {
-                if (part is VMAvatar || part.Dead || part.Position == LotTilePos.OUT_OF_WORLD) continue;
-                var thing = part.MultitileGroup?.GetInteractionGroupLeader(part) ?? part;
-                if (!seen.Add(thing)) continue;
-                string name;
-                try { name = thing.ToString(); } catch { continue; }
-                if (!AboutTrash(name)) continue;
-                var room = vm.Context.GetRoomAt(thing.Position);
-                var whose = state.RoomApts.TryGetValue(room, out var apartment) ? (apartment.Name + (apartment.Vacant ? " (vacant)" : ", family " + apartment.Tenant)) : (Units.IndoorRoomAt(vm, thing.Position) == 0 ? "outdoors" : "a shared room");
-                Once(vm, 12, thing.ObjectID, () => "[trash] " + name + " is at floor " + thing.Position.Level + ", tile " + thing.Position.TileX + "," + thing.Position.TileY + ": " + whose + ".");
-            }
-        }
-
-        /// <summary>Write down, once each, anything the household is given to do about trash, and with what.</summary>
-        public static void WatchTrash(VM vm, VMAvatar sim, VMQueuedAction action)
-        {
-            var played = vm.TS1State?.CurrentFamily;
-            if (played == null || FamilyOf(sim) != played.ChunkID || action == null) return;
-            string callee = null;
-            try { callee = action.Callee?.ToString(); } catch { }
-            if (!AboutTrash(action.Name) && !AboutTrash(callee)) return;
-            var where = "";
-            if (action.Callee != null && action.Callee.Position != LotTilePos.OUT_OF_WORLD)
-            {
-                var state = Neighbours.StateOf(vm);
-                var room = vm.Context.GetRoomAt(action.Callee.Position);
-                where = " (" + ((state != null && state.RoomApts.TryGetValue(room, out var a)) ? a.Name : "not in an apartment") + (ClosedRooms(vm, sim).Contains(room) ? ", CLOSED to them" : "") + ")";
-            }
-            Once(vm, 13, (int)((uint)sim.ObjectID * 31 ^ (uint)(action.Name ?? "").GetHashCode() ^ (uint)(callee ?? "").GetHashCode()),
-                () => "[trash] " + sim.Name + " was given \"" + action.Name + "\" on " + (callee ?? "nothing") + where + ".");
-        }
-
         /// <summary>Write down, once for each visitor and each thing, where the game walks an arriving visitor to.</summary>
         public static void WatchWalk(VMRoutingFrame frame, VMEntity target)
         {
@@ -600,16 +523,12 @@ namespace Apartments
             var state = Neighbours.StateOf(vm);
             if (state == null) return;
             var family = FamilyOf(sim);
-            //anyone walking to the mailbox (the mail carrier, the paper), and the household taking out the trash: the
-            //things that do not happen in a building should show in the log
+            //anyone walking to the mailbox (the mail carrier, the paper): how the bills come should show in the log
             var guid = target.Object?.OBJ?.GUID ?? 0;
-            string label = null;
-            try { label = target.ToString() + " " + (target.Object?.OBJ?.ChunkLabel ?? "") + " " + (frame.Routine?.Rti?.Name ?? ""); } catch { }
-            var aboutTrash = label != null && (label.IndexOf("trash", StringComparison.OrdinalIgnoreCase) >= 0 || label.IndexOf("garbage", StringComparison.OrdinalIgnoreCase) >= 0);
-            if (guid == 0xEF121974 || guid == 0x1D95C9B0 || aboutTrash)
+            if (guid == 0xEF121974 || guid == 0x1D95C9B0)
             {
                 var day = Units.Today(vm.Context.Clock);
-                Once(vm, 11, (int)((sim.Object.OBJ.GUID * 31) ^ guid ^ (uint)(day * 7919)), () => "[" + (aboutTrash ? "trash" : "mailbox") + "] " + sim.Name + " walks to " + target.ToString()
+                Once(vm, 11, (int)((sim.Object.OBJ.GUID * 31) ^ guid ^ (uint)(day * 7919)), () => "[mailbox] " + sim.Name + " walks to " + target.ToString()
                     + " at floor " + target.Position.Level + ", tile " + target.Position.TileX + "," + target.Position.TileY + ", from the script \"" + (frame.Routine?.Rti?.Name ?? "?") + "\" of " + (frame.Callee?.ToString() ?? "?") + ".");
             }
             if (family != 0 && state.ResidentIds.Contains(family)) return;

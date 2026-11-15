@@ -22,7 +22,7 @@ foreach (var m in h.GetPatchedMethods()) {
 }
 // the two ways into the Apartments window are optional to the pack, but should fit the Simitone this is built against
 foreach (var needed in new[] { "TS1GameScreen.Save", "VMContext.RefreshLighting", "UILotControl.Update", "UIMainPanel.AddPacksButton", "UIHouseSelectPanel..ctor", "TS1GameScreen.MoveInAndPlay", "TS1GameScreen.PlayHouse",
-    "VMRoutingFrame.DoRoomRoute", "VMFindBestAction.Execute", "VMThread.Tick", "VMThread.EnqueueAction", "UILotControl.ShowPieMenu", "VMRoutingFrame.InitRoutes", "VMEntity.GetPieMenu", "VMNetInteractionCmd.Verify", "VMNetInteractionCmd.Execute", "VMEntity.IndividualUserMovable", "VMFindBestObjectForFunction.Execute", "VMEntity.Delete" }) {
+    "VMRoutingFrame.DoRoomRoute", "VMFindBestAction.Execute", "VMThread.Tick", "VMThread.EnqueueAction", "UILotControl.ShowPieMenu", "VMRoutingFrame.InitRoutes", "VMEntity.GetPieMenu", "VMNetInteractionCmd.Verify", "VMNetInteractionCmd.Execute", "VMEntity.IndividualUserMovable", "VMEntity.Delete", "DebugLinesComponent.Draw" }) {
     if (!h.GetPatchedMethods().Any(m => m.DeclaringType.Name + "." + m.Name == needed)) { Console.WriteLine("FAILED: the patch on " + needed + " did not attach"); return 1; }
 }
 // the per-tick hook must be harmless on a VM it knows nothing about
@@ -173,13 +173,21 @@ Check("writing nothing removes the file", PackStore.Write("sample.apartments", n
     Check("an invitation is for the played household only", !Doors.MayEnter(guest, played, residents, theirs, true) && !Doors.MayEnter(npc, played, residents, theirs, true) && !Doors.MayEnter(otherNeighbour, played, residents, theirs, true));
 }
 
-// ---- the plan of the lot ----
+// ---- the apartments drawn on the lot ----
 {
-    // a 4 by 2 floor: apartment 0 | apartment 1 | shared | outdoors, twice
-    var cells = UIApartmentMap.Classify(4, 2, (x, y) => x < 2 ? x : -1, (x, y) => x == 3);
-    Check("the plan marks apartments, shared rooms and outdoors", cells.Length == 8 && cells[0] == 2 && cells[1] == 3 && cells[2] == 1 && cells[3] == 0 && cells[4] == 2 && cells[7] == 0);
+    // a 4 by 2 floor: apartment 0 | apartment 0 | apartment 1 | nobody's, twice
+    var shapes = LotOverlay.Layout(4, 2, (x, y) => x < 2 ? 0 : (x == 2 ? 1 : -1));
+    var washes = shapes.Where(s => !s.IsEdge).ToList();
+    var edges = shapes.Where(s => s.IsEdge).ToList();
+    Check("each row is washed over in runs of the same apartment, and nobody's tiles are left alone",
+        washes.Count == 4 && washes.Count(s => s.Index == 0 && s.X0 == 0 && s.X1 == 2) == 2 && washes.Count(s => s.Index == 1 && s.X0 == 2 && s.X1 == 3) == 2);
+    // apartment 0 is 2 by 2: 8 tile edges on its outline; apartment 1 is 1 by 2: 6
+    Check("a line runs round each apartment's edge, and not between its own tiles", edges.Count(s => s.Index == 0) == 8 && edges.Count(s => s.Index == 1) == 6);
+    Check("the lines are inside the apartment", edges.All(s => s.Index == 0 ? (s.X0 >= 0 && s.X1 <= 2) : (s.X0 >= 2 && s.X1 <= 3)));
+    Check("an empty floor draws nothing", LotOverlay.Layout(3, 3, (x, y) => -1).Count == 0);
     var pf = new LotFile(); var p1 = pf.Add(); var p2 = pf.Add(); var p3 = pf.Add();
-    Check("each apartment has its own colour", UIApartmentMap.ColourOf(pf, p1) != UIApartmentMap.ColourOf(pf, p2) && UIApartmentMap.ColourOf(pf, p2) != UIApartmentMap.ColourOf(pf, p3));
+    Check("each apartment has its own colour", LotOverlay.ColourOf(pf, p1) != LotOverlay.ColourOf(pf, p2) && LotOverlay.ColourOf(pf, p2) != LotOverlay.ColourOf(pf, p3));
+    Check("nothing is drawn until asked", !LotOverlay.On && !LotOverlay.IsMine(null));
 }
 
 // ---- the switches, kept between runs ----
@@ -223,8 +231,6 @@ Check("writing nothing removes the file", PackStore.Write("sample.apartments", n
 // ---- the game's bills, by name ----
 Check("a bill is known by its name", Bills.IsBillName("Bills") && Bills.IsBillName("Bill - Electric") && Bills.IsBillName("*Bills") && Bills.IsBillName("Mailbox Bills"));
 Check("...and billiards, billboards and nothing are not bills", !Bills.IsBillName("Table - Billiards") && !Bills.IsBillName("Billboard") && !Bills.IsBillName("") && !Bills.IsBillName(null) && !Bills.IsBillName("Mailbox"));
-Check("a trash can is known by its name", Doors.AboutTrash("Trashcan - Cheap") && Doors.AboutTrash("Trash Compactor") && Doors.AboutTrash("Garbage Can - Outdoor") && Doors.AboutTrash("Throw Away"));
-Check("...and a plate, a sink and nothing are not", !Doors.AboutTrash("Plate") && !Doors.AboutTrash("Sink - Kitchen") && !Doors.AboutTrash("") && !Doors.AboutTrash(null));
 Check("nothing and no one is the edge of the lot", !Neighbours.IsLotEdge(null) && !Neighbours.Removing);
 
 // ---- the apartment's part of the building's bill ----
