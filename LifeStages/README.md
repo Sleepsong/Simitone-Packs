@@ -45,25 +45,31 @@ in `looks.json` in the pack's folder:
 ```json
 {
   "heads":  { "elder": ["c005ma_example"], "both": ["c010ma_helmet"] },
-  "bodies": { "elder": ["b800fafit_example"], "both": [] }
+  "bodies": { "elder": ["b800fafit_example"], "adult": ["b020fafit_teen"] }
 }
 ```
 
-- **elder**: heads or bodies for elders only. They are not offered for adults in Create a Sim, and a
-  child who grows up is not given one.
-- **both**: for adults and elders, such as helmets and bald heads.
+Heads and bodies work the other way round from each other:
 
-Elders are offered what is in the two lists. A head's and a body's names are shown under the panel in
-Create a Sim while you scroll them, and a head's under the heads in the head picker. One name covers
-every skin colour, and capitals do not matter. Restart Simitone after changing the file. If neither list
-has a head (or a body) of a Sim's sex, elders are offered every adult one.
+| | Heads | Bodies |
+|---|---|---|
+| **elder** | For elders only: not offered for adults in Create a Sim, nor given to a child who grows up | The same |
+| **both** | For adults and elders, such as helmets and bald heads | (Every body not listed already is) |
+| **adult** | (Every head not listed already is) | For adults only: not offered for elders |
+| Not listed | For adults only | For adults and elders |
+
+So elders choose from a short list of heads, and from every body but those kept for adults. If the
+lists leave elders of a sex no head (or no body), they are offered every adult one.
+
+A head's and a body's names are shown under the panel in Create a Sim while you scroll them, and a
+head's under the heads in the head picker. One name covers every skin colour, and capitals do not
+matter. Restart Simitone after changing the file.
 
 The pack comes with fifteen heads for elders only, chosen in the game: seven men's (`c029ma_elwd`,
 `c032ma_warn`, `c202ma_oldgypsyman`, `c207ma_oldtraveler`, `c631ma_mobius`, `c803ma_gunter`,
-`c805ma_brad`) and eight women's (`c004fa_gma1`, `c028fa_delo`,
-`c029fa_lynn`, `c205fa_madame`, `c800fa_eldenmama`, `c802fa_cornelia`, `c804fa_tiffany`,
-`c807fa_ginia`). And three women's bodies for elders only: `b602faskn_cornelia`, `b800fafit_eldenmama`
-and `b807fafit_ginia`.
+`c805ma_brad`) and eight women's (`c004fa_gma1`, `c028fa_delo`, `c029fa_lynn`, `c205fa_madame`, `c800fa_eldenmama`, `c802fa_cornelia`, `c804fa_tiffany`,
+`c807fa_ginia`). And three women's bodies for elders only (`b602faskn_cornelia`, `b800fafit_eldenmama`,
+`b807fafit_ginia`), and 44 bodies for adults only: 10 men's and 34 women's, listed in the file.
 
 It also comes with thirteen men's heads for adults and elders: bald heads, helmets and others that suit
 either (`c002ma_baldfat`, `c007ma_gpa1`, `c206ma_carnieguy`, `c499ma_waylon`, `c537ma_fanpoolbald`,

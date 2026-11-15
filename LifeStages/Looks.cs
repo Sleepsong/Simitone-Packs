@@ -13,18 +13,26 @@ using System.Text.Json;
 namespace LifeStages
 {
     /// <summary>
-    /// Which of the game's adult heads, or bodies, are elders'. "Elder" ones are for elders only; "both" ones are for
-    /// adults and elders. Names are kept trimmed and lower case, and matched so.
+    /// Which of the game's adult heads, or bodies, are for which of adults and elders. "Elder" ones are for elders
+    /// only, "adult" ones for adults only, and "both" ones for both. What none of the lists names is for adults, and
+    /// for elders too if OthersForElders: heads are not (an elder is offered only the heads listed for elders), and
+    /// bodies are (an elder may wear anything not kept for adults). Names are kept trimmed and lower case, and
+    /// matched so.
     /// </summary>
     public class AgeList
     {
         public List<string> Elder { get; set; } = new List<string>();
         public List<string> Both { get; set; } = new List<string>();
+        public List<string> Adult { get; set; } = new List<string>();
 
-        public AgeList Clean()
+        /// <summary>Whether what no list names is offered to elders as well as adults.</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public bool OthersForElders { get; set; }
+
+        public AgeList Clean(bool othersForElders)
         {
             List<string> Tidy(List<string> list) => (list ?? new List<string>()).Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => x.Trim().ToLowerInvariant()).Distinct().ToList();
-            return new AgeList() { Elder = Tidy(Elder), Both = Tidy(Both) };
+            return new AgeList() { Elder = Tidy(Elder), Both = Tidy(Both), Adult = Tidy(Adult), OthersForElders = othersForElders };
         }
 
         private static bool In(List<string> list, string name) => name != null && list.Contains(name.Trim().ToLowerInvariant());
@@ -32,10 +40,18 @@ namespace LifeStages
         /// <summary>For elders only.</summary>
         public bool ElderOnly(string name) => In(Elder, name);
 
+        /// <summary>For adults only.</summary>
+        public bool AdultOnly(string name) => In(Adult, name);
+
         /// <summary>May be offered for this stage. Only adults' and elders' are sorted.</summary>
         public bool Suits(string name, Stage stage)
         {
-            if (stage == Stage.Elder) return In(Elder, name) || In(Both, name);
+            if (stage == Stage.Elder)
+            {
+                if (In(Elder, name) || In(Both, name)) return true;
+                if (In(Adult, name)) return false;
+                return OthersForElders;
+            }
             if (stage == Stage.Adult) return !In(Elder, name);
             return true;
         }
@@ -86,9 +102,7 @@ namespace LifeStages
             try
             {
                 Use(JsonSerializer.Deserialize<LooksFile>(File.ReadAllText(path), Json));
-                string Count(int n, string one, string many) => n + " " + (n == 1 ? one : many);
-                return FileName + ": " + Count(Heads.Elder.Count, "head", "heads") + " for elders only, " + Heads.Both.Count + " for adults and elders; "
-                    + Count(Bodies.Elder.Count, "body", "bodies") + " for elders only, " + Bodies.Both.Count + " for adults and elders.";
+                return FileName + ": " + Describe(Heads, "head", "heads") + "; " + Describe(Bodies, "body", "bodies") + ".";
             }
             catch (Exception e)
             {
@@ -97,11 +111,23 @@ namespace LifeStages
             }
         }
 
-        /// <summary>Use these lists (the tests give their own). Null for none.</summary>
+        /// <summary>"15 heads for elders only, 13 for adults and elders": the lists that mean something for the kind.</summary>
+        private static string Describe(AgeList list, string one, string many)
+        {
+            var parts = new List<string>() { list.Elder.Count + " " + (list.Elder.Count == 1 ? one : many) + " for elders only" };
+            if (!list.OthersForElders || list.Both.Count > 0) parts.Add(list.Both.Count + " for adults and elders");
+            if (list.OthersForElders || list.Adult.Count > 0) parts.Add(list.Adult.Count + " for adults only");
+            return string.Join(", ", parts);
+        }
+
+        /// <summary>
+        /// Use these lists (the tests give their own). Null for none. Heads not listed are adults' only; bodies not
+        /// listed are anyone's.
+        /// </summary>
         public static void Use(LooksFile file)
         {
-            Heads = (file?.Heads ?? new AgeList()).Clean();
-            Bodies = (file?.Bodies ?? new AgeList()).Clean();
+            Heads = (file?.Heads ?? new AgeList()).Clean(othersForElders: false);
+            Bodies = (file?.Bodies ?? new AgeList()).Clean(othersForElders: true);
         }
     }
 }

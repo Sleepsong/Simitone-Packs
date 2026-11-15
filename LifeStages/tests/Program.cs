@@ -177,11 +177,14 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     Check("elders are offered theirs and those for both, in the game's order", Looks.Heads.Offer(heads, Stage.Elder).Select(i => heads[i]).SequenceEqual(new[] { "c003ma_old", "c004ma_helmet", "c005ma_bald" }));
     Check("names are matched whatever their capitals and spaces", Looks.Heads.ElderOnly("C003ma_OLD") && !Looks.Heads.ElderOnly("c004ma_helmet") && Looks.Heads.Suits("C005MA_BALD", Stage.Elder));
     Check("children's and teens' heads are not sorted", Looks.Heads.Suits("c003ma_old", Stage.Child) && Looks.Heads.Suits("c003ma_old", Stage.Teen));
-    Looks.Use(new LooksFile() { Bodies = new AgeList() { Elder = new List<string>() { "b800fafit_eldenmama" }, Both = new List<string>() { "b003fafit_coat" } } });
+    // bodies are the other way round from heads: what is not listed is anyone's
+    Looks.Use(new LooksFile() { Bodies = new AgeList() { Elder = new List<string>() { "b800fafit_eldenmama" }, Adult = new List<string>() { "B001FAFIT_jeans " } } });
     var gowns = new List<string>() { "b001fafit_jeans", "b800fafit_eldenmama", "b003fafit_coat" };
-    Check("an elder's body is not offered to adults, and elders are offered theirs and those for both",
-        Looks.Bodies.Offer(gowns, Stage.Adult).Select(i => gowns[i]).SequenceEqual(new[] { "b001fafit_jeans", "b003fafit_coat" })
-        && Looks.Bodies.Offer(gowns, Stage.Elder).Select(i => gowns[i]).SequenceEqual(new[] { "b800fafit_eldenmama", "b003fafit_coat" }));
+    Check("an elder's body is not offered to adults",
+        Looks.Bodies.Offer(gowns, Stage.Adult).Select(i => gowns[i]).SequenceEqual(new[] { "b001fafit_jeans", "b003fafit_coat" }));
+    Check("an adult's body is not offered to elders, and a body in no list is offered to both",
+        Looks.Bodies.Offer(gowns, Stage.Elder).Select(i => gowns[i]).SequenceEqual(new[] { "b800fafit_eldenmama", "b003fafit_coat" }) && Looks.Bodies.AdultOnly("b001fafit_jeans"));
+    Check("elders whose every body is kept for adults are offered them all", Looks.Bodies.Offer(new List<string>() { "b001fafit_jeans" }, Stage.Elder).Count == 1);
     Check("heads and bodies are listed apart", !Looks.Heads.ElderOnly("b800fafit_eldenmama") && Looks.Bodies.Offer(new List<string>() { "b001mafit_suit" }, Stage.Elder).Count == 1);
     Looks.Use(new LooksFile() { Heads = new AgeList() { Elder = new List<string>() { "C003MA_Old", "", null }, Both = new List<string>() { "c004ma_helmet ", "c005MA_bald" } } });
     Check("elders with none of their own in a list are offered every head", Looks.Heads.Offer(new List<string>() { "c001ma_kaj", "c002ma_ben" }, Stage.Elder).Count == 2);
@@ -193,7 +196,8 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     if (!File.Exists(shipped)) shipped = Path.Combine(Directory.GetCurrentDirectory(), "LifeStages", Looks.FileName);
     File.Copy(shipped, Path.Combine(dir, Looks.FileName));
     var said = Looks.Load(dir);
-    Check("the looks.json the pack ships reads: " + said, said == Looks.FileName + ": 15 heads for elders only, 13 for adults and elders; 3 bodies for elders only, 0 for adults and elders." && Looks.Heads.ElderOnly("c631ma_mobius")
+    Check("the looks.json the pack ships reads: " + said, said == Looks.FileName + ": 15 heads for elders only, 13 for adults and elders; 3 bodies for elders only, 44 for adults only." && Looks.Heads.ElderOnly("c631ma_mobius")
+        && Looks.Bodies.AdultOnly("b640fafitlgt_sakura") && Looks.Bodies.AdultOnly("b602fafit_hotwire") && Looks.Bodies.ElderOnly("b602faskn_cornelia") && Looks.Bodies.AdultOnly("b812mafit") && !Looks.Bodies.Suits("b709mafit_ct", Stage.Elder) && Looks.Bodies.Suits("b999mafit_unlisted", Stage.Elder)
         && Looks.Bodies.ElderOnly("b800fafit_eldenmama") && Looks.Bodies.ElderOnly("B602FASKN_Cornelia") && !Looks.Heads.ElderOnly("b800fafit_eldenmama") && Looks.Heads.ElderOnly("c805ma_brad") && Looks.Heads.ElderOnly("c004fa_gma1") && !Looks.Heads.ElderOnly("c001ma_kaj")
         && Looks.Heads.Suits("c002ma_baldfat", Stage.Adult) && Looks.Heads.Suits("c002ma_baldfat", Stage.Elder) && !Looks.Heads.Suits("c001ma_kaj", Stage.Elder));
     File.WriteAllText(Path.Combine(dir, Looks.FileName), "// mine\n{ \"heads\": { \"elder\": [\"c003ma_old\", \"c009fa_gran\",], \"Both\": [\"c004ma_helmet\"] }, \"Bodies\": { \"elder\": [\"b900fafit_shawl\"] } }");

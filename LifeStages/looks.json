@@ -1,14 +1,18 @@
-// Which of the game's adult heads and bodies are for elders.
+// Which of the game's adult heads and bodies are for adults, and which for elders.
 //
 // A head's or body's name is shown under the panel in Create a Sim, for example "c005ma_kaj" or
 // "b800fafit_eldenmama", and a head's under the heads in the head picker. Capitals do not matter. One
 // name covers every skin colour.
 //
-//   "elder"  only for elders: taken out of Adult in Create a Sim, and not given to a child who grows up.
-//   "both"   for adults and for elders: helmets, bald heads and others that suit either.
+// Heads:   "elder"  only for elders: taken out of Adult, and not given to a child who grows up.
+//          "both"   for adults and elders: helmets, bald heads and others that suit either.
+//          Any other head is for adults only.
 //
-// Elders are offered what is in the two lists. If neither has a head (or a body) of a Sim's sex, they
-// are offered every adult one.
+// Bodies:  "elder"  only for elders: taken out of Adult, and not given to a child who grows up.
+//          "adult"  only for adults: not offered to elders.
+//          Any other body is for adults and elders.
+//
+// If this leaves an elder of some sex no heads (or bodies), they are offered every adult one.
 // Edit this file in the pack's folder, then restart Simitone.
 {
   "heads": {
@@ -52,6 +56,52 @@
       "b800fafit_eldenmama",
       "b807fafit_ginia"
     ],
-    "both": []
+    "adult": [
+      "b007mafit_01",
+      "b008mafit_01",
+      "b063mafit_01",
+      "b200mafit_ctb",
+      "b209mafit_tattooman",
+      "b532mafit_fanpool",
+      "b590mafit_todd",
+      "b592mafit_tom",
+      "b709mafit_ct",
+      "b812mafit",
+
+      "b001fafit_01",
+      "b010fafit_01",
+      "b011fafit_01",
+      "b011faskn_01",
+      "b012fafat_01",
+      "b013fafit_01",
+      "b017fafat_01",
+      "b020fafit_teen",
+      "b022fafit_01",
+      "b024fafit_uber",
+      "b032fafit_rack",
+      "b046fafit_cowg",
+      "b200fafit_bwar",
+      "b208fafit_jenna",
+      "b325fafit_01",
+      "b481fafit_may",
+      "b482fafit_zoe",
+      "b526fafit_fanpool",
+      "b527fafit_fanpool",
+      "b528fafit_fanpool",
+      "b529fafit_fanpool",
+      "b530fafit_fanpool",
+      "b593fafit_holly",
+      "b602fafit_hotwire",
+      "b640fafitlgt_sakura",
+      "b711fafit_ct",
+      "b712fafit_ct",
+      "b715fafit_ct",
+      "b716fafit_ct",
+      "b812fafit",
+      "b828fafit_05",
+      "b832fafit_09",
+      "b834fafit_10",
+      "b899fafit_elisessx"
+    ]
   }
 }
