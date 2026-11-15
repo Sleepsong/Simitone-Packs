@@ -222,6 +222,11 @@ Check("writing nothing removes the file", PackStore.Write("sample.apartments", n
 Check("a bill is known by its name", Bills.IsBillName("Bills") && Bills.IsBillName("Bill - Electric") && Bills.IsBillName("*Bills") && Bills.IsBillName("Mailbox Bills"));
 Check("...and billiards, billboards and nothing are not bills", !Bills.IsBillName("Table - Billiards") && !Bills.IsBillName("Billboard") && !Bills.IsBillName("") && !Bills.IsBillName(null) && !Bills.IsBillName("Mailbox"));
 
+// ---- the apartment's part of the building's bill ----
+Check("the bill is shared by the value of what is in the apartment", Bills.PartOf(1101, 5000, 100000) == 55 && Bills.PartOf(1000, 50000, 100000) == 500);
+Check("...an empty apartment pays nothing of it, and a lot of nothing charges nothing", Bills.PartOf(1101, 0, 100000) == 0 && Bills.PartOf(1101, 10, 0) == 0 && Bills.PartOf(0, 10, 100) == 0);
+Check("...and never more than the whole bill", Bills.PartOf(1101, 200, 100) == 1101);
+
 // ---- what neighbours may be sent to do ----
 Check("neighbours may watch, sit, play and swim", Neighbours.IsForNeighbours("Watch TV") && Neighbours.IsForNeighbours("Sit") && Neighbours.IsForNeighbours("Play") && Neighbours.IsForNeighbours("Swim") && Neighbours.IsForNeighbours("Dance/Solo"));
 Check("...but nothing that costs, looks after the place, or takes things", !Neighbours.IsForNeighbours("Buy Soda") && !Neighbours.IsForNeighbours("Clean") && !Neighbours.IsForNeighbours("Repair") && !Neighbours.IsForNeighbours("Pick Up") && !Neighbours.IsForNeighbours("Sell") && !Neighbours.IsForNeighbours("Order Pizza") && !Neighbours.IsForNeighbours("Get Mail"));

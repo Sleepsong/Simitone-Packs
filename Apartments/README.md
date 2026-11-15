@@ -156,16 +156,21 @@ when they next come out or are played.
 Rent is the apartment's floor area times the lot's rate, for each game day. Nothing is taken by
 itself: it builds up, and comes with the bills the mail carrier brings, as the game's own bills do.
 When a new bill appears on the lot, the rent built up since the last is added to what is owed, and a
-message says the rent came with the mail. When the household pays its bills, the rent owed is paid
-with them; if there is not enough left for the rent, a message says so and it stays owed. The
-window's line for your household says what is owed, and has **Pay rent** for paying it on its own.
-If no bill has come with the mail for a week (no mailbox, say), the rent bill comes on its own. A
-household builds up no rent while it is a neighbour, or while it has no apartment. Moving into an
-apartment costs two days' rent, paid at once.
+message says the rent came with the mail. If no bill has come with the mail for a week (no mailbox,
+say), the rent bill comes on its own. A household builds up no rent while it is a neighbour, or while
+it has no apartment. Moving into an apartment costs two days' rent, paid at once.
 
-The game's bills are known by their name (a word in it is "bill" or "bills"). The rent is not yet
-shown on the bill itself: each bill that comes is written to the log with what it holds, to find out
-how it might be.
+**The bills.** The game works a bill out from the value of everything on the lot, which in a building
+is every apartment and every shared room, so on its own it charges you for the whole building. When
+you pay the bills, you pay your apartment's part: the bill, times the value of the things in your
+apartment over the value of the things on the lot. (Walls, floors, doors and windows, and everything
+in the shared rooms and in other apartments, are the building's.) The rent owed is paid with them, if
+there is the money; if not, a message says so and it stays owed. A message after paying says what
+the building's bill was, your part of it, and the rent. The window's line for your household says
+what rent is owed, and has **Pay rent** for paying it on its own.
+
+The game's bills are known by their name (a word in it is "bill" or "bills"). What the game's bill
+says on it is still the building's whole bill: the part you pay is worked out when you pay.
 
 ## Private apartments
 
@@ -239,7 +244,7 @@ Then send `Apartments.log` (the **Settings** page says where it is). It answers 
 | Does your household pay for what they do? | `Money: ... THAT IS A NEIGHBOUR` |
 | What do bills come to, and when? | `Money:` lines naming the mailbox or the bill |
 | Does rent build up each day, and come with the mail's bills? | `Rent:`, `The mail brought a bill` and `Rent bill with the mail` lines |
-| Is the rent paid with the bills? | `The bills were paid`, then `Rent paid with the bills` |
+| What do the bills come to? | `Bills paid: ... of the building's ... (Apartment ... holds ... of the lot's ... in things)` |
 | Does your Sim walk out to greet a visitor? | `... walks out to meet ... at the door` |
 | Does a visitor wait at your door instead of walking in? | `... was coming to ..., who is still at home: they wait at the door` |
 
@@ -268,8 +273,8 @@ misbehaves, switch it off: the rest of the pack carries on without it.
 ## What it does not do yet
 
 - **Building and buying are not kept to your own apartment.** You can change anything on the lot.
-- **Bills are the game's own**: one bill for the whole lot, paid by whoever is played, on top of the
-  rent. There is one mailbox for the building.
+- **The game's bill still shows the whole building's amount**; the part you pay is worked out when you
+  pay it. There is one mailbox for the building.
 - **One purse at a time.** A neighbouring household's money does not change while you play another.
   If the log shows neighbours spending yours, that is to be fixed, not intended.
 - **Unplayed households do not progress.** They are held as they are: no jobs, no bills, and their

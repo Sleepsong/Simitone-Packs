@@ -590,11 +590,20 @@ namespace Apartments
 
         // ---- 5. the game has one purse, the played household's. this only reports what reaches it ----
 
-        public static bool BeforeBudget(VMStackFrame context, out int __state, ref VMPrimitiveExitCode __result)
+        public static bool BeforeBudget(VMStackFrame context, VMPrimitiveOperand args, out int __state, ref VMPrimitiveExitCode __result)
         {
             var vm = context.VM;
             __state = vm.TS1State?.CurrentFamily?.Budget ?? 0;
             if (!Neighbours.IsShared(vm)) return true;
+            //the household paying its bills pays its apartment's part of the building's, and the rent with it
+            var paid = false;
+            var answer = VMPrimitiveExitCode.GOTO_TRUE;
+            Guard("paying the apartment's part of the bills", () => paid = Bills.PayBills(context, args, out answer));
+            if (paid)
+            {
+                __result = answer;
+                return false;
+            }
             //the household's money is the household's: a neighbour doing something that costs (or earns) money is told
             //there is none, as the game tells anyone who cannot afford a thing
             var neighbour = false;
@@ -623,7 +632,6 @@ namespace Apartments
             var neighbour = Neighbours.IsNeighbour(vm, context.Caller);
             AptLog.Write("Money: " + (change > 0 ? "+" : "") + change + " for the played household (now " + now + "). By " + who
                 + (what != who ? ", using " + what : "") + (neighbour ? ". THAT IS A NEIGHBOUR: the played household paid for them" : "") + ".");
-            Bills.AfterPayment(vm, context.Caller, context.Callee, change);
         }
 
         private static string NameOf(VMEntity entity)
