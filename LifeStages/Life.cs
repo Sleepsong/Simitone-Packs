@@ -28,7 +28,8 @@ namespace LifeStages
     ///   child  the game's own child.
     ///   teen   still a child to the game (age 15: school, a child's interactions), drawn larger.
     ///   adult  the game's own adult. Leaving childhood is the one real change: the Sim's own file is given an
-    ///          adult's head, body and hands (Body.cs), as the game does itself when a Sim buys clothes.
+    ///          adult's head, body and hands (Body.cs), as the game does itself when a Sim buys clothes. The
+    ///          player then chooses the head (UIHeadPicker.cs); the one chance gave is offered first.
     ///   elder  still an adult to the game (age 65). The player chooses an elder's head as they become one
     ///          (UIHeadPicker.cs), from the heads heads.json names for elders (Heads.cs).
     ///
@@ -180,19 +181,19 @@ namespace LifeStages
             var news = new List<string>();
             var ledger = Ledger;
             if (ledger == null || !ledger.Settings.Ageing || !AtHome(vm)) return news;
-            var elders = new List<VMAvatar>();
+            var choosers = new List<VMAvatar>();
             foreach (var avatar in Household(vm))
             {
                 if (CouldNotGrow.Contains(avatar.Object.OBJ.GUID)) continue;
-                if (Stages.Due(RecordOf(avatar), ledger.Settings)) GrowUp(vm, avatar, news, elders);
+                if (Stages.Due(RecordOf(avatar), ledger.Settings)) GrowUp(vm, avatar, news, choosers);
             }
-            if (news.Count > 0) Announce?.Invoke(vm, string.Join("\n", news), elders);
+            if (news.Count > 0) Announce?.Invoke(vm, string.Join("\n", news), choosers);
             return news;
         }
 
         /// <summary>
         /// Tells the player something happened on this lot, then lets them choose a head for each Sim who has just
-        /// become an elder. Set by the pack; nothing is told without it.
+        /// become an adult or an elder. Set by the pack; nothing is told without it.
         /// </summary>
         public static Action<VM, string, List<VMAvatar>> Announce;
 
@@ -206,9 +207,9 @@ namespace LifeStages
 
         /// <summary>
         /// Move a Sim to the next stage now. False, with the reason in news, if it cannot be done. A Sim who has
-        /// become an elder is added to elders, to choose their head.
+        /// become an adult or an elder is added to choosers, to choose their head.
         /// </summary>
-        public static bool GrowUp(VM vm, VMAvatar avatar, List<string> news, List<VMAvatar> elders = null)
+        public static bool GrowUp(VM vm, VMAvatar avatar, List<string> news, List<VMAvatar> choosers = null)
         {
             var ledger = Ledger;
             var sim = RecordOf(avatar);
@@ -235,8 +236,7 @@ namespace LifeStages
             var length = Stages.Length(sim.Stage, ledger.Settings);
             if (length > 0) line += " " + length + " days until " + Stages.Name(Stages.Next(sim.Stage, ledger.Settings).Value) + ".";
             news.Add(line);
-            if (newBody) news.Add("Not the look you wanted? Type age look in the console to choose another head.");
-            if (sim.Stage == Stage.Elder) elders?.Add(avatar);
+            if (newBody || sim.Stage == Stage.Elder) choosers?.Add(avatar);
             return true;
         }
 

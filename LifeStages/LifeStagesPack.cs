@@ -57,13 +57,13 @@ namespace LifeStages
                 throw;
             }
             Log.Write(Heads.Load(pack.Folder));
-            Life.Announce = (vm, message, elders) =>
+            Life.Announce = (vm, message, choosers) =>
             {
                 if (Screen?.vm != vm) return;
-                //the news first, then each new elder chooses their head, one after another
-                Say("Birthday", message, () => PickInTurn(vm, elders, 0));
+                //the news first, then each new adult and elder chooses their head, one after another
+                Say("Birthday", message, () => PickInTurn(vm, choosers, 0));
             };
-            Life.ChooseHead = OpenPicker;
+            Life.ChooseHead = (vm, avatar, closed) => OpenPicker(vm, avatar, closed);
             PackManager.RegisterCommand("age", Command);
             Log.Write("Life Stages loaded. Console: age help");
         }
@@ -176,14 +176,17 @@ namespace LifeStages
         private static void PickInTurn(VM vm, List<VMAvatar> sims, int index)
         {
             if (sims == null || index >= sims.Count) return;
-            if (!OpenPicker(vm, sims[index], () => PickInTurn(vm, sims, index + 1))) PickInTurn(vm, sims, index + 1);
+            var sim = sims[index];
+            var stage = Life.RecordOf(sim)?.Stage ?? Stage.Adult;
+            var title = sim.Name + " is now " + (stage == Stage.Elder ? "an elder" : "an adult") + ": choose a head";
+            if (!OpenPicker(vm, sim, () => PickInTurn(vm, sims, index + 1), title)) PickInTurn(vm, sims, index + 1);
         }
 
         /// <summary>
         /// The head picker for a grown Sim on the lot being played: their own head first, then the heads for their
         /// stage in their skin colour. False if it cannot be shown.
         /// </summary>
-        public static bool OpenPicker(VM vm, VMAvatar avatar, Action closed)
+        public static bool OpenPicker(VM vm, VMAvatar avatar, Action closed, string title = null)
         {
             var opened = false;
             Guard("opening the head picker", () =>
@@ -197,8 +200,7 @@ namespace LifeStages
                 var textures = ((TS1AvatarTextureProvider)FSO.Content.Content.Get().AvatarTextures).GetAllNames();
                 var heads = Body.Choices(worn.Mesh, worn.Tex, Life.AdultHeads(avatar), stage, skin, textures);
                 if (heads.Count == 0) return;
-                var title = stage == Stage.Elder ? avatar.Name + " is an elder: choose a head" : "Choose a head for " + avatar.Name;
-                var picker = new UIHeadPicker(avatar, vm, heads, title, closed);
+                var picker = new UIHeadPicker(avatar, vm, heads, title ?? "Choose a head for " + avatar.Name, closed);
                 GameThread.NextUpdate(x => UIScreen.GlobalShowDialog(picker, true));
                 opened = true;
             });
@@ -322,11 +324,11 @@ namespace LifeStages
                     var grower = Who(vm, words.Skip(1), out problem);
                     if (grower == null) return problem;
                     var news = new List<string>();
-                    var elders = new List<VMAvatar>();
-                    Life.GrowUp(vm, grower, news, elders);
-                    if (elders.Count > 0)
+                    var choosers = new List<VMAvatar>();
+                    Life.GrowUp(vm, grower, news, choosers);
+                    if (choosers.Count > 0)
                     {
-                        Say("Life Stages", string.Join("\n", news), () => PickInTurn(vm, elders, 0));
+                        Say("Life Stages", string.Join("\n", news), () => PickInTurn(vm, choosers, 0));
                         return null;
                     }
                     return string.Join("\n", news);

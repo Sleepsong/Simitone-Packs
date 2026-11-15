@@ -25,14 +25,15 @@ has; from there the pack takes over.
   of an evening they are home.
 - **Sims you already have** start at the beginning of the stage they are in: a child is on the first
   day of childhood, an adult on the first day of adulthood.
-- **Growing up** gives a child an adult's head and body, of the same sex and skin colour, picked by
-  chance from the ones the game has, leaving out the elders' heads. The Sims has no grown-up version of
-  a child's face, so the adult does not look like the child did. If you do not like the head, `age look`
-  in the console lets you choose another. Their name, skills, personality, relationships and needs carry
-  over.
-- **Growing old** opens a head picker once the birthday message is closed, like the game's dresser:
-  drag to turn the ring of heads, then OK. The Sim's own head is first, so Cancel, or OK on it, keeps
-  it. The heads offered are the elders' heads (below), in the Sim's sex and skin colour.
+- **Growing up** gives a child an adult's body, of the same sex and skin colour, picked by chance from
+  the ones the game has, and then lets you choose their head (below). The Sims has no grown-up version
+  of a child's face, so the adult does not look like the child did. Their name, skills, personality,
+  relationships and needs carry over.
+- **Choosing a head.** When a Sim becomes an adult or an elder, a head picker opens once the birthday
+  message is closed, like the game's dresser: drag to turn the ring of heads, then OK. The head the Sim
+  has is first (for a new adult, one picked by chance), so Cancel, or OK on it, keeps it. A new adult is
+  offered the adults' heads and a new elder the elders' heads (below), in the Sim's sex and skin colour.
+  `age look` in the console opens it again for any grown Sim.
 - **Sims from a household you played before** keep their stage when they visit: a teen is still drawn
   as a teen. They do not get older while you play someone else.
 
@@ -64,7 +65,7 @@ In Create a Sim the two age buttons are four, in the order of a life: **child** 
 - A teen is made from a child's heads and bodies, and an elder from an adult's: The Sims has no others.
   Teens are shown larger than children, as they will be in the game.
 - Elders are offered the elders' heads, and adults every head but those for elders only (see Elders'
-  heads). The name of the head shown is under the panel.
+  heads). The names of the head and body shown are under the panel.
 - In the family being made, a teen stands larger than a child.
 - Each Sim starts on the first day of their stage. The first time the family is played, the teens take
   on a teen's age and size and the elders an elder's.

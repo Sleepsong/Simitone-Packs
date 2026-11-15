@@ -53,8 +53,8 @@ namespace LifeStages
             public UIStencilButton Teen, Elder;
             /// <summary>The stage's name, under the buttons: the column's title is too narrow for it.</summary>
             public UILabel Name;
-            /// <summary>The name of the head chosen, under the panel: the names heads.json lists heads by.</summary>
-            public UILabel HeadName;
+            /// <summary>The names of the head and body chosen, under the panel: the names heads.json lists heads by.</summary>
+            public UILabel HeadName, BodyName;
         }
 
         private static readonly ConditionalWeakTable<UISimCASPanel, PanelAges> Panels = new ConditionalWeakTable<UISimCASPanel, PanelAges>();
@@ -130,15 +130,21 @@ namespace LifeStages
                 ages.Name.Position = new Vector2(244, below + ButtonSize + 8);
                 __instance.Add(ages.Name);
 
-                ages.HeadName = new UILabel();
-                ages.HeadName.CaptionStyle = __instance.SimAgeTitle.CaptionStyle.Clone();
-                ages.HeadName.CaptionStyle.Size = 14;
-                ages.HeadName.CaptionStyle.Shadow = true;
-                ages.HeadName.Size = Vector2.One;
-                ages.HeadName.Alignment = TextAlignment.Middle | TextAlignment.Center;
-                ages.HeadName.Position = new Vector2(295, 285); //the middle of the panel, just under it
-                ages.HeadName.Caption = "";
-                __instance.Add(ages.HeadName);
+                UILabel Readout(int y)
+                {
+                    var label = new UILabel();
+                    label.CaptionStyle = __instance.SimAgeTitle.CaptionStyle.Clone();
+                    label.CaptionStyle.Size = 14;
+                    label.CaptionStyle.Shadow = true;
+                    label.Size = Vector2.One;
+                    label.Alignment = TextAlignment.Middle | TextAlignment.Center;
+                    label.Position = new Vector2(295, y); //the middle of the panel, just under it
+                    label.Caption = "";
+                    __instance.Add(label);
+                    return label;
+                }
+                ages.HeadName = Readout(285);
+                ages.BodyName = Readout(305);
 
                 // the game's own two still do what they did (child or adult bodies); this says which stage
                 __instance.SimChildBtn.OnButtonClick += (b) => Choose(__instance, Stage.Child);
@@ -306,18 +312,27 @@ namespace LifeStages
             });
         }
 
-        /// <summary>While a Sim is being made, the head chosen is named under the panel: the name heads.json uses.</summary>
+        /// <summary>
+        /// While a Sim is being made, the head and body chosen are named under the panel: the names heads.json uses,
+        /// and Create a Sim takes, for the one in front.
+        /// </summary>
         private static void AfterScreenUpdate(TS1CASScreen __instance, UICASMode ___Mode)
         {
             var ages = AgesOf(__instance);
             if (ages?.HeadName == null) return;
-            var heads = __instance.ActiveHeads;
-            var show = ___Mode == UICASMode.SimEdit && heads != null && heads.Count > 0;
-            ages.HeadName.Visible = show;
+            var editing = ___Mode == UICASMode.SimEdit;
+            Name(ages.HeadName, "Head: ", editing ? __instance.ActiveHeads : null, __instance.HeadPosition);
+            Name(ages.BodyName, "Body: ", editing ? __instance.ActiveBodies : null, __instance.BodyPosition);
+        }
+
+        private static void Name(UILabel label, string what, List<string> list, float position)
+        {
+            var show = list != null && list.Count > 0;
+            label.Visible = show;
             if (!show) return;
-            var chosen = heads[(int)DirectionUtils.PosMod(Math.Round(__instance.HeadPosition + 8), heads.Count)];
-            var caption = "Head: " + chosen;
-            if (ages.HeadName.Caption != caption) ages.HeadName.Caption = caption;
+            //as Create a Sim's BuildMember takes them
+            var caption = what + list[(int)DirectionUtils.PosMod(Math.Round(position + 8), list.Count)];
+            if (label.Caption != caption) label.Caption = caption;
         }
 
         /// <summary>A Sim of the family being made, standing with the others: at their stage's size.</summary>
