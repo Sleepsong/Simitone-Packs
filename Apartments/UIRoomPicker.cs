@@ -82,7 +82,9 @@ namespace Apartments
         private LotTilePos TileUnderCursor()
         {
             var world = Lot.World;
-            var at = world.EstTileAtPosWithScroll(new Vector2(MousePosition.X, MousePosition.Y));
+            //(the world is drawn at the screen's size over the interface scale, as Simitone's own tools allow for: at 1 it
+            //made no difference, but on a larger screen every click landed on another tile)
+            var at = world.EstTileAtPosWithScroll(new Vector2(MousePosition.X, MousePosition.Y) / FSO.Common.FSOEnvironment.DPIScaleFactor);
             return LotTilePos.FromBigTile((short)Math.Floor(at.X), (short)Math.Floor(at.Y), world.State.Level);
         }
 

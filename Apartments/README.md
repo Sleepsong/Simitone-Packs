@@ -22,10 +22,11 @@ screen. If the window does not come up or looks wrong, everything still works fr
    build as usual. An apartment is a set of rooms, so give each one walls all the way round.
 2. **Make it an apartment building.** In build mode, open the **Apartments** tab (the door, after
    the game's own tabs) and press **Make building**.
-3. **Lay out the apartments.** Still on the Apartments tab, press **New apartment**, then click inside
-   each room that belongs to it, one after another. Press Esc (or the apartment's button again) when
-   you have finished. Each apartment has a button in its own colour: press it to add more rooms to it.
-   **Take rooms out** works the same way. To choose a room on another floor, change floor before
+3. **Lay out the apartments.** Still on the Apartments tab, press **New**, then click inside each
+   room that belongs to it, one after another. Press Esc (or the apartment's button again) when you
+   have finished. Each apartment has a button in its own colour: press it to add more rooms to it.
+   While an apartment's button is pressed, **Delete** deletes that apartment (its rooms become
+   shared). **Take out** takes the rooms you click out of their apartment. To choose a room on another floor, change floor before
    clicking. Every room you leave out is shared by everyone, and so is outdoors.
 
    While build mode is open, each apartment's floor is drawn on the lot in its colour, with a line

@@ -123,7 +123,17 @@ namespace Apartments
             }
             Broken = false;
             Rebuild();
+            var count = ByLevel.Sum(x => x.Length) / 6;
+            if (count != LastCount)
+            {
+                LastCount = count;
+                AptLog.Write("[overlay] Drawing the apartments on the lot: " + count + " shapes" + (ByLevel.Length > 1 ? " (" + string.Join(", ", ByLevel.Select((x, i) => "floor " + (i + 1) + ": " + x.Length / 6)) + ")" : "") + ".");
+            }
+            FirstDraw = true;
         }
+
+        private static int LastCount = -1;
+        private static bool FirstDraw;
 
         /// <summary>Stop drawing the apartments.</summary>
         public static void Hide()
@@ -244,6 +254,11 @@ namespace Apartments
                     if (HoverShape.Length >= 3 && HoverLevel <= state.Level) gd.DrawUserPrimitives(PrimitiveType.TriangleList, HoverShape, 0, HoverShape.Length / 3);
                 }
                 gd.DepthStencilState = DepthStencilState.Default;
+                if (FirstDraw)
+                {
+                    FirstDraw = false;
+                    AptLog.Write("[overlay] Drawn on the lot (" + state.CameraMode + " camera, floor " + state.Level + ").");
+                }
             }
             catch (Exception e)
             {

@@ -77,14 +77,16 @@ namespace Apartments
                     var target = apartment;
                     slots.Add(Tuple.Create(apartment.Name, "cat_build_arch.png", (Color?)LotOverlay.ColourOf(file, apartment), Choosing == apartment, (Action)(() => Choose(target, false))));
                 }
-                slots.Add(Tuple.Create("New apartment", "cat_build_wall.png", (Color?)null, false, (Action)NewApartment));
-                if (file.Apartments.Count > 0) slots.Add(Tuple.Create("Take rooms out", "cat_cancel.png", (Color?)null, TakingOut, (Action)(() => Choose(null, true))));
-                slots.Add(Tuple.Create("More...", "cat_other.png", (Color?)null, false, (Action)(() => UIApartmentsDialog.Open(UIApartmentsDialog.Tab.Apartments))));
+                slots.Add(Tuple.Create("New", "cat_other.png", (Color?)null, false, (Action)NewApartment));
+                if (file.Apartments.Count > 0) slots.Add(Tuple.Create("Take out", "cat_build_flor.png", (Color?)null, TakingOut, (Action)(() => Choose(null, true))));
+                var chosen = Choosing;
+                if (chosen != null) slots.Add(Tuple.Create("Delete", "cat_cancel.png", (Color?)null, false, (Action)(() => Delete(house, chosen))));
+                slots.Add(Tuple.Create("More...", "cat_misc.png", (Color?)null, false, (Action)(() => UIApartmentsDialog.Open(UIApartmentsDialog.Tab.Apartments))));
 
-                if (Choosing != null) text = "Click rooms on the lot to add them to " + Choosing.Name + ". The room under the cursor is shown in white. Press Esc, or " + Choosing.Name + " again, when you have finished.";
-                else if (TakingOut) text = "Click rooms on the lot to take them out of their apartment. Press Esc, or Take rooms out again, when you have finished.";
-                else if (file.Apartments.Count == 0) text = "Add the first apartment, then click each room that belongs to it. Every room you leave out is shared, and so is outdoors.";
-                else text = "Click an apartment, then click rooms on the lot to add them to it. Rooms with no colour are shared. More: names, tenants and rent.";
+                if (Choosing != null) text = "Click rooms on the lot to add them to " + Choosing.Name + ". The room under the cursor is shown in white. Press Esc, or " + Choosing.Name + " again, when you have finished. Delete: " + Choosing.Name + " is gone, and its rooms are shared.";
+                else if (TakingOut) text = "Take out: click rooms on the lot to take them out of their apartment. Press Esc, or Take out again, when you have finished.";
+                else if (file.Apartments.Count == 0) text = "New: add the first apartment, then click each room that belongs to it. Every room you leave out is shared, and so is outdoors.";
+                else text = "Press an apartment, then click rooms on the lot to add them to it (or press Delete). New: another apartment. Rooms with no colour are shared. More: names, tenants and rent.";
             }
 
             //narrower slots if there are many, so they still fit beside the words
@@ -109,7 +111,9 @@ namespace Apartments
                 Add(button);
                 Parts.Add(button);
 
-                var label = MakeLabel(item.Item1, 12, new Vector2(x + 32 - (slot - 4) / 2, 106), slot - 4, 1); //(centred under the button, which is 65 wide)
+                //centred under the button (65 wide); a lone button's label may be wider, having nothing beside it
+                var labelWidth = (slots.Count == 1) ? 200 : slot;
+                var label = MakeLabel(item.Item1, 12, new Vector2(x + 32 - labelWidth / 2, 106), labelWidth, 1);
                 label.Alignment = TextAlignment.Middle | TextAlignment.Center;
             }
 
@@ -140,6 +144,22 @@ namespace Apartments
         {
             Message = result;
             Build();
+        }
+
+        /// <summary>Delete an apartment, once the player has said so.</summary>
+        private void Delete(int house, Apartment apartment)
+        {
+            Actions.Confirm("Delete " + apartment.Name + "?",
+                "Its rooms become shared. " + (apartment.Vacant ? "Nobody lives in it." : (Actions.TenantText(house, apartment) + " live in it: they stay on the lot, with no apartment.")),
+                "Delete", () => ApartmentsPack.Guard("deleting an apartment", () =>
+                {
+                    UIRoomPicker.Stop();
+                    Choosing = null;
+                    TakingOut = false;
+                    Message = Actions.DeleteApartment(apartment);
+                    if (LotOverlay.On) Neighbours.Show(vm, true);
+                    if (Current == this) Build();
+                }));
         }
 
         private void NewApartment()
