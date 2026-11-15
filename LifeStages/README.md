@@ -26,7 +26,7 @@ has; from there the pack takes over.
 - **Sims you already have** start at the beginning of the stage they are in: a child is on the first
   day of childhood, an adult on the first day of adulthood.
 - **Growing up** gives a child an adult's head and body, of the same sex and skin colour, picked by
-  chance from the ones the game has. The Sims has no grown-up version of a child's face, so the adult
+  chance from the ones the game has, leaving out heads that are old already. The Sims has no grown-up version of a child's face, so the adult
   does not look like the child did. If you do not like the look, `age look` in the console picks
   another. Their name, skills, personality, relationships and needs carry over.
 - **Sims from a household you played before** keep their stage when they visit: a teen is still drawn
@@ -35,10 +35,13 @@ has; from there the pack takes over.
 ## Making Sims of each age
 
 In Create a Sim the two age buttons are four, in the order of a life: **child** and **teen** above,
-**adult** and **elder** below. The stage chosen is named over them ("Age: Teen").
+**adult** and **elder** below. The stage chosen is named under them.
 
 - A teen is made from a child's heads and bodies, and an elder from an adult's: The Sims has no others.
-  An elder's heads are shown with grey hair while you choose.
+  Teens are shown larger than children, as they will be in the game.
+- The game's adult heads that are old already, with grey or white hair, are the elders' heads: they come
+  first when Elder is chosen, and are not offered for adults. The other heads are offered to elders with
+  grey hair.
 - In the family being made, a teen stands larger than a child, and an elder has grey hair.
 - Each Sim starts on the first day of their stage. The first time the family is played, the teens take
   on a teen's age and size and the elders an elder's.
@@ -90,9 +93,11 @@ The settings are kept for each neighbourhood, as soon as you change them.
   do exactly what a child may do. Nothing is teen-only.
 - **An elder is an adult with grey hair.** They keep their job, and walk as they did.
 - **Grey hair is a guess.** A head's hair and face are one picture, so the pack looks for the hair in
-  it: large patches that are not the colour of the Sim's skin. Eyes, lips and the shine on a cheek are
-  small, so they are left as they were, and so are brows and a small moustache. Hair close to the skin's
-  own colour keeps some of it. `age grey off` if a head comes out badly.
+  it: large patches that are not the colour of the Sim's skin, and are a colour hair can be. Eyes, lips,
+  the inside of the ears and the shine on a cheek are left as they were, and so are brows and a small
+  moustache. A hat that is blue, green, purple or a bright colour keeps its colour; a black, brown or grey
+  hat looks like hair, and turns silver. A head whose skin cannot be told (paint, a mask) is left as it
+  is. `age grey off` if a head comes out badly.
 - **A new adult's other outfits** (formal, swimwear and so on) are the game's defaults for a new Sim.
 - Growing up while in the middle of something may look wrong until the Sim starts their next action.
 

@@ -32,7 +32,8 @@ namespace LifeStages
         /// <param name="heads">The game's adult heads for this sex (its "c" collection, type "ma" or "fa").</param>
         /// <param name="bodies">The game's adult bodies for this sex (its "b" collection, types starting "ma" or "fa").</param>
         /// <param name="textures">The names of all the game's skin textures.</param>
-        public static Dictionary<int, string> ChooseAdult(bool female, string skin, IEnumerable<string> heads, IEnumerable<string> bodies, IEnumerable<string> textures, Random random)
+        /// <param name="oldHead">Whether a head, by its texture's name, is old already: those are not given to a young adult.</param>
+        public static Dictionary<int, string> ChooseAdult(bool female, string skin, IEnumerable<string> heads, IEnumerable<string> bodies, IEnumerable<string> textures, Random random, Func<string, bool> oldHead = null)
         {
             var sex = female ? "f" : "m";
             var texnames = textures.ToList();
@@ -41,6 +42,11 @@ namespace LifeStages
             var headChoices = heads.Distinct()
                 .Select(x => new { Mesh = x, Tex = RemoveExt(texnames.FirstOrDefault(y => y.StartsWith(ExtractID(x, skin), StringComparison.OrdinalIgnoreCase))) })
                 .Where(x => x.Tex != null).ToList();
+            if (oldHead != null)
+            {
+                var young = headChoices.Where(x => !oldHead(x.Tex)).ToList();
+                if (young.Count > 0) headChoices = young;
+            }
             //the game files other things with its bodies (costumes, uniforms). only the three builds are everyday
             //bodies, and only they have the naked and underwear bodies an adult also needs
             var bodyChoices = bodies.Distinct()

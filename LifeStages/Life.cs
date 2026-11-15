@@ -361,9 +361,12 @@ namespace LifeStages
             var head = body.GetString(2) ?? "";
             var worn = avatar.HeadOutfit?.OftData?.TS1TextureID;
             var isGrey = worn != null && GreyHair.TryParse(worn, out _, out _);
-            var wantGrey = sim.Stage == Stage.Elder && settings.GreyHair && head.Contains('=');
+            var ownTexture = head.Contains('=') ? head.Substring(head.IndexOf('=') + 1) : null;
+            var skin = Body.SkinColour(body.GetString(14), avatar.GetPersonData(VMPersonDataVariable.SkinColor));
+            //a head that is old already keeps its own hair
+            var wantGrey = sim.Stage == Stage.Elder && settings.GreyHair && ownTexture != null && !GreyHair.IsOldHead(ownTexture, skin);
             if (wantGrey && !isGrey)
-                avatar.HeadOutfit = new VMOutfitReference(GreyHair.NameFor(head, Body.SkinColour(body.GetString(14), avatar.GetPersonData(VMPersonDataVariable.SkinColor))), true);
+                avatar.HeadOutfit = new VMOutfitReference(GreyHair.NameFor(head, skin), true);
             else if (!wantGrey && isGrey)
                 avatar.HeadOutfit = new VMOutfitReference(body, true);
         }
@@ -388,7 +391,8 @@ namespace LifeStages
                 var bodies = collections["b"].GeneralAvatarType(type);
                 var textures = ((TS1AvatarTextureProvider)content.AvatarTextures).GetAllNames();
 
-                var strings = Body.ChooseAdult(female, skin, heads, bodies, textures, new Random());
+                Func<string, bool> oldHead = VM.UseWorld ? (tex => GreyHair.IsOldHead(tex, skin)) : (Func<string, bool>)null;
+                var strings = Body.ChooseAdult(female, skin, heads, bodies, textures, new Random(), oldHead);
                 if (strings == null) throw new Exception("no adult " + (female ? "female" : "male") + " head and body with a \"" + skin + "\" texture were found (" + heads.Count + " heads, " + bodies.Count + " bodies looked at)");
 
                 foreach (var item in strings)
