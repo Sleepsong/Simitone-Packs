@@ -152,10 +152,41 @@ namespace LifeStages
             return Distance(x, y, ax + dx * t, ay + dy * t);
         }
 
-        /// <summary>The figure for a stage, Width wide and Height(stage) tall, a row at a time from the top.</summary>
-        public static byte[] Mask(Stage stage)
+        /// <summary>
+        /// A round Create a Sim button for a stage, size by size, a row at a time from the top: a ring, and a disc
+        /// with the stage's figure cut out of it, as Simitone's own adult and child buttons are drawn.
+        /// </summary>
+        public static byte[] Icon(Stage stage, int size)
         {
-            int h = Height(stage);
+            const float scale = 1.12f; //a button has more room than the age bar, but the adult must stay inside the disc
+            var figure = Mask(stage, scale);
+            int fw = ScaledWidth(scale), fh = ScaledHeight(stage, scale), fx = (size - fw) / 2, fy = (size - fh) / 2;
+            float c = size / 2f, outer = c, inner = c * 27.5f / 32f, disc = c * 23.5f / 32f; //the proportions of Simitone's own
+            var icon = new byte[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    var d = Distance(x + 0.5f, y + 0.5f, c, c);
+                    var ring = Math.Clamp(0.5f + outer - d, 0f, 1f) * Math.Clamp(0.5f + d - inner, 0f, 1f);
+                    var solid = Math.Clamp(0.5f + disc - d, 0f, 1f);
+                    int lx = x - fx, ly = y - fy;
+                    if (lx >= 0 && ly >= 0 && lx < fw && ly < fh) solid *= 1f - figure[ly * fw + lx] / 255f;
+                    icon[y * size + x] = (byte)Math.Round(Math.Max(ring, solid) * 255f);
+                }
+            }
+            return icon;
+        }
+
+        public static int ScaledWidth(float scale) => (int)Math.Ceiling(Width * scale);
+        public static int ScaledHeight(Stage stage, float scale) => (int)Math.Ceiling(Height(stage) * scale);
+
+        /// <summary>
+        /// The figure for a stage, a row at a time from the top: Width wide and Height(stage) tall, or larger by scale.
+        /// </summary>
+        public static byte[] Mask(Stage stage, float scale = 1f)
+        {
+            int h = Height(stage), sw = ScaledWidth(scale), sh = ScaledHeight(stage, scale);
             var elder = stage == Stage.Elder;
             float cx = Width / 2f - (elder ? 1.5f : 0f);
             float head = stage == Stage.Adult || elder ? 3.7f : 3.5f;
@@ -175,10 +206,10 @@ namespace LifeStages
                 return d;
             };
 
-            var mask = new byte[Width * h];
-            for (int y = 0; y < h; y++)
-                for (int x = 0; x < Width; x++)
-                    mask[y * Width + x] = (byte)Math.Round(Math.Clamp(0.5f - distance(x + 0.5f, y + 0.5f), 0f, 1f) * 255f);
+            var mask = new byte[sw * sh];
+            for (int y = 0; y < sh; y++)
+                for (int x = 0; x < sw; x++)
+                    mask[y * sw + x] = (byte)Math.Round(Math.Clamp(0.5f - distance((x + 0.5f) / scale, (y + 0.5f) / scale) * scale, 0f, 1f) * 255f);
             return mask;
         }
     }

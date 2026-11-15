@@ -79,6 +79,16 @@ namespace LifeStages
             return false;
         }
 
+        /// <summary>
+        /// The stage nearest to the one wanted that suits a body: Create a Sim knows only child and adult bodies,
+        /// and a teen is a child's, an elder an adult's.
+        /// </summary>
+        public static Stage Suiting(Stage wanted, bool childBody)
+        {
+            if (IsChildToGame(wanted) == childBody) return wanted;
+            return childBody ? Stage.Child : Stage.Adult;
+        }
+
         /// <summary>Whether an age the game holds already suits a stage, so that it need not be changed.</summary>
         public static bool AgeFits(Stage stage, short age) => FromGameAge(age) == stage;
 

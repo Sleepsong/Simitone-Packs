@@ -33,9 +33,9 @@ namespace LifeStages
     ///  3. The game has loaded a neighbourhood: forget the ages of the one before.
     ///  4. The game has saved: keep the ages with it.
     ///
-    /// and two more, which the pack can do without: a lot is left, so that days played and not saved are forgotten
-    /// with it; and the live panel changes what it shows, so that the Personality panel can be given the age
-    /// display (UIAgeDisplay.cs).
+    /// and more which the pack can do without: a lot is left, so that days played and not saved are forgotten with
+    /// it; the live panel changes what it shows, so that the Personality panel can be given the age display
+    /// (UIAgeDisplay.cs); and Create a Sim, so that it can make teens and elders (CreateASim.cs).
     ///
     /// Of Simitone's own pack calls it uses only OnLoad, the first there was, so it runs on any Simitone that can
     /// load a pack with code.
@@ -91,6 +91,21 @@ namespace LifeStages
                 "Days played on a lot that is left without saving are kept until Simitone is closed");
             Optional(() => harmony.Patch(Find(typeof(UIMainPanel), "SetSubpanel"), postfix: Mine(nameof(AfterSetSubpanel))),
                 "The age display is not available (the console still is: age)");
+
+            // teens and elders in Create a Sim: all of it or none, in a Harmony of its own so it can be taken off whole
+            var cas = new Harmony(harmony.Id + ".cas");
+            Optional(() =>
+            {
+                try
+                {
+                    CreateASim.Apply(cas);
+                }
+                catch
+                {
+                    cas.UnpatchAll(cas.Id);
+                    throw;
+                }
+            }, "Create a Sim makes only children and adults");
         }
 
         private static void Optional(Action patch, string without)

@@ -32,6 +32,20 @@ has; from there the pack takes over.
 - **Sims from a household you played before** keep their stage when they visit: a teen is still drawn
   as a teen and an elder still has grey hair. They do not get older while you play someone else.
 
+## Making Sims of each age
+
+In Create a Sim the two age buttons are four, in the order of a life: **child** and **teen** above,
+**adult** and **elder** below. The stage chosen is named over them ("Age: Teen").
+
+- A teen is made from a child's heads and bodies, and an elder from an adult's: The Sims has no others.
+  An elder's heads are shown with grey hair while you choose.
+- In the family being made, a teen stands larger than a child, and an elder has grey hair.
+- Each Sim starts on the first day of their stage. The first time the family is played, the teens take
+  on a teen's age and size and the elders an elder's.
+
+If this part of the pack does not fit your version of Simitone, Create a Sim stays as it was, with only
+child and adult, and the rest of the pack still works. `LifeStages.log` says so.
+
 ## Seeing a Sim's age
 
 Open the **Personality** panel in live mode. Beside the Sim's personality is their age, after The Sims
@@ -108,11 +122,14 @@ The engine is not changed. The pack patches it with Harmony in four places it ne
 3. **When the game loads a neighbourhood**, it forgets the ages of the one before.
 4. **When the game saves**, it writes its own file.
 
-and two it can do without, so a version of Simitone they do not fit costs only what they do:
+and some it can do without, so a version of Simitone they do not fit costs only what they do:
 
 5. **When a lot is left**, it reads its file again, so days that were not saved are dropped.
 6. **When the live panel changes what it shows**, it adds the age display to the Personality panel, in
    the space Simitone leaves empty there.
+7. **In Create a Sim**, it puts four age buttons in place of two, shows elders' heads grey and teens
+   larger, and when the family is made, writes each Sim's stage into its file. These patches are put
+   on together and taken off together.
 
 The game's scripts ask one thing of a Sim's age: under 18 is a child. So a teen is given 15 and an
 elder 65, and every object in the game goes on working. A teen's size is the game's own size setting
@@ -126,6 +143,7 @@ for a Sim.
 | `Body.cs` | Choosing the head and body a child grows into |
 | `GreyHair.cs` | The grey copy of a head |
 | `AgeView.cs` | What the age display shows: its words, the bar's segments, and the figures |
+| `CreateASim.cs` | Making teens and elders in Create a Sim |
 | `UIAgeDisplay.cs` | Drawing the age display, in Simitone's UI colours and with figures drawn in code |
 | `LifeStagesPack.cs` | The patches and the console |
 

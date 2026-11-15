@@ -28,6 +28,15 @@ catch (TargetInvocationException e) { Console.WriteLine("FAILED: " + e.InnerExce
 var patched = h.GetPatchedMethods().Select(m => m.DeclaringType.Name + "." + m.Name).ToList();
 foreach (var needed in new[] { "VM.Tick", "TS1AvatarTextureProvider.Get", "TS1NeighborhoodProvider.InitSpecific", "TS1GameScreen.Save", "TS1GameScreen.ExitLot", "UIMainPanel.SetSubpanel" })
     Check("patched " + needed, patched.Contains(needed));
+// the Create a Sim patches are optional to the pack, but should fit the Simitone this is built against
+{
+    var cas = new Harmony("test.lifestages.cas");
+    try { CreateASim.Apply(cas); Check("the Create a Sim patches fit", true); }
+    catch (Exception e) { Check("the Create a Sim patches fit: " + e.Message, false); }
+    var casPatched = cas.GetPatchedMethods().Select(m => m.DeclaringType.Name + "." + m.Name).ToList();
+    foreach (var needed in new[] { "UISimCASPanel..ctor", "UISimCASPanel.UpdateType", "UISimCASPanel.SetTab", "TS1CASScreen.BuildMember", "TS1CASScreen.PrepareEdit", "TS1CASScreen.SetHead", "TS1CASScreen.SetFamilyMember", "TS1CASScreen.CASToNeighGen", "SimitoneNeighbourGenerator.CreateFamily" })
+        Check("patched " + needed, casPatched.Contains(needed));
+}
 // the per-tick hook must be harmless on a lot it knows nothing about
 Life.AfterTick(null);
 Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(null));
@@ -307,6 +316,55 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
         var views = new[] { AgeView.For(new SimAge() { Stage = Stage.Child, Days = 5 }, s, true, 12, W), teen, due, elder, AgeView.For(new SimAge() { Stage = Stage.Adult, Days = 10 }, s, false, 12, W), none };
         File.WriteAllLines(Path.Combine(args[at + 1], "views.txt"), views.Select(v => v.Key));
     }
+}
+
+// ---- Create a Sim ----
+{
+    Check("a body keeps the stage chosen when it suits it", Stages.Suiting(Stage.Teen, true) == Stage.Teen && Stages.Suiting(Stage.Elder, false) == Stage.Elder && Stages.Suiting(Stage.Child, true) == Stage.Child);
+    Check("and a body that does not suit it gives the nearest that does", Stages.Suiting(Stage.Elder, true) == Stage.Child && Stages.Suiting(Stage.Teen, false) == Stage.Adult);
+
+    // a family of four, one of each stage, made as Create a Sim makes it
+    FSO.Common.FSOEnvironment.UserDir = Path.Combine(Path.GetTempPath(), "age-cas-" + Guid.NewGuid().ToString("n"));
+    var hood = Path.Combine(FSO.Common.FSOEnvironment.UserDir, "UserData/");
+    Directory.CreateDirectory(hood);
+    var oldPath = Life.NeighbourhoodPath;
+    Life.NeighbourhoodPath = () => hood;
+    var stages = new[] { Stage.Child, Stage.Teen, Stage.Adult, Stage.Elder };
+    var members = stages.Select((st, i) => new Simitone.Client.UI.Screens.CASFamilyMember() { Name = "Sim" + i, Gender = (short)((i % 2) | (Stages.IsChildToGame(st) ? 2 : 0)), SkinColor = "med" }).ToList();
+    for (int i = 0; i < 4; i++) CreateASim.SetStageOf(members[i], stages[i]);
+    var unseen = new Simitone.Client.UI.Screens.CASFamilyMember() { Gender = 3 };
+    Check("a Sim the pack did not see is what their body says", CreateASim.StageOf(unseen) == Stage.Child && CreateASim.StageOf(new Simitone.Client.UI.Screens.CASFamilyMember() { Gender = 1 }) == Stage.Adult);
+    var infos = members.Select(m => { var info = new FSO.SimAntics.Utils.SimTemplateCreateInfo((m.Gender % 2 == 0 ? "m" : "f") + (m.Gender > 1 ? "c" : "a") + "fit", "med"); CreateASim.AfterCASToNeighGen(m, info); return info; }).ToArray();
+    Check("each Sim's file says their age: " + string.Join(", ", infos.Select(x => x.BodyStringReplace[13])), infos.Select(x => x.BodyStringReplace[13]).SequenceEqual(new[] { "9", "15", "27", "65" }));
+    Check("and a teen is still made with a child's body, an elder with an adult's", infos[1].BodyStringReplace[0] == "child" && infos[3].BodyStringReplace[0] == "adult");
+    var fam = new FSO.Files.Formats.IFF.Chunks.FAMI() { FamilyGUIDs = new uint[] { 0x1001, 0x1002, 0x1003, 0x1004 } };
+    var before = Ledger.Read("sample.lifestages", hood);
+    before.Meet(0x2000, 27).Days = 12;
+    before.Write("sample.lifestages", hood);
+    CreateASim.AfterCreateFamily(fam, infos);
+    var after = Ledger.Read("sample.lifestages", hood);
+    Check("the new family is in the record at once, each at their stage on their first day",
+        Enumerable.Range(0, 4).All(i => after.Find(fam.FamilyGUIDs[i])?.Stage == stages[i] && after.Find(fam.FamilyGUIDs[i]).Days == 0));
+    Check("and the Sims already there are as they were", after.Find(0x2000)?.Days == 12 && after.Sims.Count == 5);
+    CreateASim.AfterCreateFamily(new FSO.Files.Formats.IFF.Chunks.FAMI() { FamilyGUIDs = new uint[] { 0x3001 } }, new[] { new FSO.SimAntics.Utils.SimTemplateCreateInfo("mafit", "lgt") });
+    Check("a family made some other way is left to be met as usual", Ledger.Read("sample.lifestages", hood).Find(0x3001) == null);
+    Life.NeighbourhoodPath = oldPath;
+    Directory.Delete(FSO.Common.FSOEnvironment.UserDir, true);
+
+    // the buttons
+    const int B = CreateASim.ButtonSize;
+    foreach (Stage st in Enum.GetValues(typeof(Stage)))
+    {
+        var icon = Figures.Icon(st, B);
+        byte At(int x, int y) => icon[y * B + x];
+        Check("the " + Stages.Name(st) + " button: a ring, a gap, a disc, and the figure cut out of it",
+            icon.Length == B * B && At(B / 2, 1) > 200 && At(B / 2, (int)(B / 2 * (1 - 25.5f / 32))) < 40 && At(B / 2 - 14, B / 2) > 200 && At(B / 2, 7) > 100
+            && At(B / 2, B / 2) < 60 && At(0, 0) == 0);
+    }
+    var pat2 = Array.IndexOf(args, "--preview");
+    if (pat2 >= 0 && pat2 + 1 < args.Length)
+        foreach (Stage st in Enum.GetValues(typeof(Stage)))
+            File.WriteAllBytes(Path.Combine(args[pat2 + 1], "button-" + Stages.Name(st) + ".pgm"), System.Text.Encoding.ASCII.GetBytes("P5\n" + B + " " + B + "\n255\n").Concat(Figures.Icon(st, B)).ToArray());
 }
 
 // ---- the console, with no game running ----

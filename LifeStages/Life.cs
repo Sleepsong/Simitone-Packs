@@ -49,7 +49,7 @@ namespace LifeStages
         {
             get
             {
-                var path = Content.Get()?.Neighborhood?.UserPath;
+                var path = NeighbourhoodPath();
                 if (path == null) return null;
                 if (Current == null || CurrentPath != path)
                 {
@@ -75,6 +75,27 @@ namespace LifeStages
         public static void Saved()
         {
             if (Current != null && CurrentPath != null) Current.Write(PackId, CurrentPath);
+        }
+
+        /// <summary>Where the loaded neighbourhood is kept. The tests put another in its place.</summary>
+        public static Func<string> NeighbourhoodPath = () => Content.Get()?.Neighborhood?.UserPath;
+
+        /// <summary>
+        /// Sims have just been made, in Create a Sim, each at a stage: keep them in the record on its first day. The
+        /// game saves a new family at once, so the record is written at once too, without unsaved days with it.
+        /// </summary>
+        public static void Born(IEnumerable<(uint Guid, Stage Stage)> sims)
+        {
+            var path = NeighbourhoodPath();
+            if (path == null) return;
+            var list = sims.ToList();
+            if (list.Count == 0) return;
+            var saved = Ledger.Read(PackId, path);
+            foreach (var sim in list) saved.Sims[Ledger.Key(sim.Guid)] = new SimAge() { Stage = sim.Stage, Days = 0 };
+            saved.Write(PackId, path);
+            if (Current != null && CurrentPath == path)
+                foreach (var sim in list) Current.Sims[Ledger.Key(sim.Guid)] = new SimAge() { Stage = sim.Stage, Days = 0 };
+            Log.Write("Made in Create a Sim: " + string.Join(", ", list.Select(x => Stages.Name(x.Stage))) + ".");
         }
 
         /// <summary>The player changed a setting: keep it now, whether or not the game is saved.</summary>
