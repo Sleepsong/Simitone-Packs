@@ -198,10 +198,10 @@ namespace LifeStages
         public static Action<VM, string, List<VMAvatar>> Announce;
 
         /// <summary>
-        /// Opens the head picker for a grown Sim, offering the heads for their stage; when it is closed, calls the
-        /// action given, if any. Set by the pack; false where there is nothing to show it on.
+        /// Opens the head or outfit picker for a grown Sim, offering those for their stage; when it is closed, calls
+        /// the action given, if any. Set by the pack; false where there is nothing to show it on.
         /// </summary>
-        public static Func<VM, VMAvatar, Action, bool> ChooseHead;
+        public static Func<VM, VMAvatar, LookKind, Action, bool> ChooseLook;
 
         // ---- putting a stage on a Sim ----
 
@@ -256,6 +256,57 @@ namespace LifeStages
             Log.Write(avatar.Name + " has a new head: " + mesh + ".");
         }
 
+        /// <summary>
+        /// Give a Sim another everyday outfit, one of the game's: written into the Sim's file, with its hands, as the
+        /// game writes clothes bought. A body of another build brings that build's other outfits (naked, swimwear
+        /// and so on), as for a new Sim. Worn at once if the Sim is in their everyday clothes.
+        /// </summary>
+        public static void SetBody(VMAvatar avatar, string mesh, string texture, string hands)
+        {
+            var body = BodyStrings(avatar);
+            if (body == null || body.Length <= 22 || string.IsNullOrEmpty(mesh) || string.IsNullOrEmpty(texture)) return;
+            var line = mesh + ",BODY=" + texture;
+            if (body.GetString(1) == line) return;
+            var sex = avatar.GetPersonData(VMPersonDataVariable.Gender) == 1 ? "f" : "m";
+            var skin = Body.SkinColour(body.GetString(14), avatar.GetPersonData(VMPersonDataVariable.SkinColor));
+            var oldBuild = Body.BuildOf(Body.Worn(body.GetString(1)).Mesh)?.ToLowerInvariant();
+            var newBuild = Body.BuildOf(mesh)?.ToLowerInvariant();
+
+            body.SetString(1, line);
+            var hg = string.IsNullOrEmpty(hands) ? skin : hands;
+            body.SetString(17, "H" + sex + "LO,HAND=huao" + hg);
+            body.SetString(18, "H" + sex + "RO,HAND=huao" + hg);
+            body.SetString(19, "H" + sex + "LP,HAND=huao" + hg);
+            body.SetString(20, "H" + sex + "RP,HAND=huao" + hg);
+            body.SetString(21, "H" + sex + "LO,HAND=huao" + hg);
+            body.SetString(22, "H" + sex + "RC,HAND=huao" + hg);
+            if (newBuild != null && newBuild != oldBuild)
+            {
+                var others = new FSO.SimAntics.Utils.SimTemplateCreateInfo(sex + "a" + newBuild, skin).BodyStringReplace;
+                foreach (var key in new[] { 15, 16, 27, 28, 29, 30, 31, 32, 33, 34 })
+                    if (others.TryGetValue(key, out var value) && key < body.Length) body.SetString(key, value);
+            }
+            Content.Get().Neighborhood.AvatarChanged(avatar.Object.OBJ.GUID);
+
+            var everyday = new VMOutfitReference(body, false);
+            avatar.DefaultSuits.Daywear = everyday;
+            if (avatar.GetPersonData(VMPersonDataVariable.CurrentOutfit) == 0) avatar.BodyOutfit = everyday;
+            Log.Write(avatar.Name + " has a new outfit: " + mesh + ".");
+        }
+
+        /// <summary>
+        /// The game's adult everyday outfits of a Sim's sex, in the build they have now (as the dresser offers), or
+        /// in every build if theirs is not one.
+        /// </summary>
+        public static List<string> AdultBodies(VMAvatar avatar)
+        {
+            var sex = avatar.GetPersonData(VMPersonDataVariable.Gender) == 1 ? "fa" : "ma";
+            var bodies = Content.Get().BCFGlobal.CollectionsByName["b"];
+            var build = Body.BuildOf(Body.Worn(BodyStrings(avatar)?.GetString(1)).Mesh)?.ToLowerInvariant();
+            if (build != null && bodies.ClothesByAvatarType.TryGetValue(sex + build, out var same)) return same.ToList();
+            return bodies.GeneralAvatarType(sex);
+        }
+
         /// <summary>The adult heads of a Sim's sex, as the game files them.</summary>
         public static List<string> AdultHeads(VMAvatar avatar)
         {
@@ -264,15 +315,15 @@ namespace LifeStages
         }
 
         /// <summary>
-        /// Let the player choose another head for a grown Sim: an adult's from the adults' heads, an elder's from the
-        /// elders'. Growing up picks one by chance, and the player may not like what chance gave. Returns what to
-        /// tell the player.
+        /// Let the player choose another head or everyday outfit for a grown Sim, from those for their stage. Growing
+        /// up picks by chance, and the player may not like what chance gave. Returns what to tell the player.
         /// </summary>
-        public static string NewLook(VM vm, VMAvatar avatar)
+        public static string NewLook(VM vm, VMAvatar avatar, LookKind kind)
         {
             var sim = RecordOf(avatar);
-            if (Stages.IsChildToGame(sim.Stage)) return avatar.Name + " is " + Article(sim.Stage) + ". Only a grown Sim can choose another head.";
-            if (ChooseHead == null || !ChooseHead(vm, avatar, null)) return "The head picker could not be opened. LifeStages.log says why.";
+            var what = kind == LookKind.Head ? "head" : "outfit";
+            if (Stages.IsChildToGame(sim.Stage)) return avatar.Name + " is " + Article(sim.Stage) + ". Only a grown Sim can choose another " + what + ".";
+            if (ChooseLook == null || !ChooseLook(vm, avatar, kind, null)) return "The " + what + " picker could not be opened. LifeStages.log says why.";
             return null;
         }
 

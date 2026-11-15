@@ -29,11 +29,13 @@ has; from there the pack takes over.
   the ones the game has (but not the elders' own), and then lets you choose their head (below). The Sims has no grown-up version
   of a child's face, so the adult does not look like the child did. Their name, skills, personality,
   relationships and needs carry over.
-- **Choosing a head.** When a Sim becomes an adult or an elder, a head picker opens once the birthday
-  message is closed, like the game's dresser: drag to turn the ring of heads, then OK. The head the Sim
-  has is first (for a new adult, one picked by chance), so Cancel, or OK on it, keeps it. A new adult is
-  offered the adults' heads and a new elder the elders' heads (Elders' heads and clothes), in the Sim's sex and skin colour.
-  `age look` in the console opens it again for any grown Sim.
+- **Choosing a head, and an elder's outfit.** When a Sim becomes an adult or an elder, a head picker
+  opens once the birthday message is closed, like the game's dresser: drag to turn the ring, then OK.
+  What the Sim has now is first (for a new adult, a head picked by chance), so Cancel, or OK on it,
+  keeps it. A new adult is offered the adults' heads and a new elder the elders' heads (Elders' heads and
+  clothes), in the Sim's sex and skin colour. A new elder then chooses an everyday outfit the same way,
+  from the outfits of their build that are not kept for adults. `age look` and `age outfit` in the
+  console open the pickers again for any grown Sim.
 - **Sims from a household you played before** keep their stage when they visit: a teen is still drawn
   as a teen. They do not get older while you play someone else.
 
@@ -57,19 +59,23 @@ Heads and bodies work the other way round from each other:
 | **both** | For adults and elders, such as helmets and bald heads | (Every body not listed already is) |
 | **adult** | (Every head not listed already is) | For adults only: not offered for elders |
 | Not listed | For adults only | For adults and elders |
+| **child** | A child's head for children only: not offered for teens | A child's body, the same |
 
 So elders choose from a short list of heads, and from every body but those kept for adults. If the
 lists leave elders of a sex no head (or no body), they are offered every adult one.
 
-A head's and a body's names are shown under the panel in Create a Sim while you scroll them, and a
-head's under the heads in the head picker. One name covers every skin colour, and capitals do not
+A head's and a body's names are shown under the panel in Create a Sim while you scroll them, and
+under the ring in the head and outfit pickers. One name covers every skin colour, and capitals do not
 matter. Restart Simitone after changing the file.
 
 The pack comes with fifteen heads for elders only, chosen in the game: seven men's (`c029ma_elwd`,
 `c032ma_warn`, `c202ma_oldgypsyman`, `c207ma_oldtraveler`, `c631ma_mobius`, `c803ma_gunter`,
-`c805ma_brad`) and eight women's (`c004fa_gma1`, `c028fa_delo`, `c029fa_lynn`, `c205fa_madame`, `c800fa_eldenmama`, `c802fa_cornelia`, `c804fa_tiffany`,
-`c807fa_ginia`). And three women's bodies for elders only (`b602faskn_cornelia`, `b800fafit_eldenmama`,
-`b807fafit_ginia`), and 44 bodies for adults only: 10 men's and 34 women's, listed in the file.
+`c805ma_brad`) and eight women's (`c004fa_gma1`, `c028fa_delo`, `c029fa_lynn`, `c205fa_madame`,
+`c800fa_eldenmama`, `c802fa_cornelia`, `c804fa_tiffany`, `c807fa_ginia`). And three women's bodies for elders only (`b602faskn_cornelia`, `b800fafit_eldenmama`,
+`b807fafit_ginia`), and 44 bodies for adults only: 10 men's and 34 women's, listed in the file. And
+for children only, not teens: three heads (`c009fc_wizd`, `c009mc_wizd`, `c202mc_funjake`) and five
+bodies (`b013fcchd_wizd`, `b013mcchd_wizd`, `b202mcchd_funjake`, `b203mcchd_creepyben`,
+`b806mcchd_junior`).
 
 It also comes with thirteen men's heads for adults and elders: bald heads, helmets and others that suit
 either (`c002ma_baldfat`, `c007ma_gpa1`, `c206ma_carnieguy`, `c499ma_waylon`, `c537ma_fanpoolbald`,
@@ -114,13 +120,14 @@ Open the cheat console (Ctrl+Shift+C):
 | `age` | See everyone in your household: stage, day, and days left |
 | `age up` | Move a Sim to the next stage now |
 | `age look` | Choose another head for a grown Sim, in the head picker: from the adults' heads for an adult, the elders' for an elder |
+| `age outfit` | Choose another everyday outfit for a grown Sim, in the outfit picker: from those of their build for their stage |
 | `age day 5` | Put a Sim on a day of the stage they are in, for example to spread out a family's birthdays |
 | `age days` | See how long the stages last. `age days adult 40` changes one |
 | `age off` / `age on` | Stop and start the days counting. Nothing is forgotten while it is off |
 | `age teens off` | Have children grow straight into adults |
 | `age help` | See this list in the game |
 
-`age up`, `age look` and `age day` are for the selected Sim. To name one instead, put the name last:
+`age up`, `age look`, `age outfit` and `age day` are for the selected Sim. To name one instead, put the name last:
 `age up Bella`, `age day 5 Bella`.
 
 The settings are kept for each neighbourhood, as soon as you change them.
@@ -135,7 +142,9 @@ The settings are kept for each neighbourhood, as soon as you change them.
   do exactly what a child may do. Nothing is teen-only.
 - **An elder is an adult with an older head, if you give them one.** They keep their job, and walk as
   they did.
-- **The head picker shows the whole Sim**, as the dresser does, so the heads are small.
+- **The pickers show the whole Sim**, as the dresser does, so the heads are small.
+- **An elder's outfit is of their own build**, as the dresser offers. Their other outfits (formal,
+  swimwear and so on) are not changed.
 - **A new adult's other outfits** (formal, swimwear and so on) are the game's defaults for a new Sim.
 - Growing up while in the middle of something may look wrong until the Sim starts their next action.
 
@@ -148,7 +157,7 @@ so if you leave a lot without saving, the days played there are not counted.
 It does change the game's own files in two ways, when the game saves:
 
 - A Sim who leaves childhood has an adult's head and body written into their character file, in the
-  way the game writes one when a Sim buys clothes. So does a head chosen in the head picker. This cannot
+  way the game writes one when a Sim buys clothes. So does a head or outfit chosen in the pickers. This cannot
   be undone, except by choosing again.
 - A teen's age (15) and size, and an elder's age (65), are written where the game keeps a Sim's age.
 
@@ -173,7 +182,8 @@ and some it can do without, so a version of Simitone they do not fit costs only 
    teens larger and the head's name, and when the family is made, writes each Sim's stage into its file.
    These patches are put on together and taken off together.
 
-The head picker is Simitone's own outfit picker with heads in place of bodies, and needs no patch.
+The head and outfit pickers are Simitone's own outfit picker, with the pack's choice of what is offered,
+and need no patch.
 
 The game's scripts ask one thing of a Sim's age: under 18 is a child. So a teen is given 15 and an
 elder 65, and every object in the game goes on working. A teen's size is the game's own size setting
@@ -186,7 +196,7 @@ for a Sim.
 | `Life.cs` | What is done in the game: counting days, and putting a stage on a Sim |
 | `Body.cs` | Choosing the head and body a child grows into |
 | `Looks.cs` | Reading `looks.json`: which heads and bodies are for elders |
-| `UIHeadPicker.cs` | The head picker |
+| `UILookPicker.cs` | The head and outfit pickers |
 | `AgeView.cs` | What the age display shows: its words, the bar's segments, and the figures |
 | `CreateASim.cs` | Making teens and elders in Create a Sim |
 | `UIAgeDisplay.cs` | Drawing the age display, in Simitone's UI colours and with figures drawn in code |

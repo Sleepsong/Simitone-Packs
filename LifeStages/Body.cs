@@ -97,6 +97,43 @@ namespace LifeStages
             return result;
         }
 
+        /// <summary>
+        /// The everyday outfits to offer a grown Sim choosing a new one: the one they wear first, so that keeping it is
+        /// the choice already made, then those for their stage that can be worn in their skin colour, each with its
+        /// hands' picture. Costumes and uniforms are not everyday outfits, as for a Sim who grows up.
+        /// </summary>
+        /// <param name="bodyLine">The Sim's everyday outfit line ("mesh,BODY=picture").</param>
+        /// <param name="handLine">The Sim's left hand line ("HfLO,HAND=huaolgt").</param>
+        public static List<Look> Outfits(string bodyLine, string handLine, IEnumerable<string> bodies, Stage stage, string skin, IEnumerable<string> textures)
+        {
+            var texnames = textures as IList<string> ?? textures.ToList();
+            var list = bodies.Distinct().ToList();
+            List<Look> Everyday(IEnumerable<string> names) => names
+                .Where(x => BuildOf(x) != null)
+                .Select(x => (Mesh: x, Tex: RemoveExt(texnames.FirstOrDefault(y => y.StartsWith(ExtractID(x, skin), StringComparison.OrdinalIgnoreCase)))))
+                .Where(x => x.Tex != null)
+                .Select(x => new Look(x.Mesh, x.Tex, HandsFor(x.Tex, skin, texnames))).ToList();
+            var offered = Everyday(Looks.Bodies.Offer(list, stage).Select(i => list[i]));
+            if (offered.Count == 0) offered = Everyday(list);
+
+            var result = new List<Look>();
+            var worn = Worn(bodyLine);
+            if (!string.IsNullOrEmpty(worn.Mesh) && !string.IsNullOrEmpty(worn.Tex))
+            {
+                var hands = Worn(handLine).Tex;
+                if (hands != null && hands.StartsWith("huao", StringComparison.OrdinalIgnoreCase)) hands = hands.Substring(4);
+                result.Add(new Look(worn.Mesh, worn.Tex, string.IsNullOrEmpty(hands) ? skin : hands));
+            }
+            result.AddRange(offered.Where(x => !string.Equals(x.Mesh, worn.Mesh, StringComparison.OrdinalIgnoreCase)));
+            return result;
+        }
+
+        /// <summary>The hands that go with an outfit's picture, as Create a Sim finds them: "lgt", or a glove's.</summary>
+        public static string HandsFor(string bodyTex, string skin, IEnumerable<string> textures)
+        {
+            return (RemoveExt(textures.FirstOrDefault(y => string.Equals(RemoveExt(y), "huao" + FindHG(bodyTex), StringComparison.OrdinalIgnoreCase))) ?? "huao" + skin).Substring(4);
+        }
+
         /// <summary>The head a Sim wears, from their body strings' head line ("mesh,HEAD-HEAD=picture").</summary>
         public static (string Mesh, string Tex) Worn(string headLine)
         {
@@ -116,9 +153,15 @@ namespace LifeStages
         /// </summary>
         public static string BuildOf(string body)
         {
+            if (string.IsNullOrEmpty(body)) return null;
+            //the part before the first underscore, or all of it ("b812mafit"), less a skin colour some put there
+            //("b640fafitlgt_sakura")
             var ind = body.IndexOf('_');
-            if (ind < 3) return null;
-            var build = body.Substring(ind - 3, 3);
+            var type = ind < 0 ? body : body.Substring(0, ind);
+            foreach (var skin in SkinColours)
+                if (type.EndsWith(skin, StringComparison.OrdinalIgnoreCase)) type = type.Substring(0, type.Length - skin.Length);
+            if (type.Length < 3) return null;
+            var build = type.Substring(type.Length - 3);
             return Builds.Contains(build.ToLowerInvariant()) ? build : null;
         }
 

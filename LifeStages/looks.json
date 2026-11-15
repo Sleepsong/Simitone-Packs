@@ -12,6 +12,9 @@
 //          "adult"  only for adults: not offered to elders.
 //          Any other body is for adults and elders.
 //
+// Children's heads and bodies:
+//          "child"  only for children: not offered for teens.
+//
 // If this leaves an elder of some sex no heads (or bodies), they are offered every adult one.
 // Edit this file in the pack's folder, then restart Simitone.
 {
@@ -48,6 +51,11 @@
       "c626ma_gdipilot",
       "c639ma_ravmutant",
       "c899ma_macssx"
+    ],
+    "child": [
+      "c009fc_wizd",
+      "c009mc_wizd",
+      "c202mc_funjake"
     ]
   },
   "bodies": {
@@ -55,6 +63,13 @@
       "b602faskn_cornelia",
       "b800fafit_eldenmama",
       "b807fafit_ginia"
+    ],
+    "child": [
+      "b013fcchd_wizd",
+      "b013mcchd_wizd",
+      "b202mcchd_funjake",
+      "b203mcchd_creepyben",
+      "b806mcchd_junior"
     ],
     "adult": [
       "b007mafit_01",

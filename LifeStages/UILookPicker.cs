@@ -24,28 +24,42 @@ using System.Collections.Generic;
 
 namespace LifeStages
 {
-    /// <summary>
-    /// Choosing a grown Sim's head, as the game's dresser and clothes shops choose an outfit: copies of the Sim stand
-    /// in a ring, each with one of the heads on offer, and are turned by dragging. The head the Sim has now is the
-    /// first, so OK on it, or Cancel, keeps it. The head's name is shown under the ring.
-    ///
-    /// It is Simitone's own outfit picker (UISelectSkinAlert) with heads in place of bodies.
-    /// </summary>
-    public class UIHeadPicker : UIMobileDialog
-    {
-        private readonly UIHeadPickerPanel Panel;
+    /// <summary>What a look picker offers: heads, or everyday outfits (bodies).</summary>
+    public enum LookKind { Head, Body }
 
-        public UIHeadPicker(VMAvatar target, VM vm, List<(string Mesh, string Tex)> heads, string title, Action closed)
+    /// <summary>One head or outfit on offer: its mesh, its picture, and for an outfit its hands' picture.</summary>
+    public struct Look
+    {
+        public string Mesh, Tex, Hands;
+        public Look(string mesh, string tex, string hands = null) { Mesh = mesh; Tex = tex; Hands = hands; }
+    }
+
+    /// <summary>
+    /// Choosing a grown Sim's head or everyday outfit, as the game's dresser and clothes shops choose an outfit:
+    /// copies of the Sim stand in a ring, each with one of those on offer, and are turned by dragging. What the Sim
+    /// has now is the first, so OK on it, or Cancel, keeps it. Its name is shown under the ring.
+    ///
+    /// It is Simitone's own outfit picker (UISelectSkinAlert), for heads as well as bodies, and with the pack's own
+    /// choice of what is offered.
+    /// </summary>
+    public class UILookPicker : UIMobileDialog
+    {
+        private readonly UILookPickerPanel Panel;
+
+        public UILookPicker(VMAvatar target, VM vm, LookKind kind, List<Look> looks, string title, Action closed)
         {
             Caption = title;
             SetHeight(600);
-            Panel = new UIHeadPickerPanel(target, vm, heads);
+            Panel = new UILookPickerPanel(target, vm, kind, looks);
             Panel.Position = new Vector2((Width - 1030) / 2, 110);
             Panel.OnResult += (chosen) =>
             {
-                LifeStagesPack.Guard("giving a Sim the head chosen", () =>
+                LifeStagesPack.Guard("giving a Sim the " + (kind == LookKind.Head ? "head" : "outfit") + " chosen", () =>
                 {
-                    if (chosen > 0) Life.SetHead(target, heads[chosen].Mesh, heads[chosen].Tex);
+                    if (chosen <= 0) return;
+                    var look = looks[chosen];
+                    if (kind == LookKind.Head) Life.SetHead(target, look.Mesh, look.Tex);
+                    else Life.SetBody(target, look.Mesh, look.Tex, look.Hands);
                 });
                 Panel.Cleanup();
                 Close();
@@ -61,11 +75,12 @@ namespace LifeStages
         }
     }
 
-    public class UIHeadPickerPanel : UIContainer
+    public class UILookPickerPanel : UIContainer
     {
         private const int Ring = 18;
         private readonly VM Vm;
-        private readonly List<(string Mesh, string Tex)> Heads;
+        private readonly LookKind Kind;
+        private readonly List<Look> Looks;
         private readonly BasicCamera Camera;
         private readonly _3DTargetScene Scene;
         private readonly VMAvatar[] Avatars = new VMAvatar[Ring];
@@ -77,12 +92,13 @@ namespace LifeStages
         /// <summary>The place in the list of the head chosen, or -1 for Cancel.</summary>
         public event Action<int> OnResult;
 
-        public int Chosen => (int)DirectionUtils.PosMod(Math.Round(Position + 8), Heads.Count);
+        public int Chosen => (int)DirectionUtils.PosMod(Math.Round(Position + 8), Looks.Count);
 
-        public UIHeadPickerPanel(VMAvatar target, VM vm, List<(string Mesh, string Tex)> heads)
+        public UILookPickerPanel(VMAvatar target, VM vm, LookKind kind, List<Look> looks)
         {
             Vm = vm;
-            Heads = heads;
+            Kind = kind;
+            Looks = looks;
             Camera = new BasicCamera(GameFacade.GraphicsDevice, new Vector3(5, 1, 0), new Vector3(0, 0, 0), new Vector3(0, 1, 0));
             Camera.NearPlane = 0.001f;
             Scene = new _3DTargetScene(GameFacade.GraphicsDevice, Camera, new Point(1030, 500), (GlobalSettings.Default.AntiAlias > 0) ? 8 : 0);
@@ -94,10 +110,11 @@ namespace LifeStages
                 var copy = (VMAvatar)vm.Context.CreateObjectInstance(target.Object.OBJ.GUID, LotTilePos.OUT_OF_WORLD, Direction.NORTH, true).BaseObject;
                 copy.SetValue(VMStackObjectVariable.Hidden, 1);
                 if (target.BodyOutfit != null) copy.BodyOutfit = target.BodyOutfit;
+                if (target.HeadOutfit != null) copy.HeadOutfit = target.HeadOutfit;
                 Scene.Add(copy.Avatar);
                 Avatars[i] = copy;
             }
-            for (int i = 0; i < Ring; i++) SetHead(Avatars[i], 17 - i);
+            for (int i = 0; i < Ring; i++) Wear(Avatars[i], 17 - i);
 
             Name = new UILabel();
             Name.CaptionStyle = Name.CaptionStyle.Clone();
@@ -123,10 +140,38 @@ namespace LifeStages
             Add(cancel);
         }
 
-        private void SetHead(VMAvatar avatar, int i)
+        private void Wear(VMAvatar avatar, int i)
         {
-            var head = Heads[(int)DirectionUtils.PosMod(i, Heads.Count)];
-            avatar.HeadOutfit = new VMOutfitReference(new Outfit() { TS1AppearanceID = head.Mesh + ".apr", TS1TextureID = head.Tex });
+            var look = Looks[(int)DirectionUtils.PosMod(i, Looks.Count)];
+            var outfit = new Outfit() { TS1AppearanceID = look.Mesh + ".apr", TS1TextureID = look.Tex };
+            if (Kind == LookKind.Head)
+            {
+                avatar.HeadOutfit = new VMOutfitReference(outfit);
+                return;
+            }
+            //an outfit brings its own hands, as Create a Sim's and the dresser's do
+            var sex = avatar.GetPersonData(VMPersonDataVariable.Gender) == 1 ? "f" : "m";
+            var hg = look.Hands ?? "lgt";
+            outfit.LiteralHandgroup = new HandGroup()
+            {
+                TS1HandSet = true,
+                LightSkin = new HandSet()
+                {
+                    LeftHand = new Hand()
+                    {
+                        Idle = new Gesture() { Name = "h" + sex + "lo.apr", TexName = "huao" + hg },
+                        Pointing = new Gesture() { Name = "h" + sex + "lp.apr", TexName = "huap" + hg },
+                        Fist = new Gesture() { Name = "h" + sex + "lc.apr", TexName = "huac" + hg }
+                    },
+                    RightHand = new Hand()
+                    {
+                        Idle = new Gesture() { Name = "h" + sex + "ro.apr", TexName = "huao" + hg },
+                        Pointing = new Gesture() { Name = "h" + sex + "rp.apr", TexName = "huap" + hg },
+                        Fist = new Gesture() { Name = "h" + sex + "rc.apr", TexName = "huac" + hg }
+                    }
+                }
+            };
+            avatar.BodyOutfit = new VMOutfitReference(outfit);
         }
 
         /// <summary>The copies of the Sim are taken out of the lot when the picker is closed.</summary>
@@ -177,7 +222,7 @@ namespace LifeStages
             if (Chosen != ShownName)
             {
                 ShownName = Chosen;
-                Name.Caption = Heads[Chosen].Mesh + (Chosen == 0 ? " (the head they have now)" : "");
+                Name.Caption = Looks[Chosen].Mesh + (Chosen == 0 ? (Kind == LookKind.Head ? " (the head they have now)" : " (what they wear now)") : "");
             }
         }
 
@@ -224,7 +269,7 @@ namespace LifeStages
             var total = Math.Abs(current - PositionLast);
             for (int i = 0; i < total; i++)
             {
-                SetHead(Avatars[replacePos], increment == -1 ? PositionLast - 1 : PositionLast + 17);
+                Wear(Avatars[replacePos], increment == -1 ? PositionLast - 1 : PositionLast + 17);
                 PositionLast += increment;
                 replacePos = ((replacePos - increment) + Ring) % Ring;
             }

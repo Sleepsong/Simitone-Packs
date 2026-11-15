@@ -197,8 +197,9 @@ namespace LifeStages
                 else
                 {
                     Show(panel, ages);
-                    //same body, another stage: an adult and an elder are offered different heads
-                    if ((before == Stage.Elder) != (stage == Stage.Elder) && UIScreen.Current is TS1CASScreen screen && screen.vm != null)
+                    //same body, another stage: an adult and an elder, or a child and a teen, are offered different heads
+                    //and bodies
+                    if (before != stage && UIScreen.Current is TS1CASScreen screen && screen.vm != null)
                         OfferAgain.Invoke(screen, new object[] { screen.CurrentCode });
                 }
                 if (UIScreen.Current is TS1CASScreen shown) Size(shown, ages.Stage);
@@ -256,8 +257,8 @@ namespace LifeStages
         }
 
         /// <summary>
-        /// What Create a Sim offers has been chosen. For adults and elders the pack keeps the heads and bodies for the
-        /// stage, by looks.json. New lists, not the old ones changed: Create a Sim's lists are the game's own, which the
+        /// What Create a Sim offers has been chosen. The pack keeps the heads and bodies for the stage, by looks.json:
+        /// adults' and elders', and children's and teens'. New lists, not the old ones changed: Create a Sim's lists are the game's own, which the
         /// rest of the game uses too.
         /// </summary>
         private static void AfterPopulateSimType(TS1CASScreen __instance, string simtype)
@@ -266,7 +267,8 @@ namespace LifeStages
             {
                 var ages = AgesOf(__instance);
                 if (ages == null || simtype == null || simtype.Length < 2 || __instance.ActiveHeads == null) return;
-                if (simtype[1] == 'a')
+                // adults and elders are sorted, and children and teens
+                if (simtype[1] == 'a' || simtype[1] == 'c')
                 {
                     var changed = false;
                     var heads = __instance.ActiveHeads;

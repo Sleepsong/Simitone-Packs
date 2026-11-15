@@ -63,7 +63,7 @@ namespace LifeStages
                 //the news first, then each new adult and elder chooses their head, one after another
                 Say("Birthday", message, () => PickInTurn(vm, choosers, 0));
             };
-            Life.ChooseHead = (vm, avatar, closed) => OpenPicker(vm, avatar, closed);
+            Life.ChooseLook = (vm, avatar, kind, closed) => OpenPicker(vm, avatar, kind, closed);
             PackManager.RegisterCommand("age", Command);
             Log.Write("Life Stages loaded. Console: age help");
         }
@@ -171,36 +171,52 @@ namespace LifeStages
         private const int MostFailuresLogged = 20;
         private static int Failures;
 
-        // ---- choosing a head ----
+        // ---- choosing a head and an outfit ----
 
+        /// <summary>
+        /// Each Sim who has just grown up chooses, one after another: a new adult their head, a new elder their head
+        /// and then their everyday outfit.
+        /// </summary>
         private static void PickInTurn(VM vm, List<VMAvatar> sims, int index)
         {
             if (sims == null || index >= sims.Count) return;
             var sim = sims[index];
-            var stage = Life.RecordOf(sim)?.Stage ?? Stage.Adult;
-            var title = sim.Name + " is now " + (stage == Stage.Elder ? "an elder" : "an adult") + ": choose a head";
-            if (!OpenPicker(vm, sim, () => PickInTurn(vm, sims, index + 1), title)) PickInTurn(vm, sims, index + 1);
+            var elder = (Life.RecordOf(sim)?.Stage ?? Stage.Adult) == Stage.Elder;
+            var now = sim.Name + " is now " + (elder ? "an elder" : "an adult");
+            Action next = () => PickInTurn(vm, sims, index + 1);
+            Action outfit = () =>
+            {
+                if (!OpenPicker(vm, sim, LookKind.Body, next, now + ": choose an outfit")) next();
+            };
+            var then = elder ? outfit : next;
+            if (!OpenPicker(vm, sim, LookKind.Head, then, now + ": choose a head")) then();
         }
 
         /// <summary>
-        /// The head picker for a grown Sim on the lot being played: their own head first, then the heads for their
-        /// stage in their skin colour. False if it cannot be shown.
+        /// The head or outfit picker for a grown Sim on the lot being played: what they have now first, then those
+        /// for their stage in their skin colour. False if it cannot be shown.
         /// </summary>
-        public static bool OpenPicker(VM vm, VMAvatar avatar, Action closed, string title = null)
+        public static bool OpenPicker(VM vm, VMAvatar avatar, LookKind kind, Action closed, string title = null)
         {
             var opened = false;
-            Guard("opening the head picker", () =>
+            Guard("opening the " + (kind == LookKind.Head ? "head" : "outfit") + " picker", () =>
             {
                 if (vm == null || Screen?.vm != vm || !VM.UseWorld || avatar == null || avatar.Dead) return;
                 var body = Life.BodyStrings(avatar);
-                if (body == null || body.Length <= 14) return;
+                if (body == null || body.Length <= 22) return;
                 var stage = Life.RecordOf(avatar)?.Stage ?? Stage.Adult;
                 var skin = Body.SkinColour(body.GetString(14), avatar.GetPersonData(FSO.SimAntics.Model.VMPersonDataVariable.SkinColor));
-                var worn = Body.Worn(body.GetString(2));
-                var textures = ((TS1AvatarTextureProvider)FSO.Content.Content.Get().AvatarTextures).GetAllNames();
-                var heads = Body.Choices(worn.Mesh, worn.Tex, Life.AdultHeads(avatar), stage, skin, textures);
-                if (heads.Count == 0) return;
-                var picker = new UIHeadPicker(avatar, vm, heads, title ?? "Choose a head for " + avatar.Name, closed);
+                var textures = ((TS1AvatarTextureProvider)FSO.Content.Content.Get().AvatarTextures).GetAllNames().ToList();
+                List<Look> looks;
+                if (kind == LookKind.Head)
+                {
+                    var worn = Body.Worn(body.GetString(2));
+                    looks = Body.Choices(worn.Mesh, worn.Tex, Life.AdultHeads(avatar), stage, skin, textures).Select(x => new Look(x.Mesh, x.Tex)).ToList();
+                }
+                else looks = Body.Outfits(body.GetString(1), body.GetString(17), Life.AdultBodies(avatar), stage, skin, textures);
+                if (looks.Count == 0) return;
+                title ??= (kind == LookKind.Head ? "Choose a head for " : "Choose an outfit for ") + avatar.Name;
+                var picker = new UILookPicker(avatar, vm, kind, looks, title, closed);
                 GameThread.NextUpdate(x => UIScreen.GlobalShowDialog(picker, true));
                 opened = true;
             });
@@ -215,6 +231,7 @@ namespace LifeStages
             "age - everyone in your household: stage, day, and days left\n" +
             "age up [name] - move a Sim to the next stage now\n" +
             "age look [name] - choose another head for a grown Sim\n" +
+            "age outfit [name] - choose another everyday outfit for a grown Sim\n" +
             "age day [number] [name] - put a Sim on a day of their stage\n" +
             "age days [child|teen|adult] [number] - how many days a stage lasts\n" +
             "age on / age off - whether days count\n" +
@@ -336,7 +353,13 @@ namespace LifeStages
                 case "look":
                     if (vm == null) return NeedsLot;
                     var looker = Who(vm, words.Skip(1), out problem);
-                    return looker == null ? problem : Life.NewLook(vm, looker);
+                    return looker == null ? problem : Life.NewLook(vm, looker, LookKind.Head);
+
+                case "outfit":
+                case "clothes":
+                    if (vm == null) return NeedsLot;
+                    var dresser = Who(vm, words.Skip(1), out problem);
+                    return dresser == null ? problem : Life.NewLook(vm, dresser, LookKind.Body);
 
                 case "day":
                     if (vm == null) return NeedsLot;

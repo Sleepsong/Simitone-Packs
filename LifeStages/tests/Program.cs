@@ -161,6 +161,8 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     var dressed = Enumerable.Range(0, 100).Select(i => Body.ChooseAdult(true, "lgt", heads, bodies, textures, random)).ToList();
     Check("a body for elders only is not given to a young adult", dressed.All(x => x[1].StartsWith("B003FASkn_03")));
     Looks.Use(null);
+    Check("a build is found in names without an underscore, or with a skin colour in them",
+        Body.BuildOf("b812mafit") == "fit" && Body.BuildOf("b640fafitlgt_sakura") == "fit" && Body.BuildOf("b017fafat_01") == "fat" && Body.BuildOf("b013fcchd_wizd") == null && Body.BuildOf(null) == null);
     Check("a costume or uniform is not an everyday body", Body.BuildOf("B900FACop_Uniform") == null && Body.BuildOf("odd") == null && Body.BuildOf("b001mafit_01") == "fit" && Body.BuildOf("B002FAFat_02") == "Fat");
     var lower = Body.ChooseAdult(false, "lgt", new[] { "c010ma_bob" }, new[] { "b010mafit_01" }, new[] { "C010MALGT_BOB.BMP", "B010MAFITLGT_01.BMP" }, random);
     Check("names are matched whatever their case", lower != null && lower[12] == "male" && lower[17] == "HmLO,HAND=huaolgt");
@@ -185,6 +187,14 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     Check("an adult's body is not offered to elders, and a body in no list is offered to both",
         Looks.Bodies.Offer(gowns, Stage.Elder).Select(i => gowns[i]).SequenceEqual(new[] { "b800fafit_eldenmama", "b003fafit_coat" }) && Looks.Bodies.AdultOnly("b001fafit_jeans"));
     Check("elders whose every body is kept for adults are offered them all", Looks.Bodies.Offer(new List<string>() { "b001fafit_jeans" }, Stage.Elder).Count == 1);
+    // children's things: some are for children only, not teens
+    Looks.Use(new LooksFile() { Heads = new AgeList() { Child = new List<string>() { "C009MC_wizd" } }, Bodies = new AgeList() { Child = new List<string>() { "b013mcchd_wizd" } } });
+    var kids = new List<string>() { "c001mc_tim", "c009mc_wizd" };
+    Check("a child's own head is offered to children and not teens",
+        Looks.Heads.Offer(kids, Stage.Child).Count == 2 && Looks.Heads.Offer(kids, Stage.Teen).Select(i => kids[i]).SequenceEqual(new[] { "c001mc_tim" }));
+    Check("and so is a child's own body", !Looks.Bodies.Suits("b013mcchd_wizd", Stage.Teen) && Looks.Bodies.Suits("b013mcchd_wizd", Stage.Child) && Looks.Bodies.Suits("b001mcchd_jeans", Stage.Teen));
+    Check("children's lists change nothing for adults and elders", Looks.Heads.Suits("c009mc_wizd", Stage.Adult) && Looks.Bodies.Suits("b013mcchd_wizd", Stage.Elder));
+    Looks.Use(new LooksFile() { Bodies = new AgeList() { Elder = new List<string>() { "b800fafit_eldenmama" }, Adult = new List<string>() { "B001FAFIT_jeans " } } });
     Check("heads and bodies are listed apart", !Looks.Heads.ElderOnly("b800fafit_eldenmama") && Looks.Bodies.Offer(new List<string>() { "b001mafit_suit" }, Stage.Elder).Count == 1);
     Looks.Use(new LooksFile() { Heads = new AgeList() { Elder = new List<string>() { "C003MA_Old", "", null }, Both = new List<string>() { "c004ma_helmet ", "c005MA_bald" } } });
     Check("elders with none of their own in a list are offered every head", Looks.Heads.Offer(new List<string>() { "c001ma_kaj", "c002ma_ben" }, Stage.Elder).Count == 2);
@@ -196,7 +206,8 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     if (!File.Exists(shipped)) shipped = Path.Combine(Directory.GetCurrentDirectory(), "LifeStages", Looks.FileName);
     File.Copy(shipped, Path.Combine(dir, Looks.FileName));
     var said = Looks.Load(dir);
-    Check("the looks.json the pack ships reads: " + said, said == Looks.FileName + ": 15 heads for elders only, 13 for adults and elders; 3 bodies for elders only, 44 for adults only." && Looks.Heads.ElderOnly("c631ma_mobius")
+    Check("the looks.json the pack ships reads: " + said, said == Looks.FileName + ": 15 heads for elders only, 13 for adults and elders, 3 for children only; 3 bodies for elders only, 44 for adults only, 5 for children only."
+        && Looks.Heads.ChildOnly("c202mc_funjake") && Looks.Bodies.ChildOnly("b806mcchd_junior") && !Looks.Bodies.Suits("b013fcchd_wizd", Stage.Teen) && Looks.Bodies.Suits("b013fcchd_wizd", Stage.Child) && Looks.Heads.ElderOnly("c631ma_mobius")
         && Looks.Bodies.AdultOnly("b640fafitlgt_sakura") && Looks.Bodies.AdultOnly("b602fafit_hotwire") && Looks.Bodies.ElderOnly("b602faskn_cornelia") && Looks.Bodies.AdultOnly("b812mafit") && !Looks.Bodies.Suits("b709mafit_ct", Stage.Elder) && Looks.Bodies.Suits("b999mafit_unlisted", Stage.Elder)
         && Looks.Bodies.ElderOnly("b800fafit_eldenmama") && Looks.Bodies.ElderOnly("B602FASKN_Cornelia") && !Looks.Heads.ElderOnly("b800fafit_eldenmama") && Looks.Heads.ElderOnly("c805ma_brad") && Looks.Heads.ElderOnly("c004fa_gma1") && !Looks.Heads.ElderOnly("c001ma_kaj")
         && Looks.Heads.Suits("c002ma_baldfat", Stage.Adult) && Looks.Heads.Suits("c002ma_baldfat", Stage.Elder) && !Looks.Heads.Suits("c001ma_kaj", Stage.Elder));
@@ -221,6 +232,17 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     var adultChoices = Body.Choices("c002ma_ben", "c002malgt_ben", heads, Stage.Adult, "lgt", textures);
     Check("an adult is offered their own once, and no elder's: " + string.Join(", ", adultChoices.Select(x => x.Mesh)),
         adultChoices.Select(x => x.Mesh).SequenceEqual(new[] { "c002ma_ben", "c001ma_kaj", "c004ma_helmet" }));
+    // the outfits offered in the picker: the one worn first, with its hands, then the stage's, each once
+    Looks.Use(new LooksFile() { Bodies = new AgeList() { Elder = new List<string>() { "b800fafit_eldenmama" }, Adult = new List<string>() { "b020fafit_teen" } } });
+    var clothes = new List<string>() { "b001fafit_01", "b020fafit_teen", "b800fafit_eldenmama", "b900facop_uniform" };
+    var clothTex = new[] { "b001fafitlgt_01.bmp", "b020fafitlgt_teen.bmp", "b800fafitlgt_eldenmama.bmp", "b900facoplgt_uniform.bmp", "huaolgt.bmp", "huao_eldenmama.bmp" };
+    var elderClothes = Body.Outfits("b001fafit_01,BODY=b001fafitlgt_01", "HfLO,HAND=huaolgt", clothes, Stage.Elder, "lgt", clothTex);
+    Check("an elder is offered what they wear first, then theirs and anyone's, not an adult's or a uniform: " + string.Join(", ", elderClothes.Select(x => x.Mesh)),
+        elderClothes.Select(x => x.Mesh).SequenceEqual(new[] { "b001fafit_01", "b800fafit_eldenmama" }) && elderClothes[0].Hands == "lgt");
+    Check("an outfit comes with its own hands, if it has gloves", elderClothes[1].Hands == "_eldenmama" && elderClothes[1].Tex == "b800fafitlgt_eldenmama");
+    var adultClothes = Body.Outfits("b020fafit_teen,BODY=b020fafitlgt_teen", null, clothes, Stage.Adult, "lgt", clothTex);
+    Check("an adult is offered theirs and anyone's, not an elder's: " + string.Join(", ", adultClothes.Select(x => x.Mesh)),
+        adultClothes.Select(x => x.Mesh).SequenceEqual(new[] { "b020fafit_teen", "b001fafit_01" }) && adultClothes[0].Hands == "lgt");
     Check("a head with no picture in the skin colour is not offered", Body.Choices(null, null, heads, Stage.Elder, "drk", textures).Select(x => x.Mesh).SequenceEqual(new[] { "c003ma_old" }));
     Looks.Use(null);
 }
