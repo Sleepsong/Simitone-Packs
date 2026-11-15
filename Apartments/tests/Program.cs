@@ -91,6 +91,7 @@ var apB = lf.Add("The | Penthouse"); apB.Tiles.Add(new Tile(1, 30, 31));
 var apC = lf.Add();
 lf.AccountOf(4).Day = 718921; lf.AccountOf(4).Owed = 55; lf.AccountOf(4).Accrued = 30; lf.AccountOf(4).BillDay = 718919; lf.AccountOf(4).Bills = 2;
 lf.Needs[0x1a2b3c4d] = new short[] { 0, 0, 0, 10, 0, -40, 55, 100, -100, 7, 0, 0, 0, 0, 30, 60 };
+lf.BillNotes[57] = new[] { 1011, 95, 40 };
 var back = LotFile.Parse(lf.ToBytes());
 Check("lot file: a Sim's needs", back.Needs.Count == 1 && back.Needs[0x1a2b3c4d].SequenceEqual(lf.Needs[0x1a2b3c4d]));
 Check("lot file: building, played and rate", back.Building && back.Played == 4 && back.Rate == 3);
@@ -98,6 +99,7 @@ Check("lot file: apartments keep their numbers and names", back.Apartments.Count
 Check("lot file: an apartment's rooms, tenant and saved size", back.Find(1).Tiles.Count == 2 && back.Find(1).Tiles[1].Equals(new Tile(2, 14, 12)) && back.Find(1).Tenant == 4 && back.Find(1).Rooms == 2 && back.Find(1).Area == 62);
 Check("lot file: who lives where", back.ApartmentOf(4) == back.Find(1) && back.ApartmentOf(7) == null && back.ApartmentOf(0) == null);
 Check("lot file: only a vacant apartment with rooms is to let", back.ToLet.Count == 1 && back.ToLet[0].Id == 2);
+Check("lot file: notes on the bills written on", back.BillNotes.Count == 1 && back.BillNotes[57].SequenceEqual(new[] { 1011, 95, 40 }));
 Check("lot file: rent account", back.Rent[4].Day == 718921 && back.Rent[4].Owed == 55 && back.Rent[4].Accrued == 30 && back.Rent[4].BillDay == 718919 && back.Rent[4].Bills == 2);
 var oldRent = LotFile.Parse(System.Text.Encoding.UTF8.GetBytes("rent=4:700,25\nrent=5:700,0\n"));
 Check("lot file: rent from before bills reads, what was owed as one bill", oldRent.Rent[4].Owed == 25 && oldRent.Rent[4].Bills == 1 && oldRent.Rent[4].Accrued == 0 && oldRent.Rent[5].Bills == 0);

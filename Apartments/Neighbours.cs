@@ -85,6 +85,8 @@ namespace Apartments
             public string Doing;
             /// <summary>When to look for something for them to do next, if they have nothing (game minutes).</summary>
             public long NextActivity;
+            /// <summary>When they came out (game minutes).</summary>
+            public long Started;
         }
 
         internal class LotState
@@ -564,20 +566,58 @@ namespace Apartments
             state.Out[guid] = outing;
             Mark(vm, sim, family, false);
 
-            //something to do in the shared rooms or outdoors; or, if there is nothing, somewhere shared to be
-            var activity = SomethingToDo(vm, state, sim);
-            if (activity != null)
-            {
-                outing.NextActivity = Now(vm) + ActivityEvery;
-                AptLog.Write(sim.Name + " of " + Residency.NameOf(family) + " came out for " + (outing.Ends - Now(vm)) + " minutes, to " + activity + ".");
-                return sim;
-            }
+            //out of the apartment to somewhere shared; something to do there comes at the next look, once they are going.
+            //(given something to do on the very tick they were made, a neighbour's own script looped until the game
+            //stopped it, and reset them: the log showed it each time one came out)
             var where = SharedSpot(vm, state);
             var walking = where != null && WalkTo(vm, sim, where.Value);
-            outing.NextActivity = Now(vm) + ActivityRetry;
+            outing.NextActivity = Now(vm);
+            outing.Started = Now(vm);
             AptLog.Write(sim.Name + " of " + Residency.NameOf(family) + " came out for " + (outing.Ends - Now(vm)) + " minutes"
                 + (where == null ? ". There is nowhere shared to walk to." : (walking ? ", walking to floor " + where.Value.Level + ", tile " + where.Value.X + "," + where.Value.Y + "." : ". They could not be told where to walk, so they are left to themselves.")));
             return sim;
+        }
+
+        /// <summary>
+        /// The engine is about to plan a walk to a thing. If it is a neighbour who is out walking to the edge of the lot
+        /// (the game's visitor script sends a visitor home that way), they live here: they walk home to their apartment
+        /// instead, and their outing is over. Returns true if the walk was planned here.
+        /// </summary>
+        internal static bool LeavingLot(VMRoutingFrame frame, VMAvatar sim, VMEntity target, out bool planned)
+        {
+            planned = false;
+            var vm = frame.VM;
+            if (!Lots.TryGetValue(vm, out var state) || !state.Out.TryGetValue(GuidOf(sim), out var outing)) return false;
+            string name;
+            try { name = target.Object?.OBJ?.ChunkLabel ?? target.ToString(); } catch { return false; }
+            if (name == null || !name.TrimStart().StartsWith("*Portal", StringComparison.OrdinalIgnoreCase)) return false;
+            var now = Now(vm);
+            var spots = HomeSpots(vm, state, outing.Family);
+            outing.Ends = Math.Min(outing.Ends, now);
+            if (spots.Count == 0) return false; //no apartment to go to: let them go
+            outing.HomewardSince = now;
+            planned = frame.InitRoutes(spots);
+            AptLog.Write(sim.Name + " was leaving the lot by " + name + " (the game sends visitors home that way), " + (now - outing.Started) + " minutes after coming out. They live here: walking home to their apartment instead.");
+            return true;
+        }
+
+        /// <summary>Tiles inside a household's apartment to walk to: near the tile that marks it, in the same room.</summary>
+        private static List<VMFindLocationResult> HomeSpots(VM vm, LotState state, int family)
+        {
+            var result = new List<VMFindLocationResult>();
+            var home = HomeSpot(vm, state, family);
+            if (home == null) return result;
+            var room = Units.IndoorRoomAt(vm, home.Value.ToPos());
+            for (int reach = 0; reach <= 2; reach++)
+                for (int dx = -reach; dx <= reach; dx++)
+                    for (int dy = -reach; dy <= reach; dy++)
+                    {
+                        if (Math.Max(Math.Abs(dx), Math.Abs(dy)) != reach) continue;
+                        var pos = new Tile(home.Value.Level, (short)(home.Value.X + dx), (short)(home.Value.Y + dy)).ToPos();
+                        if (Units.IndoorRoomAt(vm, pos) != room) continue;
+                        result.Add(new VMFindLocationResult() { Position = pos, FaceAnywhere = true, Score = 3 - reach });
+                    }
+            return result;
         }
 
         //game minutes: how soon a neighbour with nothing to do is found something, and how soon again if nothing was found
@@ -780,7 +820,7 @@ namespace Apartments
                 {
                     //the game took them off the lot itself (a visitor who decided to leave)
                     state.Out.Remove(outing.Guid);
-                    AptLog.Write(outing.Name + " left the lot by themselves. Last seen: " + (outing.Doing ?? "(not seen)"));
+                    AptLog.Write(outing.Name + " left the lot by themselves, " + (now - outing.Started) + " minutes after coming out, without walking off it (the game took them). Last seen: " + (outing.Doing ?? "(not seen)"));
                     continue;
                 }
                 TopUp(sim);

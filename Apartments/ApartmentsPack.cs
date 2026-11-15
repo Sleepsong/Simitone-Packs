@@ -389,18 +389,22 @@ namespace Apartments
         // ---- visitors at the door ----
 
         /// <summary>A walk to a thing is about to be planned (both the game's walk-to-object primitives come here).</summary>
-        public static bool BeforeWalkToThing(VMRoutingFrame __instance, VMEntity target, ref bool __result)
+        public static bool BeforeWalkToThing(VMRoutingFrame __instance, ref VMEntity target, ref bool __result)
         {
-            if (!Doors.ShowVisitors || target == null || !(__instance.Caller is VMAvatar)) return true;
+            if (target == null || !(__instance.Caller is VMAvatar)) return true;
             var vm = __instance.VM;
             if (!Neighbours.IsShared(vm)) return true; //nearly always: this runs for every walk to a thing on every lot
             var replaced = false;
             var planned = false;
-            Guard("walking a visitor to the apartment's door", () =>
+            var thing = target;
+            VMEntity instead = null;
+            Guard("planning a walk in a building", () =>
             {
-                Doors.WatchWalk(__instance, target);
-                replaced = Doors.WalkToOwnDoor(__instance, target, out planned);
+                Doors.WatchWalk(__instance, thing);
+                replaced = Doors.WalkToOwnDoor(__instance, thing, out planned);
+                if (!replaced) instead = Doors.InsteadOf(__instance, thing);
             });
+            if (instead != null) target = instead;
             if (!replaced) return true;
             __result = planned;
             return false;

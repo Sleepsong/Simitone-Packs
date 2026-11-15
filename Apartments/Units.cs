@@ -82,6 +82,8 @@ namespace Apartments
     ///                                          bills, what has built up since the last bill, the day that came, and
     ///                                          how many bills are unpaid
     ///   needs=1a2b3c4d:0,0,...                 the needs a Sim went home with (the Sim's number, then its motives)
+    ///   billnote=57:1011,95,40                 a bill of the game's the pack wrote on: its object number, the
+    ///                                          building's bill, what was written on it, and the rent in that
     ///
     /// Version 2 gave each household its rooms directly (unit=4:1,10,12;...). That still reads: each becomes an
     /// apartment with that household as its tenant.
@@ -97,6 +99,11 @@ namespace Apartments
         public Dictionary<int, RentAccount> Rent = new Dictionary<int, RentAccount>();
         /// <summary>The needs each Sim went home with (by the Sim's own number), for when they are next put on the lot.</summary>
         public Dictionary<uint, short[]> Needs = new Dictionary<uint, short[]>();
+        /// <summary>
+        /// Bills of the game's the pack has written the household's amount on, by the bill's object number: what the
+        /// building's bill was, what was written, and how much of that is rent.
+        /// </summary>
+        public Dictionary<short, int[]> BillNotes = new Dictionary<short, int[]>();
 
         public RentAccount AccountOf(int family)
         {
@@ -156,6 +163,10 @@ namespace Apartments
             {
                 var r = rent.Value;
                 text.Append("rent=").Append(rent.Key).Append(':').Append(r.Day).Append(',').Append(r.Owed).Append(',').Append(r.Accrued).Append(',').Append(r.BillDay).Append(',').Append(r.Bills).Append('\n');
+            }
+            foreach (var note in BillNotes.OrderBy(x => x.Key))
+            {
+                text.Append("billnote=").Append(note.Key).Append(':').Append(string.Join(",", note.Value)).Append('\n');
             }
             foreach (var needs in Needs.OrderBy(x => x.Key))
             {
@@ -221,6 +232,13 @@ namespace Apartments
                                 apartment.Tenant = int.Parse(parts[0]);
                                 apartment.Tiles = tiles;
                                 file.Building = true;
+                                break;
+                            }
+                        case "billnote":
+                            {
+                                var parts = value.Split(':');
+                                var n = parts[1].Split(',').Select(int.Parse).ToArray();
+                                if (n.Length == 3) file.BillNotes[short.Parse(parts[0])] = n;
                                 break;
                             }
                         case "needs":

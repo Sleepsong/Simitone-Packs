@@ -76,7 +76,11 @@ namespace Apartments
             //the first look on a lot only notes the bills already there: they are not new mail
             state.BillsSeen = now;
             state.BillsScanned = true;
+            Tidy(vm, state);
         }
+
+        /// <summary>The amount on a bill of the game's: the first of the values it holds (seen in the log: a bill of 1011 held 1011 first).</summary>
+        public const int AmountAt = 0;
 
         private static void Arrived(VM vm, Neighbours.LotState state, FSO.Files.Formats.IFF.Chunks.FAMI played, VMEntity bill)
         {
@@ -86,14 +90,44 @@ namespace Apartments
 
             var account = state.File.AccountOf(played.ChunkID);
             var today = Units.Today(vm.Context.Clock);
-            if (account.Accrued <= 0) return; //nothing built up since the last: no rent with this one
-            var overdue = account.Bills > 0;
-            var amount = Units.IssueBill(account, today);
             var apartment = state.File.ApartmentOf(played.ChunkID);
-            AptLog.Write("Rent bill with the mail: " + amount + " for " + (apartment?.Name ?? "the apartment") + ". Owed in all: " + account.Owed + ".");
-            OnNews?.Invoke(vm, "The rent for " + (apartment?.Name ?? "your apartment") + " came with the mail: " + amount + " simoleons."
-                + (overdue ? " The last rent has not been paid: " + account.Owed + " is owed in all." : "")
-                + "\n\nIt is paid with the bills. (The bills themselves are your apartment's part of the building's: by the value of what is in it.)");
+            var overdue = account.Bills > 0;
+            var rent = (account.Accrued > 0) ? Units.IssueBill(account, today) : 0;
+            if (rent > 0) AptLog.Write("Rent bill with the mail: " + rent + " for " + (apartment?.Name ?? "the apartment") + ". Owed in all: " + account.Owed + ".");
+
+            //the household's part of the building's bill, and the rent, written on the bill itself: what it says is what is paid
+            var building = bill.GetAttribute(AmountAt);
+            if (apartment != null && building > 0)
+            {
+                Neighbours.FreshRooms(vm, state);
+                Values(vm, state, apartment, out var mine, out var all);
+                var part = PartOf(building, mine, all);
+                var written = (int)Math.Min(short.MaxValue, (long)part + rent);
+                bill.SetAttribute(AmountAt, (short)written);
+                state.File.BillNotes[bill.ObjectID] = new[] { (int)building, written, rent };
+                AptLog.Write("Wrote " + written + " on the bill (" + apartment.Name + "'s part of the building's " + building + " is " + part + (rent > 0 ? ", and " + rent + " rent" : "") + ").");
+                OnNews?.Invoke(vm, "The bills have come: " + written + " simoleons. That is " + apartment.Name + "'s part of the building's bill of " + building
+                    + " (" + part + ", by the value of what is in it)" + (rent > 0 ? ", and the rent, " + rent : "") + "."
+                    + (overdue ? " Rent from an earlier bill is still owed: " + (account.Owed - rent) + "; pay it in the Apartments window." : "")
+                    + "\n\nPay them as you pay any bills.");
+                return;
+            }
+            if (rent > 0)
+            {
+                OnNews?.Invoke(vm, "The rent for " + (apartment?.Name ?? "your apartment") + " came with the mail: " + rent + " simoleons."
+                    + (overdue ? " The last rent has not been paid: " + account.Owed + " is owed in all." : "")
+                    + "\n\nIt is paid with the bills.");
+            }
+        }
+
+        /// <summary>Forget the notes on bills that are no longer on the lot (paid, or thrown away).</summary>
+        internal static void Tidy(VM vm, Neighbours.LotState state)
+        {
+            foreach (var id in state.File.BillNotes.Keys.ToList())
+            {
+                var thing = vm.GetObjectById(id);
+                if (thing == null || thing.Dead || !IsBill(thing)) state.File.BillNotes.Remove(id);
+            }
         }
 
         /// <summary>The rent bill comes on its own if the game's mail has brought no bill for a week. Returns whether it did.</summary>
@@ -166,6 +200,31 @@ namespace Apartments
             var budget = played.Budget;
             if (budget < 0) { answer = VMPrimitiveExitCode.GOTO_FALSE; return true; } //as the game: nothing is paid from below nothing
             if ((operand.Flags & VMTransferFundsFlags.JustTest) > 0) return true;
+
+            //bills the pack wrote the household's amount on are paid as written, rent and all
+            var noted = vm.Entities.ToList().Where(x => IsBill(x) && !x.Dead && state.File.BillNotes.ContainsKey(x.ObjectID)).ToList();
+            var sum = noted.Sum(x => (int)x.GetAttribute(AmountAt));
+            var these = (noted.Count > 0 && amount == sum) ? noted : noted.Where(x => x.GetAttribute(AmountAt) == amount).Take(1).ToList();
+            if (these.Count > 0)
+            {
+                var acct = state.File.AccountOf(played.ChunkID);
+                var rentIn = these.Sum(x => state.File.BillNotes[x.ObjectID][2]);
+                var buildingWas = these.Sum(x => state.File.BillNotes[x.ObjectID][0]);
+                budget -= amount;
+                played.Budget = budget;
+                acct.Owed = Math.Max(0, acct.Owed - rentIn);
+                acct.Bills = (acct.Owed == 0) ? 0 : Math.Max(0, acct.Bills - these.Count);
+                foreach (var bill in these) state.File.BillNotes.Remove(bill.ObjectID);
+                AptLog.Write("Bills paid as written: " + amount + " (the building's was " + buildingWas + "; rent in it " + rentIn + "). Money now " + budget + ".");
+                var t = vm.Context.Clock.Ticks;
+                if (t - LastNewsTick > 60)
+                {
+                    LastNewsTick = t;
+                    OnNews?.Invoke(vm, "The bills are paid: " + amount + " simoleons" + (rentIn > 0 ? ", with the rent (" + rentIn + ") in it" : "") + "."
+                        + (acct.Owed > 0 ? "\n\nRent from an earlier bill is still owed: " + acct.Owed + ". Pay it in the Apartments window." : ""));
+                }
+                return true;
+            }
 
             Neighbours.FreshRooms(vm, state);
             Values(vm, state, home, out var mine, out var all);

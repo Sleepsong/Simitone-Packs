@@ -134,6 +134,9 @@ are gone again. You can talk to them while they are out.
 A neighbour can never spend the played household's money: anything a neighbour does that would cost
 (or earn) money is refused, as the game refuses anyone who cannot afford a thing.
 
+When the game sends a neighbour who is out off the lot (it sends visitors home by walking them to
+the edge of the lot), they walk home to their apartment instead.
+
 When you change household, the one you were playing goes home in the same way, and the one you now
 play is found in its apartment.
 
@@ -161,16 +164,18 @@ say), the rent bill comes on its own. A household builds up no rent while it is 
 it has no apartment. Moving into an apartment costs two days' rent, paid at once.
 
 **The bills.** The game works a bill out from the value of everything on the lot, which in a building
-is every apartment and every shared room, so on its own it charges you for the whole building. When
-you pay the bills, you pay your apartment's part: the bill, times the value of the things in your
-apartment over the value of the things on the lot. (Walls, floors, doors and windows, and everything
-in the shared rooms and in other apartments, are the building's.) The rent owed is paid with them, if
-there is the money; if not, a message says so and it stays owed. A message after paying says what
-the building's bill was, your part of it, and the rent. The window's line for your household says
-what rent is owed, and has **Pay rent** for paying it on its own.
+is every apartment and every shared room, so on its own it would charge you for the whole building.
+When a bill comes, your apartment's part is written on it instead: the building's bill, times the
+value of the things in your apartment over the value of the things on the lot (walls, floors, doors
+and windows, and everything in the shared rooms and in other apartments, are the building's), and
+the rent built up since the last bill on top. A message says what the building's bill was, your
+part, and the rent. Pay the bills as you always do; what is written on them is what is paid. A bill
+from before this version, or one the pack could not write on, is paid by working out your part when
+you pay it, with any rent owed. Rent still owed from a bill that was thrown away can be paid with
+**Pay rent** in the window's line for your household.
 
-The game's bills are known by their name (a word in it is "bill" or "bills"). What the game's bill
-says on it is still the building's whole bill: the part you pay is worked out when you pay.
+The game's bills are known by their name (a word in it is "bill" or "bills"), and the amount is the
+first value a bill holds (a bill of 1011 was seen holding 1011 first).
 
 ## Private apartments
 
@@ -185,7 +190,12 @@ to themselves, Sims do not even want the things in an apartment they cannot ente
 | Any | The game's own characters on a job: the firefighter, the police, the repairman, the maid. A fire next door has to be put out. |
 | A vacant one | Everyone, so it can be looked round and furnished. |
 
-A Sim who is already inside is never trapped: the way out is always open. That goes for a room that
+A Sim who is already inside is never trapped: the way out is always open.
+
+The game's scripts often pick "the nearest" of something by distance, through walls, so they can pick
+one in an apartment your Sim cannot enter (the nearest trash can, say). Then your Sim goes to the
+nearest one of the same kind they can reach instead, and the log says so; if there is none, it says
+that too. That goes for a room that
 is in no apartment but opens only into one, too (a cupboard, or a room cut off by a new wall).
 
 Click anything inside an apartment your Sim cannot enter, or the floor in it, and nothing happens
@@ -244,7 +254,10 @@ Then send `Apartments.log` (the **Settings** page says where it is). It answers 
 | Does your household pay for what they do? | `Money: ... THAT IS A NEIGHBOUR` |
 | What do bills come to, and when? | `Money:` lines naming the mailbox or the bill |
 | Does rent build up each day, and come with the mail's bills? | `Rent:`, `The mail brought a bill` and `Rent bill with the mail` lines |
-| What do the bills come to? | `Bills paid: ... of the building's ... (Apartment ... holds ... of the lot's ... in things)` |
+| What do the bills come to? | `Wrote ... on the bill (Apartment ...'s part of the building's ... is ...)`, then `Bills paid as written` |
+| Do bills come at all? | `[mailbox]` lines: who walks to the mailbox, and when |
+| Why can my Sim not throw the trash away? | `[trash]` lines, and `was sent to ..., in Apartment ...` |
+| Do neighbours still leave the lot? | `was leaving the lot by ... walking home to their apartment instead`, or `the game took them` |
 | Does your Sim walk out to greet a visitor? | `... walks out to meet ... at the door` |
 | Does a visitor wait at your door instead of walking in? | `... was coming to ..., who is still at home: they wait at the door` |
 
@@ -273,8 +286,8 @@ misbehaves, switch it off: the rest of the pack carries on without it.
 ## What it does not do yet
 
 - **Building and buying are not kept to your own apartment.** You can change anything on the lot.
-- **The game's bill still shows the whole building's amount**; the part you pay is worked out when you
-  pay it. There is one mailbox for the building.
+- **One mailbox for the building**, and the game decides when bills come. If they do not come on a
+  lot, the log's `[mailbox]` lines say whether anyone came to the mailbox at all.
 - **One purse at a time.** A neighbouring household's money does not change while you play another.
   If the log shows neighbours spending yours, that is to be fixed, not intended.
 - **Unplayed households do not progress.** They are held as they are: no jobs, no bills, and their
