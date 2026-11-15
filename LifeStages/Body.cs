@@ -39,14 +39,18 @@ namespace LifeStages
 
             //heads for elders only are not given to a young adult
             var headList = heads.Distinct().ToList();
-            var headChoices = Wearable(Heads.Offer(headList, Stage.Adult).Select(i => headList[i]), skin, texnames);
+            var headChoices = Wearable(Looks.Heads.Offer(headList, Stage.Adult).Select(i => headList[i]), skin, texnames);
             if (headChoices.Count == 0) headChoices = Wearable(headList, skin, texnames); //none of the rest in this skin colour
             //the game files other things with its bodies (costumes, uniforms). only the three builds are everyday
-            //bodies, and only they have the naked and underwear bodies an adult also needs
-            var bodyChoices = bodies.Distinct()
+            //bodies, and only they have the naked and underwear bodies an adult also needs. bodies for elders only
+            //are not given to a young adult
+            var bodyList = bodies.Distinct().ToList();
+            List<(string Mesh, string Tex)> Everyday(IEnumerable<string> list) => list
                 .Where(x => BuildOf(x) != null)
-                .Select(x => new { Mesh = x, Tex = RemoveExt(texnames.FirstOrDefault(y => y.StartsWith(ExtractID(x, skin), StringComparison.OrdinalIgnoreCase))) })
+                .Select(x => (Mesh: x, Tex: RemoveExt(texnames.FirstOrDefault(y => y.StartsWith(ExtractID(x, skin), StringComparison.OrdinalIgnoreCase)))))
                 .Where(x => x.Tex != null).ToList();
+            var bodyChoices = Everyday(Looks.Bodies.Offer(bodyList, Stage.Adult).Select(i => bodyList[i]));
+            if (bodyChoices.Count == 0) bodyChoices = Everyday(bodyList); //none of the rest in this skin colour
             if (headChoices.Count == 0 || bodyChoices.Count == 0) return null;
 
             var head = headChoices[random.Next(headChoices.Count)];
@@ -85,7 +89,7 @@ namespace LifeStages
         public static List<(string Mesh, string Tex)> Choices(string wornMesh, string wornTex, IEnumerable<string> heads, Stage stage, string skin, IEnumerable<string> textures)
         {
             var list = heads.Distinct().ToList();
-            var offered = Wearable(Heads.Offer(list, stage).Select(i => list[i]), skin, textures);
+            var offered = Wearable(Looks.Heads.Offer(list, stage).Select(i => list[i]), skin, textures);
             if (offered.Count == 0) offered = Wearable(list, skin, textures); //none for the stage in this skin colour: all
             var result = new List<(string Mesh, string Tex)>();
             if (!string.IsNullOrEmpty(wornMesh) && !string.IsNullOrEmpty(wornTex)) result.Add((wornMesh, wornTex));

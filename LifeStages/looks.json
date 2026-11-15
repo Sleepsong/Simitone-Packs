@@ -1,0 +1,57 @@
+// Which of the game's adult heads and bodies are for elders.
+//
+// A head's or body's name is shown under the panel in Create a Sim, for example "c005ma_kaj" or
+// "b800fafit_eldenmama", and a head's under the heads in the head picker. Capitals do not matter. One
+// name covers every skin colour.
+//
+//   "elder"  only for elders: taken out of Adult in Create a Sim, and not given to a child who grows up.
+//   "both"   for adults and for elders: helmets, bald heads and others that suit either.
+//
+// Elders are offered what is in the two lists. If neither has a head (or a body) of a Sim's sex, they
+// are offered every adult one.
+// Edit this file in the pack's folder, then restart Simitone.
+{
+  "heads": {
+    "elder": [
+      "c029ma_elwd",
+      "c032ma_warn",
+      "c202ma_oldgypsyman",
+      "c207ma_oldtraveler",
+      "c631ma_mobius",
+      "c803ma_gunter",
+      "c805ma_brad",
+
+      "c004fa_gma1",
+      "c028fa_delo",
+      "c029fa_lynn",
+      "c205fa_madame",
+      "c800fa_eldenmama",
+      "c802fa_cornelia",
+      "c804fa_tiffany",
+      "c807fa_ginia"
+    ],
+    "both": [
+      "c002ma_baldfat",
+      "c007ma_gpa1",
+      "c206ma_carnieguy",
+      "c499ma_waylon",
+      "c537ma_fanpoolbald",
+      "c538ma_fanpoolbald2",
+      "c609ma_rocketofficer",
+      "c611ma_nodminigunnerofficer",
+      "c615ma_grenadier",
+      "c621ma_nod_rtrpr",
+      "c626ma_gdipilot",
+      "c639ma_ravmutant",
+      "c899ma_macssx"
+    ]
+  },
+  "bodies": {
+    "elder": [
+      "b602faskn_cornelia",
+      "b800fafit_eldenmama",
+      "b807fafit_ginia"
+    ],
+    "both": []
+  }
+}

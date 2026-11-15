@@ -26,43 +26,44 @@ has; from there the pack takes over.
 - **Sims you already have** start at the beginning of the stage they are in: a child is on the first
   day of childhood, an adult on the first day of adulthood.
 - **Growing up** gives a child an adult's body, of the same sex and skin colour, picked by chance from
-  the ones the game has, and then lets you choose their head (below). The Sims has no grown-up version
+  the ones the game has (but not the elders' own), and then lets you choose their head (below). The Sims has no grown-up version
   of a child's face, so the adult does not look like the child did. Their name, skills, personality,
   relationships and needs carry over.
 - **Choosing a head.** When a Sim becomes an adult or an elder, a head picker opens once the birthday
   message is closed, like the game's dresser: drag to turn the ring of heads, then OK. The head the Sim
   has is first (for a new adult, one picked by chance), so Cancel, or OK on it, keeps it. A new adult is
-  offered the adults' heads and a new elder the elders' heads (below), in the Sim's sex and skin colour.
+  offered the adults' heads and a new elder the elders' heads (Elders' heads and clothes), in the Sim's sex and skin colour.
   `age look` in the console opens it again for any grown Sim.
 - **Sims from a household you played before** keep their stage when they visit: a teen is still drawn
   as a teen. They do not get older while you play someone else.
 
-## Elders' heads
+## Elders' heads and clothes
 
-The Sims has only adult heads, some of which look old. Which are for elders is up to you, in
-`heads.json` in the pack's folder:
+The Sims has only adult heads and clothes, some of which look old. Which are for elders is up to you,
+in `looks.json` in the pack's folder:
 
 ```json
 {
-  "elder": ["c005ma_example"],
-  "both": ["c010ma_helmet"]
+  "heads":  { "elder": ["c005ma_example"], "both": ["c010ma_helmet"] },
+  "bodies": { "elder": ["b800fafit_example"], "both": [] }
 }
 ```
 
-- **elder**: heads for elders only. They are not offered for adults in Create a Sim, and a child who
-  grows up is not given one.
-- **both**: heads for adults and elders, such as helmets and bald heads.
+- **elder**: heads or bodies for elders only. They are not offered for adults in Create a Sim, and a
+  child who grows up is not given one.
+- **both**: for adults and elders, such as helmets and bald heads.
 
-A head's name is shown under the panel in Create a Sim while you scroll the heads, and under the heads
-in the head picker. One name covers every skin colour of a head, and capitals do not matter. Restart
-Simitone after changing the file. If neither list has a head of a Sim's sex and skin colour, elders are
-offered every adult head.
+Elders are offered what is in the two lists. A head's and a body's names are shown under the panel in
+Create a Sim while you scroll them, and a head's under the heads in the head picker. One name covers
+every skin colour, and capitals do not matter. Restart Simitone after changing the file. If neither list
+has a head (or a body) of a Sim's sex, elders are offered every adult one.
 
 The pack comes with fifteen heads for elders only, chosen in the game: seven men's (`c029ma_elwd`,
 `c032ma_warn`, `c202ma_oldgypsyman`, `c207ma_oldtraveler`, `c631ma_mobius`, `c803ma_gunter`,
 `c805ma_brad`) and eight women's (`c004fa_gma1`, `c028fa_delo`,
 `c029fa_lynn`, `c205fa_madame`, `c800fa_eldenmama`, `c802fa_cornelia`, `c804fa_tiffany`,
-`c807fa_ginia`).
+`c807fa_ginia`). And three women's bodies for elders only: `b602faskn_cornelia`, `b800fafit_eldenmama`
+and `b807fafit_ginia`.
 
 It also comes with thirteen men's heads for adults and elders: bald heads, helmets and others that suit
 either (`c002ma_baldfat`, `c007ma_gpa1`, `c206ma_carnieguy`, `c499ma_waylon`, `c537ma_fanpoolbald`,
@@ -76,8 +77,8 @@ In Create a Sim the two age buttons are four, in the order of a life: **child** 
 
 - A teen is made from a child's heads and bodies, and an elder from an adult's: The Sims has no others.
   Teens are shown larger than children, as they will be in the game.
-- Elders are offered the elders' heads, and adults every head but those for elders only (see Elders'
-  heads). The names of the head and body shown are under the panel.
+- Elders are offered the elders' heads and bodies, and adults all but those for elders only (see
+  Elders' heads and clothes). The names of the head and body shown are under the panel.
 - In the family being made, a teen stands larger than a child.
 - Each Sim starts on the first day of their stage. The first time the family is played, the teens take
   on a teen's age and size and the elders an elder's.
@@ -178,7 +179,7 @@ for a Sim.
 | `Ledger.cs` | What is remembered for a neighbourhood, and the log |
 | `Life.cs` | What is done in the game: counting days, and putting a stage on a Sim |
 | `Body.cs` | Choosing the head and body a child grows into |
-| `Heads.cs` | Reading `heads.json`: which heads are for elders |
+| `Looks.cs` | Reading `looks.json`: which heads and bodies are for elders |
 | `UIHeadPicker.cs` | The head picker |
 | `AgeView.cs` | What the age display shows: its words, the bar's segments, and the figures |
 | `CreateASim.cs` | Making teens and elders in Create a Sim |

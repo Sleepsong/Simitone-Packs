@@ -152,12 +152,15 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     var dark = Body.ChooseAdult(true, "drk", heads, bodies, textures, random);
     Check("a dark-skinned woman gets what there is for her", dark != null && dark[2].StartsWith("C001FA_Annie") && dark[14] == "drk");
     Check("nothing to wear: no growing up", Body.ChooseAdult(true, "med", heads, bodies, textures, random) == null && Body.ChooseAdult(false, "lgt", new string[0], new string[0], textures, random) == null);
-    Heads.Use(new HeadLists() { Elder = new List<string>() { " c001fa_annie " } });
+    Looks.Use(new LooksFile() { Heads = new AgeList() { Elder = new List<string>() { " c001fa_annie " } } });
     var noOld = Enumerable.Range(0, 100).Select(i => Body.ChooseAdult(true, "lgt", heads, bodies, textures, random)).ToList();
     Check("a head for elders only is not given to a young adult", noOld.All(x => x[2].StartsWith("C002FA_Bea")));
-    Heads.Use(new HeadLists() { Elder = new List<string>() { "C001FA_Annie", "c002fa_bea" } });
+    Looks.Use(new LooksFile() { Heads = new AgeList() { Elder = new List<string>() { "C001FA_Annie", "c002fa_bea" } } });
     Check("unless there is no other", Body.ChooseAdult(true, "lgt", heads, bodies, textures, random) != null);
-    Heads.Use(new HeadLists());
+    Looks.Use(new LooksFile() { Bodies = new AgeList() { Elder = new List<string>() { "b001fafit_01", "b002fafat_02" } } });
+    var dressed = Enumerable.Range(0, 100).Select(i => Body.ChooseAdult(true, "lgt", heads, bodies, textures, random)).ToList();
+    Check("a body for elders only is not given to a young adult", dressed.All(x => x[1].StartsWith("B003FASkn_03")));
+    Looks.Use(null);
     Check("a costume or uniform is not an everyday body", Body.BuildOf("B900FACop_Uniform") == null && Body.BuildOf("odd") == null && Body.BuildOf("b001mafit_01") == "fit" && Body.BuildOf("B002FAFat_02") == "Fat");
     var lower = Body.ChooseAdult(false, "lgt", new[] { "c010ma_bob" }, new[] { "b010mafit_01" }, new[] { "C010MALGT_BOB.BMP", "B010MAFITLGT_01.BMP" }, random);
     Check("names are matched whatever their case", lower != null && lower[12] == "male" && lower[17] == "HmLO,HAND=huaolgt");
@@ -167,36 +170,44 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
 // ---- which heads are elders' ----
 {
     var heads = new List<string>() { "c001ma_kaj", "c002ma_ben", "c003ma_old", "c004ma_helmet", "c005ma_bald" };
-    Heads.Use(new HeadLists());
-    Check("with no lists, adults and elders are offered every head", Heads.Offer(heads, Stage.Adult).Count == 5 && Heads.Offer(heads, Stage.Elder).Count == 5);
-    Heads.Use(new HeadLists() { Elder = new List<string>() { "C003MA_Old", "", null }, Both = new List<string>() { "c004ma_helmet ", "c005MA_bald" } });
-    Check("an elder's head is not offered to adults", Heads.Offer(heads, Stage.Adult).Select(i => heads[i]).SequenceEqual(new[] { "c001ma_kaj", "c002ma_ben", "c004ma_helmet", "c005ma_bald" }));
-    Check("elders are offered theirs and those for both, in the game's order", Heads.Offer(heads, Stage.Elder).Select(i => heads[i]).SequenceEqual(new[] { "c003ma_old", "c004ma_helmet", "c005ma_bald" }));
-    Check("names are matched whatever their capitals and spaces", Heads.ElderOnly("C003ma_OLD") && !Heads.ElderOnly("c004ma_helmet") && Heads.Suits("C005MA_BALD", Stage.Elder));
-    Check("children's and teens' heads are not sorted", Heads.Suits("c003ma_old", Stage.Child) && Heads.Suits("c003ma_old", Stage.Teen));
-    Check("elders with none of their own in a list are offered every head", Heads.Offer(new List<string>() { "c001ma_kaj", "c002ma_ben" }, Stage.Elder).Count == 2);
+    Looks.Use(null);
+    Check("with no lists, adults and elders are offered every head", Looks.Heads.Offer(heads, Stage.Adult).Count == 5 && Looks.Heads.Offer(heads, Stage.Elder).Count == 5);
+    Looks.Use(new LooksFile() { Heads = new AgeList() { Elder = new List<string>() { "C003MA_Old", "", null }, Both = new List<string>() { "c004ma_helmet ", "c005MA_bald" } } });
+    Check("an elder's head is not offered to adults", Looks.Heads.Offer(heads, Stage.Adult).Select(i => heads[i]).SequenceEqual(new[] { "c001ma_kaj", "c002ma_ben", "c004ma_helmet", "c005ma_bald" }));
+    Check("elders are offered theirs and those for both, in the game's order", Looks.Heads.Offer(heads, Stage.Elder).Select(i => heads[i]).SequenceEqual(new[] { "c003ma_old", "c004ma_helmet", "c005ma_bald" }));
+    Check("names are matched whatever their capitals and spaces", Looks.Heads.ElderOnly("C003ma_OLD") && !Looks.Heads.ElderOnly("c004ma_helmet") && Looks.Heads.Suits("C005MA_BALD", Stage.Elder));
+    Check("children's and teens' heads are not sorted", Looks.Heads.Suits("c003ma_old", Stage.Child) && Looks.Heads.Suits("c003ma_old", Stage.Teen));
+    Looks.Use(new LooksFile() { Bodies = new AgeList() { Elder = new List<string>() { "b800fafit_eldenmama" }, Both = new List<string>() { "b003fafit_coat" } } });
+    var gowns = new List<string>() { "b001fafit_jeans", "b800fafit_eldenmama", "b003fafit_coat" };
+    Check("an elder's body is not offered to adults, and elders are offered theirs and those for both",
+        Looks.Bodies.Offer(gowns, Stage.Adult).Select(i => gowns[i]).SequenceEqual(new[] { "b001fafit_jeans", "b003fafit_coat" })
+        && Looks.Bodies.Offer(gowns, Stage.Elder).Select(i => gowns[i]).SequenceEqual(new[] { "b800fafit_eldenmama", "b003fafit_coat" }));
+    Check("heads and bodies are listed apart", !Looks.Heads.ElderOnly("b800fafit_eldenmama") && Looks.Bodies.Offer(new List<string>() { "b001mafit_suit" }, Stage.Elder).Count == 1);
+    Looks.Use(new LooksFile() { Heads = new AgeList() { Elder = new List<string>() { "C003MA_Old", "", null }, Both = new List<string>() { "c004ma_helmet ", "c005MA_bald" } } });
+    Check("elders with none of their own in a list are offered every head", Looks.Heads.Offer(new List<string>() { "c001ma_kaj", "c002ma_ben" }, Stage.Elder).Count == 2);
 
     // the file, as shipped and as a player might leave it
     var dir = Path.Combine(Path.GetTempPath(), "age-heads-" + Guid.NewGuid().ToString("n"));
     Directory.CreateDirectory(dir);
-    var shipped = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", Heads.FileName);
-    if (!File.Exists(shipped)) shipped = Path.Combine(Directory.GetCurrentDirectory(), "LifeStages", Heads.FileName);
-    File.Copy(shipped, Path.Combine(dir, Heads.FileName));
-    var said = Heads.Load(dir);
-    Check("the heads.json the pack ships reads: " + said, said == Heads.FileName + ": 15 heads for elders only, 13 for adults and elders." && Heads.ElderOnly("c631ma_mobius") && Heads.ElderOnly("c805ma_brad") && Heads.ElderOnly("c004fa_gma1") && !Heads.ElderOnly("c001ma_kaj")
-        && Heads.Suits("c002ma_baldfat", Stage.Adult) && Heads.Suits("c002ma_baldfat", Stage.Elder) && !Heads.Suits("c001ma_kaj", Stage.Elder));
-    File.WriteAllText(Path.Combine(dir, Heads.FileName), "// mine\n{ \"elder\": [\"c003ma_old\", \"c009fa_gran\",], \"Both\": [\"c004ma_helmet\"] }");
-    said = Heads.Load(dir);
-    Check("a file with notes, a trailing comma and a capital is read: " + said, Heads.Lists.Elder.Count == 2 && Heads.Lists.Both.Count == 1 && Heads.ElderOnly("c009fa_gran"));
-    File.WriteAllText(Path.Combine(dir, Heads.FileName), "{ elder: oops");
-    said = Heads.Load(dir);
-    Check("a broken file is said to be, and leaves the lists empty: " + said, said.Contains("could not be read") && Heads.Lists.Elder.Count == 0);
-    File.Delete(Path.Combine(dir, Heads.FileName));
-    Check("no file, no lists", Heads.Load(dir).StartsWith("No ") && Heads.Lists.Both.Count == 0);
+    var shipped = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", Looks.FileName);
+    if (!File.Exists(shipped)) shipped = Path.Combine(Directory.GetCurrentDirectory(), "LifeStages", Looks.FileName);
+    File.Copy(shipped, Path.Combine(dir, Looks.FileName));
+    var said = Looks.Load(dir);
+    Check("the looks.json the pack ships reads: " + said, said == Looks.FileName + ": 15 heads for elders only, 13 for adults and elders; 3 bodies for elders only, 0 for adults and elders." && Looks.Heads.ElderOnly("c631ma_mobius")
+        && Looks.Bodies.ElderOnly("b800fafit_eldenmama") && Looks.Bodies.ElderOnly("B602FASKN_Cornelia") && !Looks.Heads.ElderOnly("b800fafit_eldenmama") && Looks.Heads.ElderOnly("c805ma_brad") && Looks.Heads.ElderOnly("c004fa_gma1") && !Looks.Heads.ElderOnly("c001ma_kaj")
+        && Looks.Heads.Suits("c002ma_baldfat", Stage.Adult) && Looks.Heads.Suits("c002ma_baldfat", Stage.Elder) && !Looks.Heads.Suits("c001ma_kaj", Stage.Elder));
+    File.WriteAllText(Path.Combine(dir, Looks.FileName), "// mine\n{ \"heads\": { \"elder\": [\"c003ma_old\", \"c009fa_gran\",], \"Both\": [\"c004ma_helmet\"] }, \"Bodies\": { \"elder\": [\"b900fafit_shawl\"] } }");
+    said = Looks.Load(dir);
+    Check("a file with notes, a trailing comma and a capital is read: " + said, Looks.Heads.Elder.Count == 2 && Looks.Heads.Both.Count == 1 && Looks.Heads.ElderOnly("c009fa_gran") && Looks.Bodies.ElderOnly("b900fafit_shawl") && Looks.Bodies.Both.Count == 0);
+    File.WriteAllText(Path.Combine(dir, Looks.FileName), "{ elder: oops");
+    said = Looks.Load(dir);
+    Check("a broken file is said to be, and leaves the lists empty: " + said, said.Contains("could not be read") && Looks.Heads.Elder.Count == 0);
+    File.Delete(Path.Combine(dir, Looks.FileName));
+    Check("no file, no lists", Looks.Load(dir).StartsWith("No ") && Looks.Heads.Both.Count == 0);
     Directory.Delete(dir, true);
 
     // the heads offered in the picker: the one worn first, then the stage's, each once
-    Heads.Use(new HeadLists() { Elder = new List<string>() { "c003ma_old" }, Both = new List<string>() { "c004ma_helmet" } });
+    Looks.Use(new LooksFile() { Heads = new AgeList() { Elder = new List<string>() { "c003ma_old" }, Both = new List<string>() { "c004ma_helmet" } } });
     var textures = new[] { "c001malgt_kaj.bmp", "c002malgt_ben.bmp", "c003malgt_old.bmp", "c003madrk_old.bmp", "c004malgt_helmet.bmp" };
     var worn = Body.Worn("c001ma_kaj,HEAD-HEAD=c001malgt_kaj");
     Check("the head worn is read from the Sim's head line", worn.Mesh == "c001ma_kaj" && worn.Tex == "c001malgt_kaj" && Body.Worn(null).Mesh == null);
@@ -207,7 +218,7 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     Check("an adult is offered their own once, and no elder's: " + string.Join(", ", adultChoices.Select(x => x.Mesh)),
         adultChoices.Select(x => x.Mesh).SequenceEqual(new[] { "c002ma_ben", "c001ma_kaj", "c004ma_helmet" }));
     Check("a head with no picture in the skin colour is not offered", Body.Choices(null, null, heads, Stage.Elder, "drk", textures).Select(x => x.Mesh).SequenceEqual(new[] { "c003ma_old" }));
-    Heads.Use(new HeadLists());
+    Looks.Use(null);
 }
 
 // ---- the age display ----

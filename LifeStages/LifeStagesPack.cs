@@ -56,7 +56,7 @@ namespace LifeStages
                 harmony.UnpatchAll(harmony.Id); //all or nothing
                 throw;
             }
-            Log.Write(Heads.Load(pack.Folder));
+            Log.Write(Looks.Load(pack.Folder));
             Life.Announce = (vm, message, choosers) =>
             {
                 if (Screen?.vm != vm) return;

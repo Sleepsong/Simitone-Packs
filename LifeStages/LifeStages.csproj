@@ -16,7 +16,7 @@
 
   <!-- after building, put just the pack's own files in pack/lifestages/, ready to copy into Simitone's Packs folder -->
   <Target Name="MakePackFolder" AfterTargets="Build">
-    <Copy SourceFiles="$(TargetPath);pack.json;heads.json" DestinationFolder="$(MSBuildProjectDirectory)\pack\lifestages" />
+    <Copy SourceFiles="$(TargetPath);pack.json;looks.json" DestinationFolder="$(MSBuildProjectDirectory)\pack\lifestages" />
   </Target>
 
 </Project>

@@ -36,8 +36,9 @@ namespace LifeStages
     /// and teen above, adult and elder below. A teen is made as a child and an elder as an adult, and the pack
     /// remembers which stage each Sim was given. When the family is made it writes them into its record, and the
     /// first time the family is played the Sims take on their stage (Life.Reconcile): a teen's age and size, an
-    /// elder's age. Create a Sim shows teens larger. The heads offered to adults and to elders are the pack's lists
-    /// in heads.json (Heads.cs), and the name of the head chosen is shown under the panel, to fill them in by.
+    /// elder's age. Create a Sim shows teens larger. The heads and bodies offered to adults and to elders are the
+    /// pack's lists in looks.json (Looks.cs), and the names of the head and body chosen are shown under the panel,
+    /// to fill them in by.
     ///
     /// Every patch here is Harmony's, on Create a Sim's own methods. They are put on together and taken off together:
     /// if one does not fit a version of Simitone, Create a Sim is left as it was, and the rest of the pack runs.
@@ -53,7 +54,7 @@ namespace LifeStages
             public UIStencilButton Teen, Elder;
             /// <summary>The stage's name, under the buttons: the column's title is too narrow for it.</summary>
             public UILabel Name;
-            /// <summary>The names of the head and body chosen, under the panel: the names heads.json lists heads by.</summary>
+            /// <summary>The names of the head and body chosen, under the panel: the names looks.json lists them by.</summary>
             public UILabel HeadName, BodyName;
         }
 
@@ -255,27 +256,44 @@ namespace LifeStages
         }
 
         /// <summary>
-        /// What Create a Sim offers has been chosen. For adults and elders the pack keeps the heads for the stage, by
-        /// heads.json. New lists, not the old ones changed: Create a Sim's lists are the game's own, which the rest of
-        /// the game uses too.
+        /// What Create a Sim offers has been chosen. For adults and elders the pack keeps the heads and bodies for the
+        /// stage, by looks.json. New lists, not the old ones changed: Create a Sim's lists are the game's own, which the
+        /// rest of the game uses too.
         /// </summary>
         private static void AfterPopulateSimType(TS1CASScreen __instance, string simtype)
         {
-            LifeStagesPack.Guard("sorting the heads in Create a Sim", () =>
+            LifeStagesPack.Guard("sorting the heads and bodies in Create a Sim", () =>
             {
                 var ages = AgesOf(__instance);
                 if (ages == null || simtype == null || simtype.Length < 2 || __instance.ActiveHeads == null) return;
                 if (simtype[1] == 'a')
                 {
+                    var changed = false;
                     var heads = __instance.ActiveHeads;
-                    var textures = __instance.ActiveHeadTex;
-                    var offer = Heads.Offer(heads, ages.Stage);
+                    var headTex = __instance.ActiveHeadTex;
+                    var offer = Looks.Heads.Offer(heads, ages.Stage);
                     if (offer.Count < heads.Count)
                     {
                         __instance.ActiveHeads = offer.Select(i => heads[i]).ToList();
-                        __instance.ActiveHeadTex = offer.Select(i => textures[i]).ToList();
-                        ShowAgain.Invoke(__instance, null); //straight after PopulateSimType: the carousels are still unturned
+                        __instance.ActiveHeadTex = offer.Select(i => headTex[i]).ToList();
+                        changed = true;
                     }
+                    // a body comes with its picture and its hands' picture, in lists side by side
+                    var bodies = __instance.ActiveBodies;
+                    var bodyTex = __instance.ActiveBodyTex;
+                    var hands = __instance.ActiveHandgroupTex;
+                    if (bodies != null && bodyTex?.Count == bodies.Count && hands?.Count == bodies.Count)
+                    {
+                        var bodyOffer = Looks.Bodies.Offer(bodies, ages.Stage);
+                        if (bodyOffer.Count < bodies.Count)
+                        {
+                            __instance.ActiveBodies = bodyOffer.Select(i => bodies[i]).ToList();
+                            __instance.ActiveBodyTex = bodyOffer.Select(i => bodyTex[i]).ToList();
+                            __instance.ActiveHandgroupTex = bodyOffer.Select(i => hands[i]).ToList();
+                            changed = true;
+                        }
+                    }
+                    if (changed) ShowAgain.Invoke(__instance, null); //straight after PopulateSimType: the carousels are still unturned
                 }
                 Size(__instance, ages.Stage);
             });
@@ -313,7 +331,7 @@ namespace LifeStages
         }
 
         /// <summary>
-        /// While a Sim is being made, the head and body chosen are named under the panel: the names heads.json uses,
+        /// While a Sim is being made, the head and body chosen are named under the panel: the names looks.json uses,
         /// and Create a Sim takes, for the one in front.
         /// </summary>
         private static void AfterScreenUpdate(TS1CASScreen __instance, UICASMode ___Mode)
