@@ -22,7 +22,7 @@ foreach (var m in h.GetPatchedMethods()) {
 }
 // the two ways into the Apartments window are optional to the pack, but should fit the Simitone this is built against
 foreach (var needed in new[] { "TS1GameScreen.Save", "VMContext.RefreshLighting", "UILotControl.Update", "UIMainPanel.AddPacksButton", "UIHouseSelectPanel..ctor", "TS1GameScreen.MoveInAndPlay", "TS1GameScreen.PlayHouse",
-    "VMRoutingFrame.DoRoomRoute", "VMFindBestAction.Execute", "VMThread.Tick", "VMThread.EnqueueAction", "UILotControl.ShowPieMenu", "VMRoutingFrame.InitRoutes", "VMEntity.GetPieMenu", "VMNetInteractionCmd.Verify", "VMNetInteractionCmd.Execute", "VMEntity.IndividualUserMovable", "VMEntity.Delete", "DebugLinesComponent.Draw" }) {
+    "VMRoutingFrame.DoRoomRoute", "VMFindBestAction.Execute", "VMThread.Tick", "VMThread.EnqueueAction", "UILotControl.ShowPieMenu", "VMRoutingFrame.InitRoutes", "VMEntity.GetPieMenu", "VMNetInteractionCmd.Verify", "VMNetInteractionCmd.Execute", "VMEntity.IndividualUserMovable", "VMEntity.Delete", "DebugLinesComponent.Draw", "UIMainPanel.SetMode", "UIMainPanel.Switcher_OnCategorySelect" }) {
     if (!h.GetPatchedMethods().Any(m => m.DeclaringType.Name + "." + m.Name == needed)) { Console.WriteLine("FAILED: the patch on " + needed + " did not attach"); return 1; }
 }
 // the per-tick hook must be harmless on a VM it knows nothing about
@@ -188,6 +188,11 @@ Check("writing nothing removes the file", PackStore.Write("sample.apartments", n
     var pf = new LotFile(); var p1 = pf.Add(); var p2 = pf.Add(); var p3 = pf.Add();
     Check("each apartment has its own colour", LotOverlay.ColourOf(pf, p1) != LotOverlay.ColourOf(pf, p2) && LotOverlay.ColourOf(pf, p2) != LotOverlay.ColourOf(pf, p3));
     Check("nothing is drawn until asked", !LotOverlay.On && !LotOverlay.IsMine(null));
+    // build mode's tabs: the Apartments tab only on a home lot (with no lot at all, not there)
+    var tabs = new System.Collections.Generic.List<Simitone.Client.UI.Controls.UICategory>() { new Simitone.Client.UI.Controls.UICategory() { ID = 0 }, new Simitone.Client.UI.Controls.UICategory() { ID = UIApartmentsSubpanel.CategoryId } };
+    UIApartmentsSubpanel.FitTab(tabs);
+    Check("the Apartments tab is not in build mode away from a home lot, and the game's tabs are left alone", tabs.Count == 1 && tabs[0].ID == 0);
+    Check("the Apartments tab's number is none of the game's", UIApartmentsSubpanel.CategoryId > 2);
 }
 
 // ---- the switches, kept between runs ----

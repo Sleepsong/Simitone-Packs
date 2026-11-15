@@ -20,15 +20,18 @@ screen. If the window does not come up or looks wrong, everything still works fr
 
 1. **Build it.** From the neighbourhood screen, enter an empty lot (or a house someone lives in) and
    build as usual. An apartment is a set of rooms, so give each one walls all the way round.
-2. **Make it an apartment building.** Open the **Apartments** window (below), go to the
-   **Apartments** page and press **Make building**.
-3. **Lay out the apartments.** Press **Add** on "New apartment", then click inside each room that
-   belongs to it, one after another, and press Esc when you have finished. While you choose, each
-   apartment's floor is drawn on the lot in its own colour (the one you are choosing for strongly,
-   the others faintly, with a line round each), the room under the cursor is shown in white, and a
-   panel in the corner says how each click went and which colour is which apartment. **Add room** adds more rooms
-   later. To choose a room on another floor, change floor before clicking. Every room you leave out
-   is shared by everyone, and so is outdoors.
+2. **Make it an apartment building.** In build mode, open the **Apartments** tab (the door, after
+   the game's own tabs) and press **Make building**.
+3. **Lay out the apartments.** Still on the Apartments tab, press **New apartment**, then click inside
+   each room that belongs to it, one after another. Press Esc (or the apartment's button again) when
+   you have finished. Each apartment has a button in its own colour: press it to add more rooms to it.
+   **Take rooms out** works the same way. To choose a room on another floor, change floor before
+   clicking. Every room you leave out is shared by everyone, and so is outdoors.
+
+   While build mode is open, each apartment's floor is drawn on the lot in its colour, with a line
+   round it (while you choose rooms for one, the others are faint), and the room under the cursor is
+   shown in white. Rooms with no colour are shared. Floors above the one you are looking at are not
+   drawn. In live mode nothing is drawn.
 4. **Save**, and go back to the neighbourhood.
 5. **Move households in.** Choose a family to move in, as usual, and pick the building. Its panel
    says how many apartments are free. After the game's own "move in?" question you are asked which
@@ -62,15 +65,12 @@ own household says what the last rent came to.
 
 Moving a household out, deleting an apartment and making the lot an ordinary house again ask first.
 
-**Apartments** is where a building is laid out.
+**Apartments** lists the building's apartments. Their rooms are chosen in build mode (above); the
+**More...** button on the Apartments tab there opens this page.
 
 | Button | What it does |
 |---|---|
-| **Make building** | Makes this lot an apartment building |
-| **Add** (on "New apartment") | Adds an apartment, then lets you click its first room |
-| **Add room** | Lets you click rooms to add to that apartment, until you press Esc |
-| **Show on the lot** | Draws each apartment's floor on the lot in its own colour, with a key in the corner, until you open the window again. Rooms with no colour are shared. Floors above the one you are looking at are not drawn |
-| **More > Remove room** | Lets you click rooms to take out of the apartment |
+| **Make building** | Makes this lot an apartment building (the Apartments tab in build mode does the same) |
 | **More > Rename** | Gives the apartment a name of its own |
 | **More > Tenant** | Chooses which of the households living here has that apartment, or nobody |
 | **More > Delete** | The apartment is gone, and its rooms are shared |
@@ -295,7 +295,7 @@ misbehaves, switch it off: the rest of the pack carries on without it.
   for each Sim, so they change as usual.
 - **A dimmed apartment is only dimmed.** You can still look into it, and nothing in it moves.
 - **Not yet seen working in the game:** private apartments and knocking, moving the mailbox, and
-  the apartments drawn on the lot in colour (new in 0.19). (A visitor was seen being walked to the
+  the Apartments tab in build mode with the apartments drawn in colour (new in 0.20). (A visitor was seen being walked to the
   door.) Each has a switch
   on the Settings page or is only used when you ask for it, and each fails on its own: the log says
   if one could not be added.
@@ -337,7 +337,8 @@ On the lot, the rest is seven Harmony patches:
 Others are optional: each one that does not attach only turns its own feature off, and the log says
 which. They close apartment doors to the routes Sims plan, leave closed rooms out of what Sims choose
 to do, send visitors to the apartment's door, show the knock warning, write the household's part on
-the mail's bills, notice the game taking a neighbour off the lot, and draw the apartments on the lot.
+the mail's bills, notice the game taking a neighbour off the lot, draw the apartments on the lot, and put the
+Apartments tab in build mode.
 
 On the neighbourhood screen there are three more (`Hood.cs`): a building's panel says what it is and
 lets a family move in while an apartment is free; the game's move-in asks which apartment, and
@@ -362,7 +363,9 @@ It uses only what every Simitone with code packs has, so it does not need the ne
 - `LotOverlay.cs` draws the apartments on the lot, each floor in its colour. The engine draws a list of
   line sets over the lot every frame (its own use is showing the routes Sims plan); the overlay adds
   an empty one, and a patch on its drawing draws the coloured floor in its place.
-- `UIPickPanel.cs` is the panel in the corner while the apartments are drawn: what to do, and the key.
+- `UIApartmentsSubpanel.cs` is the Apartments tab in build mode: a button for each apartment, in its
+  colour, and the tools for laying the building out. Two patches put the tab among build mode's own
+  and open it in place of a catalogue.
 - `Settings.cs` keeps the Settings page's switches between runs.
 - `UIChoiceDialog.cs` is a question with a button for each answer. The game's own message box takes
   only one button of each kind, so the pack has its own.

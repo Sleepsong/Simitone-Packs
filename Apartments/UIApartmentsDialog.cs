@@ -76,9 +76,6 @@ namespace Apartments
                 Actions.Say("Apartments", "Open this while you are on a lot.");
                 return;
             }
-            //the window coming back ends whatever was being shown on the lot
-            UIPickPanel.Close();
-            Neighbours.Show(Actions.Screen.vm, false);
             //(a window that was put away by anything but its own Close button is not one to bring up to date)
             if (Current != null && (Current.Closing || Current.Parent == null)) Current = null;
             if (Current == null)
@@ -288,27 +285,11 @@ namespace Apartments
                 var detail = Actions.SizeText(vm, file, apartment) + ".";
                 if (Units.LostTiles(vm, apartment).Count > 0) detail += " Part of it is no longer a room: a wall has gone. It counts as shared until it is closed again.";
                 rows.Add(new Row(apartment.Name + "  -  " + Actions.TenantText(house, apartment), detail) { Warn = Units.LostTiles(vm, apartment).Count > 0 }
-                    .Button("Add room", () => PickRoom(target, false), true, false, 200)
                     .Button("More", () => ApartmentOptions(house, file, target), false, false, SmallButton));
             }
 
-            rows.Add(new Row("New apartment", file.Apartments.Count == 0
-                    ? "Add the first apartment, then click in each room that belongs to it. Every room you leave out is shared by everyone, and so is outdoors."
-                    : "Add another apartment, then click in each room that belongs to it.")
-                .Button("Add", () =>
-                {
-                    var made = Actions.AddApartment(out var result);
-                    if (made == null) Do(() => result);
-                    else PickRoom(made, false);
-                }, true));
-
-            rows.Add(new Row("Which rooms are whose", "Draws each apartment's floor on the lot in its own colour, until you open this window again.")
-                .Button("Show on the lot", () =>
-                {
-                    CloseMe();
-                    Neighbours.Show(vm, true);
-                    UIPickPanel.OpenShowing(vm);
-                }, true, false, 275));
+            rows.Add(new Row("Rooms", (file.Apartments.Count == 0 ? "This building has no apartments yet. " : "")
+                + "Apartments are laid out in build mode, on the Apartments tab (the door): click an apartment there, then click its rooms on the lot. New apartments are added there too, and each apartment's floor is drawn in its colour while build mode is open."));
 
             var rate = file.Rate;
             rows.Add(new Row("Rent: " + (rate == 0 ? "none" : rate + " a tile a day"), Actions.RentLine(file) + " Moving in costs " + Units.DepositDays + " days' rent; after that the rent comes with the mail's bills, and is paid with them.")
@@ -328,13 +309,11 @@ namespace Apartments
         private void ApartmentOptions(int house, LotFile file, Apartment apartment)
         {
             Actions.Choose(apartment.Name,
-                "Remove room: click in rooms to take them out of the apartment.\n\n"
-                + "Rename: give the apartment a name of its own.\n\n"
+                "Rename: give the apartment a name of its own.\n\n"
                 + "Tenant: choose which household lives here, or nobody.\n\n"
                 + "Delete: the apartment is gone, and its rooms are shared.",
                 new[]
                 {
-                    Actions.Choice("Remove room", () => PickRoom(apartment, true)),
                     Actions.Choice("Rename", () => Actions.AskText("Rename " + apartment.Name, "What should this apartment be called?", apartment.Name, 40,
                         name => Do(() => Actions.RenameApartment(apartment, name)))),
                     Actions.Choice("Tenant", () => ChooseTenant(house, file, apartment)),
@@ -358,36 +337,6 @@ namespace Apartments
                 choices.Count == 0 ? "No household lives on this lot yet. Households move in from the neighbourhood screen, or from the Move in page."
                     : "Only households that already live on this lot are listed. A household that moves here takes this one's place in its old apartment.",
                 choices);
-        }
-
-        /// <summary>
-        /// Put the window away and let the player click in rooms, one after another, until Esc. Meanwhile each
-        /// apartment's floor is drawn on the lot in its colour (this one strongly), the room under the cursor in white,
-        /// and a panel in the corner says how each click went and which colour is which.
-        /// </summary>
-        private void PickRoom(Apartment apartment, bool remove)
-        {
-            var vm = Actions.Screen?.vm;
-            CloseMe();
-            if (vm == null) return;
-            var changes = 0;
-            var started = UIRoomPicker.Begin(
-                pos =>
-                {
-                    var result = remove ? Actions.RemoveRoom(pos) : Actions.AddRoom(apartment, pos);
-                    changes++;
-                    Neighbours.Show(vm, true, apartment);
-                    UIPickPanel.Say(result);
-                },
-                () => Open(Tab.Apartments, changes == 0 ? "No room was chosen." : "Finished choosing rooms for " + apartment.Name + ". Save the lot to keep this."),
-                true);
-            if (!started)
-            {
-                Open(Tab.Apartments, "There is no lot to choose a room on.");
-                return;
-            }
-            Neighbours.Show(vm, true, apartment);
-            UIPickPanel.Open(vm, apartment, remove);
         }
 
         private List<Row> MoveInRows()

@@ -31,7 +31,7 @@ namespace Apartments
         public const string NoHomeless = "There are none. Make a family first and leave it in the family bin.";
         private const string KeepNote = "Save the lot to keep this.";
 
-        public static TS1GameScreen Screen => GameFacade.Screens.CurrentUIScreen as TS1GameScreen;
+        public static TS1GameScreen Screen => GameFacade.Screens?.CurrentUIScreen as TS1GameScreen;
 
         // ---- where we are ----
 

@@ -50,6 +50,12 @@ namespace Apartments
             return true;
         }
 
+        /// <summary>Put the tool away, if it is out (its done is called).</summary>
+        public static void Stop()
+        {
+            Current?.Finish(true);
+        }
+
         public override void MouseDown(UpdateState state)
         {
             Down = true;

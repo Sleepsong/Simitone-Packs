@@ -128,7 +128,7 @@ namespace Apartments
         public void OnLotLoaded(VM vm)
         {
             //what was drawn on the last lot is not this one's
-            if (LotOverlay.On) Guard("putting the last lot's apartments away", () => { LotOverlay.Hide(); UIPickPanel.Close(); });
+            if (LotOverlay.On) Guard("putting the last lot's apartments away", LotOverlay.Hide);
             //normally done already (3). this covers a lot that reached the screen another way
             if (!Neighbours.IsShared(vm)) Guard("looking at the lot that loaded", () => Neighbours.Reconcile(vm, "lot loaded"));
         }
@@ -209,7 +209,9 @@ namespace Apartments
 
             // the ways into the Apartments window. the pack works without them (the console opens the window too), so
             // a version of Simitone they do not fit costs only that way in
-            Optional(() => harmony.Patch(Find(typeof(UILotControl), "Update"), postfix: Mine(nameof(AfterLotControlUpdate))), "the F9 key");
+            Optional(() => harmony.Patch(Find(typeof(UILotControl), "Update"), postfix: Mine(nameof(AfterLotControlUpdate))), "the F9 key, and the apartments drawn in build mode");
+            Optional(() => harmony.Patch(Find(typeof(UIMainPanel), "SetMode"), prefix: Mine(nameof(BeforeSetMode))), "the Apartments tab in build mode");
+            Optional(() => harmony.Patch(Find(typeof(UIMainPanel), "Switcher_OnCategorySelect"), prefix: Mine(nameof(BeforeCategorySelect))), "the Apartments tab in build mode");
             Optional(() => harmony.Patch(Find(typeof(UIMainPanel), "AddPacksButton"), postfix: Mine(nameof(AfterPacksButton))), "the Apartments button in Options");
 
             // the neighbourhood screen. without these a building can still be filled from the Apartments window's
@@ -521,9 +523,38 @@ namespace Apartments
 
         // ---- the ways into the window ----
 
+        private static bool OverlayBroken;
+
         public static void AfterLotControlUpdate(UpdateState state)
         {
             if (state?.NewKeys != null && state.NewKeys.Contains(Keys.F9)) Guard("opening the Apartments window", () => UIApartmentsDialog.Open());
+            //the apartments are drawn while build mode is open (once is enough to write down if that fails: it would every frame)
+            if (OverlayBroken) return;
+            try { UIApartmentsSubpanel.KeepOverlay(); }
+            catch (Exception e)
+            {
+                OverlayBroken = true;
+                AptLog.Write("The apartments cannot be drawn in build mode: " + e);
+            }
+        }
+
+        // ---- the Apartments tab in build mode ----
+
+        /// <summary>Build mode is opening: the Apartments tab goes among its tabs, on a home lot.</summary>
+        public static void BeforeSetMode(UIMainPanelMode mode, List<UICategory> ___BuildCategories)
+        {
+            if (mode != UIMainPanelMode.BUILD) return;
+            Guard("putting the Apartments tab in build mode", () => UIApartmentsSubpanel.FitTab(___BuildCategories));
+        }
+
+        /// <summary>A tab was chosen. If it is the Apartments tab, the pack's tool is opened, not one of the game's catalogues.</summary>
+        public static bool BeforeCategorySelect(UIMainPanel __instance, int obj)
+        {
+            if (__instance.Mode != UIMainPanelMode.BUILD || obj != UIApartmentsSubpanel.CategoryId) return true;
+            var screen = Actions.Screen;
+            if (!Guard("opening the Apartments tab", () => __instance.SetSubpanel(new UIApartmentsSubpanel(screen))))
+                Guard("closing the Apartments tab", () => __instance.SetSubpanel(null)); //never the game's catalogue for a tab it has not got
+            return false;
         }
 
         /// <summary>Simitone has just put its Packs button in the Options panel. Put an Apartments button after it, made the same way.</summary>
