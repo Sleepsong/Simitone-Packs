@@ -63,6 +63,11 @@ The pack comes with twelve heads for elders only, chosen in the game: four men's
 `c029fa_lynn`, `c205fa_madame`, `c800fa_eldenmama`, `c802fa_cornelia`, `c804fa_tiffany`,
 `c807fa_ginia`).
 
+It also comes with thirteen men's heads for adults and elders: bald heads, helmets and others that suit
+either (`c002ma_baldfat`, `c007ma_gpa1`, `c206ma_carnieguy`, `c499ma_waylon`, `c537ma_fanpoolbald`,
+`c538ma_fanpoolbald2`, `c609ma_rocketofficer`, `c611ma_nodminigunnerofficer`, `c615ma_grenadier`,
+`c621ma_nod_rtrpr`, `c626ma_gdipilot`, `c639ma_ravmutant`, `c899ma_macssx`).
+
 ## Making Sims of each age
 
 In Create a Sim the two age buttons are four, in the order of a life: **child** and **teen** above,

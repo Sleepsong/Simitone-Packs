@@ -183,7 +183,8 @@ Check("nobody lives on no lot", Life.Household(null).Count == 0 && !Life.AtHome(
     if (!File.Exists(shipped)) shipped = Path.Combine(Directory.GetCurrentDirectory(), "LifeStages", Heads.FileName);
     File.Copy(shipped, Path.Combine(dir, Heads.FileName));
     var said = Heads.Load(dir);
-    Check("the heads.json the pack ships reads: " + said, said.StartsWith(Heads.FileName + ": 12 heads for elders only") && Heads.ElderOnly("c805ma_brad") && Heads.ElderOnly("c004fa_gma1") && !Heads.ElderOnly("c001ma_kaj"));
+    Check("the heads.json the pack ships reads: " + said, said == Heads.FileName + ": 12 heads for elders only, 13 for adults and elders." && Heads.ElderOnly("c805ma_brad") && Heads.ElderOnly("c004fa_gma1") && !Heads.ElderOnly("c001ma_kaj")
+        && Heads.Suits("c002ma_baldfat", Stage.Adult) && Heads.Suits("c002ma_baldfat", Stage.Elder) && !Heads.Suits("c001ma_kaj", Stage.Elder));
     File.WriteAllText(Path.Combine(dir, Heads.FileName), "// mine\n{ \"elder\": [\"c003ma_old\", \"c009fa_gran\",], \"Both\": [\"c004ma_helmet\"] }");
     said = Heads.Load(dir);
     Check("a file with notes, a trailing comma and a capital is read: " + said, Heads.Lists.Elder.Count == 2 && Heads.Lists.Both.Count == 1 && Heads.ElderOnly("c009fa_gran"));
