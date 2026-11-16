@@ -20,8 +20,8 @@ they are new objects with their own key system, not the code Maxis left in its o
 | Hire a limousine in place of a cab | Hot Date | Built. The Go Downtown phone plugin has texts no script uses: "Would you prefer a taxi or a limo?", "Excellent. A representative from our prestigious limosine service will be there with a car shortly." and a "lack of funds" apology. Its "Generate Cab" only ever makes the taxi, and Hot Date's own limousine (`CarLimo.iff`) has the taxi's shape and pictures but none of its scripts. The pack asks the question after "Do you need a ride?"; a limousine costs $150 on top of the fare, or brings the apology and a taxi if the household can't pay. The car that comes is the taxi, which works, drawn with Hot Date's limousine pictures, and it stays a limousine if the lot is saved. |
 | Investment offers by telephone | Base game | Built. The phone's "RandomCallDialog" has a branch no step reached: two chance calls in five would have offered to take a multiple of $50, with 20 placeholder texts ("Would you like to spend some money on something random? Variation 1" to 20). The pack leads the calls to the branch again, hands the amount to the text (Maxis never did), writes 20 offers in place of the placeholders, and finishes what Maxis never wrote: three to five days of play later an investment comes good (half as much again, two and a half times or four times) or goes bad, with a message. Pending investments are kept with the lot. |
 | Information Kiosk missing from buy mode | Superstar | Not in this game. None of the 1,195 object files has "kiosk" or "info" in its name, no object is a kiosk, and the only catalog object without catalog text is a dead mouse. The copy of the game surveyed doesn't have it. |
-| Cut skills: cleaning, gardening, music, literacy | Base game | Not started. |
-| Pickpocket | Vacation | Not started. His textures are in the game (`cvacationmalgt_pickpocket.bmp`, `vacationmasknlgt_pickpocket.bmp` and beach, forest and lodge outfits), but no character uses them. |
+| Cut skills: cleaning, gardening, music, literacy | Base game | Being looked into. A Sim has four person-data numbers no part of the game shows: 9, 13, 14 and 16. They are believed to be these skills: the wiki names the four, and The Sims: Life Stories used 13, 14 and 16 for gardening, music and literacy. No script, menu or text names them. Survey 6 lists every script step that reads or sets them, and every Sim's values, to see what is left of each. |
+| Pickpocket | Vacation | Being looked into. Only his textures are in the game: a head with a five-o'clock shadow (`cvacationmalgt_pickpocket.bmp`, `cvacationmalgt_pick.bmp`), a skin (`vacationmasknlgt_pickpocket.bmp`) and beach, forest and lodge outfits (`vacationmafitlgt_pick...`). No character, script or text. He would be a new character, built from the pack's own code; survey 6 lists the body skins and meshes those textures could go on, and what every character in the game wears. |
 
 Objects and interactions are found by the names of their scripts and menu entries, in English.
 
@@ -53,9 +53,10 @@ The terminal shows the same findings in lines starting with `[cut]`.
 ## The survey
 
 `cutcontent survey` writes down what the pack has found and done, and the names and numbers in the
-game's files that the restorations are written from: each object's menu table and how its entries are
-marked, the scripts no entry leads to, the left-over texts, the sound lists and the skins. Run it in a
-lot, with a Sim selected, and with every expansion you have installed.
+game's files that the restorations are written from. Version 6 is for the last two: every script step
+that reads or sets the four hidden person-data numbers, and every Sim's values for them; and the textures,
+body skins, meshes and outfits the pickpocket could be made from. Run it in a lot with some Sims and NPCs
+on it, with a Sim selected, and with every expansion you have installed.
 
 ## How it is made
 

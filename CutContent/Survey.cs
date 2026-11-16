@@ -69,7 +69,7 @@ namespace CutContent
             Listed = 0;
             ListedScripts.Clear();
             var report = new StringBuilder();
-            report.AppendLine("Cut Content survey, version 5");
+            report.AppendLine("Cut Content survey, version 6");
             report.AppendLine();
             report.AppendLine("== What the pack has done ==");
             report.AppendLine("Ghost sting: " + GhostSting.Status);
@@ -80,11 +80,12 @@ namespace CutContent
             report.AppendLine("Investment calls: " + Investments.StatusText((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm));
             report.AppendLine($"Limousine: {Limousine.Status}. This session: {Limousine.Hired} hired.");
 
-            Section(report, "Files in full", Whole);
-            Section(report, "Object files with kiosk or info in the name, and files that failed to load", KioskFiles);
+            Section(report, "Cut skills: who has them", SkillHolders);
+            Section(report, "Cut skills: every script step that reads or sets them", SkillSteps);
+            Section(report, "Pickpocket: textures", Skins);
+            Section(report, "Pickpocket: body skins and meshes", Bodies);
+            Section(report, "Pickpocket: what each character wears", Outfits);
             Section(report, "Sounds", Sounds);
-            Section(report, "Skins", Skins);
-            Section(report, "The selected Sim's skill numbers", Skills);
             Section(report, "Objects", Objects);
             Section(report, "Shared script files (semi-globals)", SemiGlobals);
             return report.ToString();
@@ -106,100 +107,6 @@ namespace CutContent
         }
 
         /// <summary>Files listed in full: every object, table entry, script with its steps, and text.</summary>
-        /// <summary>Files listed in full. Surveys 3 and 4 listed the ones the limousine and the investments needed.</summary>
-        private static readonly string[] WholeFiles = { };
-        /// <summary>Shared script files listed in full, but with only some scripts' steps.</summary>
-        private static readonly (string file, Regex steps)[] WholeShared = { };
-
-        private static void Whole(StringBuilder report)
-        {
-            var objects = Content.Get().WorldObjects as TS1ObjectProvider;
-            if (objects == null) return;
-            foreach (var name in WholeFiles)
-            {
-                var entry = objects.Entries.Values.FirstOrDefault(x => string.Equals(System.IO.Path.GetFileName(x.FileName ?? ""), name, StringComparison.OrdinalIgnoreCase));
-                if (entry == null) { report.AppendLine(); report.AppendLine(name + ": not in this game"); continue; }
-                GameObjectResource res = null;
-                try { res = objects.Get(entry.ID)?.Resource; }
-                catch (Exception e) { report.AppendLine(); report.AppendLine($"{name}: could not be loaded ({e.Message})"); continue; }
-                if (res != null) Full(report, objects, name, res, res.SemiGlobal, null);
-            }
-            foreach (var (file, steps) in WholeShared)
-            {
-                var res = Content.Get().WorldObjectGlobals.Get(file)?.Resource;
-                if (res == null) { report.AppendLine(); report.AppendLine(file + ": not in this game"); continue; }
-                Full(report, null, file + ".iff", res, null, steps);
-            }
-        }
-
-        private static void Full(StringBuilder report, TS1ObjectProvider catalog, string fileName, GameIffResource res, GameIffResource semiGlobal, Regex steps)
-        {
-            var lines = new List<string>();
-            report.AppendLine();
-            report.AppendLine($"{fileName} in full" + ((semiGlobal != null) ? $" (shares scripts with {semiGlobal.MainIff?.Filename})" : ""));
-            foreach (var objd in Try(lines, "objects", () => res.List<OBJD>()) ?? new List<OBJD>())
-            {
-                report.AppendLine($"  object \"{Clean(objd.ChunkLabel)}\" {objd.GUID:x8}: type {objd.ObjectType}, table {objd.TreeTableID}, " +
-                    $"{((catalog?.GetItemByGUID(objd.GUID) != null) ? "in catalog" : "not in catalog")} (category {objd.FunctionFlags:x}, rooms {objd.RoomFlags:x}, price {objd.Price}, part {objd.MasterID}/{objd.SubIndex}, attributes {objd.NumAttributes})");
-            }
-            foreach (var table in Try(lines, "interaction tables", () => res.List<TTAB>()) ?? new List<TTAB>())
-            {
-                var strings = Try(lines, $"strings of table {table.ChunkID}", () => res.Get<TTAs>(table.ChunkID));
-                foreach (var entry in table.Interactions)
-                {
-                    lines.Add($"  table {table.ChunkID} entry {entry.TTAIndex} \"{Clean(strings?.GetString((int)entry.TTAIndex))}\": marks {(uint)entry.Flags:x}, " +
-                        $"action {entry.ActionFunction} \"{Clean(Find(res, semiGlobal, entry.ActionFunction)?.ChunkLabel)}\", check {entry.TestFunction} \"{Clean(Find(res, semiGlobal, entry.TestFunction)?.ChunkLabel)}\"");
-                }
-            }
-            foreach (var text in Try(lines, "texts", () => res.List<STR>()) ?? new List<STR>())
-            {
-                for (int i = 0; i < text.Length; i++)
-                {
-                    var value = text.GetString(i);
-                    if (!string.IsNullOrEmpty(value)) lines.Add($"  text {text.ChunkID} \"{Clean(text.ChunkLabel)}\" line {i}: {Clean(value)}");
-                }
-            }
-            foreach (var script in (Try(lines, "scripts", () => res.List<BHAV>()) ?? new List<BHAV>()).OrderBy(x => x.ChunkID))
-            {
-                if (steps == null || steps.IsMatch(Clean(script.ChunkLabel))) Steps(lines, res, semiGlobal, script);
-                else lines.Add($"  script {script.ChunkID} \"{Clean(script.ChunkLabel)}\"");
-            }
-            foreach (var line in lines) report.AppendLine(line);
-        }
-
-        /// <summary>The kiosk is in no object the game lists. Maybe its file is there with no object in it, or failed to load.</summary>
-        private static void KioskFiles(StringBuilder report)
-        {
-            var objects = Content.Get().WorldObjects as TS1ObjectProvider;
-            var provider = AccessTools.Field(typeof(TS1ObjectProvider), "GameObjects")?.GetValue(objects) as TS1SubProvider<FSO.Files.Formats.IFF.IffFile>;
-            var names = provider?.GetAllNames().ToList();
-            if (names == null) report.AppendLine("(couldn't list the object files)");
-            else
-            {
-                report.AppendLine($"{names.Count} object files.");
-                foreach (var name in names.Where(x => Regex.IsMatch(x, "kiosk|info", RegexOptions.IgnoreCase)).OrderBy(x => x)) report.AppendLine("file: " + name);
-            }
-            foreach (var failed in Content.FailedContentFiles ?? Enumerable.Empty<TS1BCFProvider.FailedFileInfo>())
-                report.AppendLine($"failed: {failed.Filename}: {failed.ErrorType}: {failed.ErrorMessage}");
-
-            //The Sims shows an object in buy mode only with its catalog text. Simitone doesn't ask for it, so the kiosk may
-            //already be in Simitone's catalog, with no name: list the catalog's objects that have no catalog text
-            report.AppendLine("Objects in Simitone's catalog with no catalog text (The Sims would not show these):");
-            foreach (var item in objects?.All() ?? new List<FSO.Content.Interfaces.ObjectCatalogItem>())
-            {
-                try
-                {
-                    var obj = objects.Get(item.GUID);
-                    if (obj?.OBJ == null) continue;
-                    var ctss = obj.Resource.Get<CTSS>(obj.OBJ.CatalogStringsID);
-                    var name = ctss?.GetString(0);
-                    if (string.IsNullOrWhiteSpace(name))
-                        report.AppendLine($"  \"{Clean(obj.OBJ.ChunkLabel)}\" {item.GUID:x8} in {obj.Resource.Name}: catalog text {obj.OBJ.CatalogStringsID} {(ctss == null ? "missing" : "empty")}, category {item.Category}, price {item.Price}");
-                }
-                catch (Exception e) { report.AppendLine($"  {item.GUID:x8}: could not be read ({e.Message})"); }
-            }
-        }
-
         private static void Sounds(StringBuilder report)
         {
             {
@@ -229,26 +136,123 @@ namespace CutContent
         {
             var textures = Content.Get().AvatarTextures as TS1AvatarTextureProvider;
             if (textures == null) return;
-            var words = new[] { "pick", "burglar", "thief", "robber", "crook" };
+            var words = new[] { "pick", "burglar", "thief", "robber", "crook", "vacationma" };
             foreach (var name in textures.GetAllNames().OrderBy(x => x))
             {
                 if (Has(name, words)) report.AppendLine(name);
             }
         }
 
-        private static void Skills(StringBuilder report)
+        /// <summary>The four person-data numbers no part of the game shows, and what they are believed to have been.</summary>
+        private static readonly (int index, string name)[] CutSkills = { (9, "cleaning"), (13, "gardening"), (14, "music"), (16, "literacy") };
+
+        /// <summary>Every Sim and NPC on the lot, with the four numbers.</summary>
+        private static void SkillHolders(StringBuilder report)
         {
-            var sim = (GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.SelectedAvatar;
-            if (sim == null) { report.AppendLine("No Sim is selected. Run the survey in a lot to see these."); return; }
-            report.AppendLine("The game keeps ten skill numbers for a Sim and shows six. The names of the other four below are");
-            report.AppendLine("what they are believed to have been, not something read from the game.");
-            var slots = new (int index, string name)[]
+            var vm = (GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm;
+            if (vm == null) { report.AppendLine("Not in a lot. Run the survey in a lot to see these."); return; }
+            report.AppendLine("Person data 9, 13, 14 and 16 are believed to be the cut cleaning, gardening, music and literacy skills.");
+            report.AppendLine("The wiki lists those four, and The Sims: Life Stories used 13, 14 and 16 for gardening, music and literacy.");
+            foreach (var sim in vm.Entities.OfType<VMAvatar>())
             {
-                (9, "cleaning? (cut)"), (10, "cooking"), (11, "charisma"), (12, "mechanical"), (13, "gardening? (cut)"),
-                (14, "music? (cut)"), (15, "creativity"), (16, "literacy? (cut)"), (17, "body"), (18, "logic"),
-            };
-            foreach (var slot in slots)
-                report.AppendLine($"{sim.Name}, number {slot.index} ({slot.name}): {sim.GetPersonData((VMPersonDataVariable)slot.index)}");
+                var values = string.Join(", ", CutSkills.Select(x => $"{x.name} {sim.GetPersonData((VMPersonDataVariable)x.index)}"));
+                var shown = $"cooking {sim.GetPersonData(VMPersonDataVariable.CookingSkill)}, charisma {sim.GetPersonData(VMPersonDataVariable.CharismaSkill)}";
+                report.AppendLine($"{sim.Name} ({Clean(sim.Object?.OBJ?.ChunkLabel)}, {sim.Object?.OBJ?.GUID:x8}): {values}; for comparison {shown}");
+            }
+        }
+
+        /// <summary>
+        /// Every expression step in the game that reads or sets one of the four, as a Sim's own person data (scope 18), the
+        /// stack object's (19) or a neighbour's (32). Steps that pick the number from a temp at run time can't be told
+        /// apart here, so they are only counted.
+        /// </summary>
+        private static void SkillSteps(StringBuilder report)
+        {
+            var wanted = new HashSet<int>(CutSkills.Select(x => x.index));
+            var names = CutSkills.ToDictionary(x => x.index, x => x.name);
+            var scopes = new Dictionary<int, string> { { 18, "my" }, { 19, "stack object's" }, { 32, "neighbour's" } };
+            var byTemp = 0;
+            var counts = new Dictionary<int, int>();
+            foreach (var (fileName, res) in AllFiles())
+            {
+                List<BHAV> scripts = null;
+                try { scripts = res.List<BHAV>(); } catch { }
+                if (scripts == null) continue;
+                foreach (var script in scripts.OrderBy(x => x.ChunkID))
+                {
+                    for (int i = 0; i < script.Instructions.Length; i++)
+                    {
+                        var inst = script.Instructions[i];
+                        if (inst.Opcode != 2 || inst.Operand == null || inst.Operand.Length < 8) continue; //expression
+                        var e = new FSO.SimAntics.Engine.Primitives.VMExpressionOperand();
+                        try { e.Read(inst.Operand); } catch { continue; }
+                        var sides = new[] { ((int)e.LhsOwner, (int)e.LhsData), ((int)e.RhsOwner, (int)e.RhsData) };
+                        if (sides.Any(x => x.Item1 == 30 || x.Item1 == 31)) byTemp++;
+                        var hit = sides.FirstOrDefault(x => scopes.ContainsKey(x.Item1) && wanted.Contains(x.Item2));
+                        if (hit.Item1 == 0) continue;
+                        counts[hit.Item2] = counts.TryGetValue(hit.Item2, out var c) ? c + 1 : 1;
+                        report.AppendLine($"{fileName} script {script.ChunkID} \"{Clean(script.ChunkLabel)}\" step {i}: {scopes[hit.Item1]} {names[hit.Item2]} ({hit.Item2}): " +
+                            $"{e.LhsOwner}[{e.LhsData}] {e.Operator} {e.RhsOwner}[{e.RhsData}] -> true {Next(inst.TruePointer)}, false {Next(inst.FalsePointer)}");
+                    }
+                }
+            }
+            report.AppendLine("Totals: " + string.Join(", ", CutSkills.Select(x => $"{x.name} {(counts.TryGetValue(x.index, out var c) ? c : 0)}")) +
+                $". Steps that pick person data by a temp, which may be any of them: {byTemp}.");
+        }
+
+        /// <summary>Every object file, its shared script file and the global file, once each.</summary>
+        private static List<(string, GameIffResource)> AllFiles()
+        {
+            var files = new List<(string, GameIffResource)>();
+            var objects = Content.Get().WorldObjects as TS1ObjectProvider;
+            if (objects == null) return files;
+            var done = new HashSet<object>();
+            foreach (var entry in objects.Entries.Values.OrderBy(x => x.FileName))
+            {
+                GameObjectResource res = null;
+                try { res = objects.Get(entry.ID)?.Resource; } catch { }
+                if (res != null && done.Add(res)) files.Add((entry.FileName, res));
+                if (res?.SemiGlobal != null && done.Add(res.SemiGlobal)) files.Add((res.SemiGlobal.MainIff?.Filename ?? "(semi-global)", res.SemiGlobal));
+            }
+            var global = Content.Get().WorldObjectGlobals.Get("global")?.Resource;
+            if (global != null && done.Add(global)) files.Add(("global.iff", global));
+            return files;
+        }
+
+        private static readonly Regex BodyWords = new Regex("vacation|burglar|thief|pick|mafit|mafat|maskn|crook|robber", RegexOptions.IgnoreCase);
+
+        /// <summary>The skins the game's body files offer, and the meshes, that could carry the pickpocket's textures.</summary>
+        private static void Bodies(StringBuilder report)
+        {
+            var bcf = Content.Get().BCFGlobal;
+            if (bcf != null)
+            {
+                var skins = bcf.SkinHostBCF.Keys.Where(x => BodyWords.IsMatch(x)).OrderBy(x => x).ToList();
+                report.AppendLine($"{bcf.SkinHostBCF.Count} skins in the body files; these match: " + string.Join(", ", skins.Select(x => $"{x} (in {bcf.SkinHostBCF[x]})")));
+            }
+            var meshes = (Content.Get().AvatarMeshes as TS1BMFProvider)?.GetAllNames().Where(x => BodyWords.IsMatch(x)).OrderBy(x => x).ToList();
+            report.AppendLine("Meshes that match: " + ((meshes == null) ? "(couldn't list)" : string.Join(", ", meshes)));
+        }
+
+        /// <summary>What every character in the game wears: its body strings (text 200), which name a mesh and a texture for each part.</summary>
+        private static void Outfits(StringBuilder report)
+        {
+            var objects = Content.Get().WorldObjects as TS1ObjectProvider;
+            if (objects == null) return;
+            var done = new HashSet<object>();
+            foreach (var guid in objects.PersonGUIDs.OrderBy(x => x))
+            {
+                try
+                {
+                    var obj = objects.Get(guid);
+                    if (obj?.Resource == null || !done.Add(obj.Resource)) continue;
+                    var texts = obj.Resource.Get<STR>(200);
+                    if (texts == null) continue;
+                    var lines = Enumerable.Range(0, texts.Length).Select(i => Clean(texts.GetString(i))).Where(x => x.Length > 0).ToList();
+                    report.AppendLine($"{obj.Resource.Name} \"{Clean(obj.OBJ.ChunkLabel)}\" {guid:x8}: {string.Join(" | ", lines)}");
+                }
+                catch (Exception e) { report.AppendLine($"{guid:x8}: could not be read ({e.Message})"); }
+            }
         }
 
         private static void Objects(StringBuilder report)
