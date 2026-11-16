@@ -47,12 +47,84 @@ namespace CutContent
             public IffFile Iff;
         }
 
-        public static string Run(string folder)
+        /// <summary>The pack's own folder, where an older copy can be put and found without typing a path.</summary>
+        public static string PackFolder;
+
+        /// <summary>
+        /// Finds the folder meant by what was typed. Each folder name is matched without minding capitals, as on Windows; "~" is
+        /// the home folder; a path that doesn't start at the root is looked for in the pack's folder and then the user
+        /// folder; and nothing at all means the folders inside the pack's folder. Returns null, with what was tried and what is
+        /// there instead, when nothing matches.
+        /// </summary>
+        public static string Find(string typed, out string explained)
+        {
+            var notes = new StringBuilder();
+            typed = (typed ?? "").Trim().Trim('"', '\'');
+            notes.AppendLine($"Path received: \"{typed}\"");
+            if (typed == "")
+            {
+                if (PackFolder != null && Directory.Exists(PackFolder) && Directory.EnumerateDirectories(PackFolder).Any())
+                {
+                    explained = notes + $"No path was given, so the folders inside the pack's folder are read: {PackFolder}";
+                    return PackFolder;
+                }
+                explained = notes + $"No path was given, and the pack's folder ({PackFolder}) has no folder inside it. Put the older copy there, or give its path.";
+                return null;
+            }
+            if (typed == "~" || typed.StartsWith("~/")) typed = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile) + typed.Substring(1);
+
+            var tries = new List<string>();
+            if (Path.IsPathRooted(typed)) tries.Add(typed);
+            else
+            {
+                if (PackFolder != null) tries.Add(Path.Combine(PackFolder, typed));
+                tries.Add(Path.Combine(FSO.Common.FSOEnvironment.UserDir, typed));
+            }
+            foreach (var attempt in tries)
+            {
+                var found = Match(Path.GetFullPath(attempt), notes);
+                if (found != null)
+                {
+                    explained = notes + $"Reading: {found}";
+                    return found;
+                }
+            }
+            explained = notes.ToString();
+            return null;
+        }
+
+        /// <summary>Walks a path one folder at a time, matching each name without minding capitals. Says where it stopped and what is there.</summary>
+        private static string Match(string full, StringBuilder notes)
+        {
+            if (Directory.Exists(full)) return full;
+            var root = Path.GetPathRoot(full);
+            var parts = full.Substring(root.Length).Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            var at = root;
+            foreach (var part in parts)
+            {
+                string[] inside;
+                try { inside = Directory.GetDirectories(at); }
+                catch (Exception e) { notes.AppendLine($"Could not look inside {at}: {e.Message}"); return null; }
+                var next = inside.FirstOrDefault(x => string.Equals(Path.GetFileName(x), part, StringComparison.OrdinalIgnoreCase));
+                if (next == null)
+                {
+                    notes.AppendLine($"Not found: \"{part}\" in {at}");
+                    notes.AppendLine("  The folders there are: " + (inside.Length == 0 ? "(none)" : string.Join(", ", inside.Select(x => $"\"{Path.GetFileName(x)}\"").Take(40))));
+                    return null;
+                }
+                at = next;
+            }
+            return at;
+        }
+
+        public static string Run(string typed)
         {
             var report = new StringBuilder();
             report.AppendLine("Cut Content survey of an older copy");
-            report.AppendLine("Folder: " + folder);
-            if (!Directory.Exists(folder)) { report.AppendLine("The folder was not found."); return report.ToString(); }
+            var folder = Find(typed, out var explained);
+            report.Append(explained);
+            if (!explained.EndsWith("\n")) report.AppendLine();
+            if (folder == null) { report.AppendLine("The folder was not found."); return report.ToString(); }
 
             var files = Read(folder, report);
             report.AppendLine($"{files.Count} object and script files read.");

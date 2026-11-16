@@ -40,7 +40,7 @@ namespace CutContent
     /// Console commands (Ctrl+Shift+C):
     ///   cutcontent              what was found and restored so far
     ///   cutcontent survey       write the report, for working out the restorations that are not done yet
-    ///   cutcontent survey old FOLDER   read an older copy of the game from its folder (see OldSurvey.cs)
+    ///   cutcontent survey old [FOLDER]   read an older copy of the game from its folder, or from the pack's folder (see OldSurvey.cs)
     ///   cutcontent pickpocket   try the pickpocket's textures on the selected Sim (see Pickpocket.cs)
     ///   cutcontent doors        the doors on this lot that can be locked, and whether they are
     ///   cutcontent locks everyone|household   who a locked door keeps out (until the game closes)
@@ -53,6 +53,7 @@ namespace CutContent
         public void OnLoad(Pack pack)
         {
             Investments.PackId = pack.Id;
+            OldSurvey.PackFolder = pack.Folder;
             var harmony = new Harmony("pack." + pack.Id);
             try
             {
@@ -122,12 +123,17 @@ namespace CutContent
                 case "survey":
                     if (args.Length >= 2 && args[1].ToLowerInvariant() == "old")
                     {
-                        //an older copy of the game, read from its folder: "cutcontent survey old C:\Games\The Sims"
-                        if (args.Length < 3) return false;
-                        var folder = string.Join(" ", args.Skip(2)).Trim('"');
+                        //an older copy of the game, read from its folder: "cutcontent survey old /path/to/The Sims", or nothing
+                        //to read whatever is inside the pack's own folder
+                        var typed = string.Join(" ", args.Skip(2));
+                        if (OldSurvey.Find(typed, out var explained) == null)
+                        {
+                            Show("Cut Content", explained.TrimEnd() + "\nThe folder was not found.");
+                            return true;
+                        }
                         var oldPath = Path.Combine(FSOEnvironment.UserDir, "cutcontent-survey-old.txt");
-                        File.WriteAllText(oldPath, OldSurvey.Run(folder));
-                        Show("Cut Content", "The survey of the older copy was written to:\n" + Path.GetFullPath(oldPath));
+                        File.WriteAllText(oldPath, OldSurvey.Run(typed));
+                        Show("Cut Content", explained.TrimEnd() + "\n\nThe survey of the older copy was written to:\n" + Path.GetFullPath(oldPath));
                         return true;
                     }
                     var path = Path.Combine(FSOEnvironment.UserDir, "cutcontent-survey.txt");
