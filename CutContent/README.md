@@ -68,8 +68,11 @@ found" may only mean "not readable"); Behavior.iff's tables of names whole; care
 three unnamed skills ("min req 7, 8, 9"); script names that mention a skill, learning, studying or
 practising; menu entries whose pull is scaled by a cut skill; objects' skill flags; every text that
 mentions a skill; and every script step that reads or sets the hidden skill numbers, checked against the
-game being played. It reads `.far` archives and `.iff` files anywhere under the folder, skipping saved lots
-and families, and changes nothing.
+game being played. It reads `.far` archives and `.iff` files anywhere under the folder, skipping saved lots,
+families and neighbourhoods, and changes nothing. Files too old for the engine to open (a build from 1998
+begins its files with something other than "IFF FILE 2.5") are described instead: the text they begin
+with, a dump of their first bytes, and where the game's data tags are found in them, to work out how to
+read them.
 
 ## How it is made
 

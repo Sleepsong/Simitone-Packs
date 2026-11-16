@@ -126,8 +126,10 @@ namespace CutContent
             if (!explained.EndsWith("\n")) report.AppendLine();
             if (folder == null) { report.AppendLine("The folder was not found."); return report.ToString(); }
 
+            Unopened.Clear();
             var files = Read(folder, report);
             report.AppendLine($"{files.Count} object and script files read.");
+            Section(report, "Files the engine would not open: what they look like", () => Describe(report));
             Section(report, "What the files are made of, and what the engine could not read", () => Formats(report, files));
             Section(report, "Behavior.iff's tables of names, whole", () => Labels(report, files));
             Section(report, "Career levels that ask for the three unnamed skills (min req 7, 8, 9)", () =>
@@ -169,7 +171,7 @@ namespace CutContent
         {
             var files = new List<OldFile>();
             var paths = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
-                .Where(x => !x.Replace('\\', '/').ToLowerInvariant().Contains("/userdata")) //saved lots and families: not the game's code
+                .Where(x => !Saved(x)) //saved lots and families: not the game's code
                 .OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
             foreach (var path in paths)
             {
@@ -203,10 +205,88 @@ namespace CutContent
                 else if (ext == ".iff")
                 {
                     try { files.Add(new OldFile { Name = Path.GetFileName(path), Where = shown, Iff = new IffFile(path, true) }); }
-                    catch (Exception e) { report.AppendLine($"{shown}: could not be read ({e.Message})"); }
+                    catch (Exception e) { report.AppendLine($"{shown}: could not be read ({e.Message})"); Unopened.Add(path); }
                 }
             }
             return files;
+        }
+
+        private static bool Saved(string path)
+        {
+            var p = path.Replace('\\', '/').ToLowerInvariant();
+            return p.Contains("/userdata") || p.Contains("/neighborhood/");
+        }
+
+        /// <summary>Loose files the engine would not open, kept to describe at the end.</summary>
+        private static List<string> Unopened = new List<string>();
+
+        private static readonly string[] Tags = { "BHAV", "STR#", "TTAB", "TTAs", "OBJD", "OBJf", "CTSS", "BCON", "GLOB", "CARR", "SLOT", "DGRP", "SPR2", "rsmp" };
+
+        /// <summary>
+        /// What the files the engine would not open look like: the text each begins with, a dump of the first bytes of a few,
+        /// and where the data tags the game uses (BHAV, STR#, TTAB...) are found, with the bytes after them. The layout of an
+        /// older file can be worked out from this, to read it.
+        /// </summary>
+        private static void Describe(StringBuilder report)
+        {
+            if (Unopened.Count == 0) { report.AppendLine("Every file was opened."); return; }
+            var heads = new Dictionary<string, int>();
+            foreach (var path in Unopened)
+            {
+                try
+                {
+                    var head = new byte[64];
+                    using (var f = File.OpenRead(path)) f.Read(head, 0, head.Length);
+                    var text = Printable(head);
+                    heads[text] = heads.TryGetValue(text, out var n) ? n + 1 : 1;
+                }
+                catch { }
+            }
+            report.AppendLine("The text the files begin with:");
+            foreach (var head in heads.OrderByDescending(x => x.Value)) report.AppendLine($"  {head.Value} files: \"{head.Key}\"");
+
+            //a few to look at closely: the label file, the global scripts, and one object
+            var picks = new[] { "behavior.iff", "global.iff", "bones.iff", "bookshelfm.iff" }
+                .Select(n => Unopened.FirstOrDefault(p => Path.GetFileName(p).Equals(n, StringComparison.OrdinalIgnoreCase)))
+                .Where(p => p != null).Distinct().ToList();
+            if (picks.Count == 0) picks = Unopened.Take(2).ToList();
+            foreach (var path in picks)
+            {
+                byte[] data;
+                try { data = File.ReadAllBytes(path); } catch { continue; }
+                report.AppendLine();
+                report.AppendLine($"{Path.GetFileName(path)}, {data.Length} bytes. The first 192:");
+                Dump(report, data, 0, 192);
+                var found = 0;
+                foreach (var tag in Tags)
+                {
+                    var t = System.Text.Encoding.ASCII.GetBytes(tag);
+                    var at = new List<int>();
+                    for (int i = 0; i + 4 <= data.Length && at.Count < 400; i++)
+                        if (data[i] == t[0] && data[i + 1] == t[1] && data[i + 2] == t[2] && data[i + 3] == t[3]) at.Add(i);
+                    if (at.Count == 0) continue;
+                    report.AppendLine($"  \"{tag}\" {at.Count} times, first at {string.Join(", ", at.Take(6))}");
+                    foreach (var i in at.Take(found < 6 ? 2 : 0))
+                    {
+                        found++;
+                        Dump(report, data, i, 96);
+                    }
+                }
+            }
+        }
+
+        private static string Printable(byte[] bytes)
+        {
+            return new string(bytes.Select(b => (b >= 32 && b < 127) ? (char)b : '.').ToArray());
+        }
+
+        private static void Dump(StringBuilder report, byte[] data, int from, int count)
+        {
+            for (int i = from; i < Math.Min(data.Length, from + count); i += 16)
+            {
+                var line = data.Skip(i).Take(Math.Min(16, data.Length - i)).ToArray();
+                report.AppendLine($"    {i:x6}: {string.Join(" ", line.Select(b => b.ToString("x2"))),-47}  {Printable(line)}");
+            }
         }
 
         private static List<T> List<T>(IffFile iff) where T : IffChunk

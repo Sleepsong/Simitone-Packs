@@ -80,7 +80,7 @@ namespace CutContent
             {
                 Remember(sim);
                 var data = $"{args[1]},{(what == "body" ? "BODY" : "HEAD-HEAD")}={args[2]}";
-                if (what == "body") sim.BodyOutfit = new VMOutfitReference(data, false);
+                if (what == "body") sim.BodyOutfit = Body(sim, data);
                 else sim.HeadOutfit = new VMOutfitReference(data, true);
                 CutContentPack.Log("pickpocket: " + what + " " + data);
                 return true;
@@ -89,12 +89,32 @@ namespace CutContent
             {
                 Remember(sim);
                 var look = Looks[n - 1];
-                sim.BodyOutfit = new VMOutfitReference(look.body, false);
+                sim.BodyOutfit = Body(sim, look.body);
                 sim.HeadOutfit = new VMOutfitReference(look.head, true);
                 CutContentPack.Log($"pickpocket: look {n}, {look.name}: {look.body} | {look.head}");
                 return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// A body outfit from "mesh,BODY=texture", with the Sim's own hands. An outfit made from that string alone has no
+        /// hands, and a pie menu's picture of the Sim (a copy of their appearance) then looks for hands where there are none
+        /// and the game closes. The hands come from the Sim's own outfit, or are The Sims' default hands.
+        /// </summary>
+        private static VMOutfitReference Body(VMAvatar sim, string data)
+        {
+            var outfit = new VMOutfitReference(data, false);
+            FSO.Vitaboy.HandGroup hands = null;
+            try
+            {
+                var own = Originals.TryGetValue(sim, out var original) ? original.Body : sim.BodyOutfit;
+                hands = own?.GetContent()?.LiteralHandgroup;
+            }
+            catch { }
+            if (hands != null) outfit.OftData.LiteralHandgroup = hands;
+            else outfit.OftData.PrepareDefaultHandgroup();
+            return outfit;
         }
 
         private static void Remember(VMAvatar sim)
