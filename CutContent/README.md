@@ -44,6 +44,7 @@ Open the console (Ctrl+Shift+C):
 |---|---|
 | `cutcontent` | Shows what has been found and restored so far. Interactions are found as you click on their objects. |
 | `cutcontent survey` | Writes `cutcontent-survey.txt` to Simitone's user directory (next to `config.ini`). Takes a while: it reads every object in the game. |
+| `cutcontent survey old FOLDER` | Reads an older copy of The Sims straight from its folder (the game doesn't load it, so the base game alone works), and writes `cutcontent-survey-old.txt`: every script step that reads or sets the hidden skill numbers, checked against the game being played (still there, changed, or gone), the steps of the old scripts that changed, and every text that mentions a skill. |
 | `cutcontent pickpocket` | Lists the pickpocket's looks; `cutcontent pickpocket 1` to `8` dresses the selected Sim in one, `cutcontent pickpocket body MESH TEXTURE` (or `head`) tries any other, and `cutcontent pickpocket off` changes the Sim back. Only for looking: loading the lot again changes the Sim back too. |
 | `cutcontent doors` | The doors on this lot that can be locked, and whether they are. |
 | `cutcontent locks everyone` / `household` | Who a locked door keeps out. Lasts until the game closes. |
@@ -58,6 +59,13 @@ game's files that the restorations are written from. Version 7 lists the global 
 which reads the cleaning skill, and every script that calls it, with each Sim's hidden skill numbers.
 Run it in a lot, with a Sim selected, and with every expansion you have installed.
 
+`cutcontent survey old FOLDER` is for the cut gardening, music and literacy skills. Hot Date took their
+person-data numbers (13, 14, 16) for interests, so any steps that still taught or used them would have
+been removed then. Pointed at an older copy's folder (the original 1.0 base game is best, or one with
+Livin' Large and House Party but no Hot Date), it lists what that copy has and the game being played no
+longer does. It reads `.far` archives and `.iff` files anywhere under the folder, skipping saved lots and
+families, and changes nothing.
+
 ## How it is made
 
 - `CutContentPack.cs` loads the pack, applies two Harmony patches and adds the console command.
@@ -71,6 +79,7 @@ Run it in a lot, with a Sim selected, and with every expansion you have installe
 - `GhostSting.cs` runs before each spooky sting, and one time in three plays the third one instead.
 - `Limousine.cs` adds the question to the Go Downtown plugin when it is created, marks the car with a
   primitive of its own, and draws a marked taxi with the limousine's pictures.
+- `OldSurvey.cs` reads an older copy of the game from its folder with the engine's own file readers.
 - `Investments.cs` finishes the phone's chance calls when a phone is created, records investments with a
   primitive of its own, and counts them down as the lot's clock runs.
 - `Kiosk.cs` adds the catalog entry once the game's content is loaded.

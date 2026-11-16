@@ -56,7 +56,7 @@ namespace CutContent
             return words.Any(x => text.Contains(x));
         }
 
-        private static string Clean(string text)
+        internal static string Clean(string text)
         {
             return (text ?? "").TrimEnd('\0').Replace("\r", " ").Replace("\n", " ");
         }
@@ -419,7 +419,7 @@ namespace CutContent
             }
         }
 
-        private static string Next(byte pointer)
+        internal static string Next(byte pointer)
         {
             switch (pointer)
             {
@@ -430,13 +430,13 @@ namespace CutContent
             }
         }
 
-        private static string Hex(byte[] bytes)
+        internal static string Hex(byte[] bytes)
         {
             return (bytes == null) ? "" : string.Join(" ", bytes.Select(x => x.ToString("x2")));
         }
 
         /// <summary>The settings of a step, read by the engine's own reader for that kind of step.</summary>
-        private static string Operand(VMPrimitiveRegistration prim, byte[] bytes)
+        internal static string Operand(VMPrimitiveRegistration prim, byte[] bytes)
         {
             var raw = "[" + Hex(bytes) + "]";
             if (prim?.OperandModel == null || bytes == null) return raw;

@@ -40,6 +40,7 @@ namespace CutContent
     /// Console commands (Ctrl+Shift+C):
     ///   cutcontent              what was found and restored so far
     ///   cutcontent survey       write the report, for working out the restorations that are not done yet
+    ///   cutcontent survey old FOLDER   read an older copy of the game from its folder (see OldSurvey.cs)
     ///   cutcontent pickpocket   try the pickpocket's textures on the selected Sim (see Pickpocket.cs)
     ///   cutcontent doors        the doors on this lot that can be locked, and whether they are
     ///   cutcontent locks everyone|household   who a locked door keeps out (until the game closes)
@@ -119,6 +120,16 @@ namespace CutContent
                     Show("Cut Content", StatusText());
                     return true;
                 case "survey":
+                    if (args.Length >= 2 && args[1].ToLowerInvariant() == "old")
+                    {
+                        //an older copy of the game, read from its folder: "cutcontent survey old C:\Games\The Sims"
+                        if (args.Length < 3) return false;
+                        var folder = string.Join(" ", args.Skip(2)).Trim('"');
+                        var oldPath = Path.Combine(FSOEnvironment.UserDir, "cutcontent-survey-old.txt");
+                        File.WriteAllText(oldPath, OldSurvey.Run(folder));
+                        Show("Cut Content", "The survey of the older copy was written to:\n" + Path.GetFullPath(oldPath));
+                        return true;
+                    }
                     var path = Path.Combine(FSOEnvironment.UserDir, "cutcontent-survey.txt");
                     File.WriteAllText(path, Survey.Run());
                     Show("Cut Content", "The survey was written to:\n" + Path.GetFullPath(path));
