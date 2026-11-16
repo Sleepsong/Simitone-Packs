@@ -87,6 +87,7 @@ namespace CutContent
         {
             try
             {
+                Cleaning.Prepare();
                 Investments.Prepare(__instance);
                 Limousine.Prepare(__instance);
             }

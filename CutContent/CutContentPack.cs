@@ -17,6 +17,7 @@ using FSO.SimAntics.Model;
 using HarmonyLib;
 using Simitone.Client.Packs;
 using Simitone.Client.UI.Panels;
+using Simitone.Client.UI.Panels.LiveSubpanels;
 using Simitone.Client.UI.Screens;
 using System;
 using System.IO;
@@ -82,6 +83,15 @@ namespace CutContent
                 harmony.UnpatchAll(harmony.Id); //all or nothing
                 throw;
             }
+            //the skills panel gets a Cleaning bar. on its own: if Simitone's panel has changed, only the bar is lost
+            try
+            {
+                harmony.Patch(AccessTools.Constructor(typeof(UIJobSubpanel), new[] { typeof(TS1GameScreen) }) ?? throw new Exception("the skills panel was not found"),
+                    postfix: new HarmonyMethod(typeof(Cleaning), nameof(Cleaning.AfterPanel)));
+                harmony.Patch(AccessTools.DeclaredMethod(typeof(UIJobSubpanel), "Update") ?? throw new Exception("the skills panel's Update was not found"),
+                    postfix: new HarmonyMethod(typeof(Cleaning), nameof(Cleaning.AfterPanelUpdate)));
+            }
+            catch (Exception e) { Log("cleaning: no bar in the skills panel: " + e.Message); }
             PackManager.RegisterCommand("cutcontent", Command);
         }
 
@@ -99,6 +109,8 @@ namespace CutContent
             catch (Exception e) { Investments.Status = "failed: " + e.Message; Log("investments: " + e); }
             try { Scripts.RegisterPrimitive(Limousine.PrimitiveName, new Limousine.MarkPrimitive()); }
             catch (Exception e) { Limousine.Status = "failed: " + e.Message; Log("limousine: " + e); }
+            try { Scripts.RegisterPrimitive(Cleaning.PrimitiveName, new Cleaning.LearnPrimitive()); }
+            catch (Exception e) { Cleaning.Status = "failed: " + e.Message; Log("cleaning: " + e); }
         }
 
         public void OnLotLoaded(VM vm, string lotPath)
@@ -173,12 +185,13 @@ namespace CutContent
             text.AppendLine("Locked doors: " + DoorLocks.Status);
             text.AppendLine("Investment calls: " + Investments.StatusText((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm));
             text.AppendLine($"Limousine: {Limousine.Status}. This session: {Limousine.Hired} hired.");
+            text.AppendLine($"Cleaning skill: {Cleaning.Status}. This session: {Cleaning.Lessons} times round.");
             text.AppendLine();
             text.AppendLine("Switched off interactions (found as their objects are clicked on):");
             foreach (var rule in Interactions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);
             if (Interactions.Force) text.AppendLine("(force is on)");
             text.AppendLine();
-            text.AppendLine("Not done yet: the cut skills, the pickpocket. The Information Kiosk is not in this game.");
+            text.AppendLine("Not done yet: the pickpocket. Gardening, music and literacy left only their names. The Information Kiosk is not in this game.");
             return text.ToString();
         }
 
