@@ -87,6 +87,14 @@ namespace CutContent
         {
             try
             {
+                Investments.Prepare(__instance);
+            }
+            catch (Exception e)
+            {
+                CutContentPack.Log("investments: couldn't prepare " + __instance?.Object?.OBJ?.ChunkLabel + ": " + e);
+            }
+            try
+            {
                 Apply(__instance);
             }
             catch (Exception e)

@@ -69,7 +69,7 @@ namespace CutContent
             Listed = 0;
             ListedScripts.Clear();
             var report = new StringBuilder();
-            report.AppendLine("Cut Content survey, version 4");
+            report.AppendLine("Cut Content survey, version 5");
             report.AppendLine();
             report.AppendLine("== What the pack has done ==");
             report.AppendLine("Ghost sting: " + GhostSting.Status);
@@ -77,6 +77,7 @@ namespace CutContent
             foreach (var rule in AddedInteractions.Rules) report.AppendLine(rule.Name + ": " + rule.Status);
             foreach (var rule in Interactions.Rules) report.AppendLine(rule.Name + ": " + rule.Status);
             report.AppendLine("Locked doors: " + DoorLocks.Status);
+            report.AppendLine("Investment calls: " + Investments.StatusText((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm));
 
             Section(report, "Files in full", Whole);
             Section(report, "Object files with kiosk or info in the name, and files that failed to load", KioskFiles);
@@ -104,19 +105,10 @@ namespace CutContent
         }
 
         /// <summary>Files listed in full: every object, table entry, script with its steps, and text.</summary>
-        private static readonly string[] WholeFiles =
-        {
-            "CarLimoBlack.iff",          // Superstar's limousine, which has the taxi's "Get In Cab": can it go downtown?
-            "doors6.iff",                // Vacation's doors, with the lock: their own portal scripts
-        };
+        /// <summary>Files listed in full. Surveys 3 and 4 listed the ones the limousine and the investments needed.</summary>
+        private static readonly string[] WholeFiles = { };
         /// <summary>Shared script files listed in full, but with only some scripts' steps.</summary>
-        private static readonly (string file, Regex steps)[] WholeShared =
-        {
-            ("phoneglobals", new Regex("chance|prank|RandomCall|salesman|invest", RegexOptions.IgnoreCase)), // the cut investment calls
-            ("doorglobals", new Regex("portal|lock|open|allow|pass", RegexOptions.IgnoreCase)),             // how a door lets Sims through
-            ("carglobals", new Regex("cab|limo|downtown|arrive|leave", RegexOptions.IgnoreCase)),           // what a limousine would need
-            ("global", new Regex("prude", RegexOptions.IgnoreCase)),                                        // global 323, which the lock's check calls
-        };
+        private static readonly (string file, Regex steps)[] WholeShared = { };
 
         private static void Whole(StringBuilder report)
         {

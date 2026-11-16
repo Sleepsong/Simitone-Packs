@@ -49,6 +49,7 @@ namespace CutContent
 
         public void OnLoad(Pack pack)
         {
+            Investments.PackId = pack.Id;
             var harmony = new Harmony("pack." + pack.Id);
             try
             {
@@ -61,6 +62,11 @@ namespace CutContent
                 harmony.Patch(AccessTools.Constructor(typeof(VMEntity), new[] { typeof(GameObject) })
                     ?? throw new Exception("VMEntity's constructor was not found: this pack was made for a different version of Simitone"), postfix: setup);
                 harmony.Patch(Find(typeof(VMEntity), "UseTreeTableOf", new[] { typeof(GameObject) }), postfix: setup);
+                //a door is locked: say who a lock keeps out, once
+                harmony.Patch(Find(typeof(VMEntity), "SetAttribute", new[] { typeof(int), typeof(short) }),
+                    postfix: new HarmonyMethod(typeof(DoorLocks), nameof(DoorLocks.AfterSetAttribute)));
+                //the lot ticks: count down investments
+                harmony.Patch(Find(typeof(VM), "Tick", Type.EmptyTypes), postfix: new HarmonyMethod(typeof(Investments), nameof(Investments.AfterTick)));
                 //a Sim plans which doors to go through: leave out the ones locked against them
                 harmony.Patch(Find(typeof(VMRoutingFrame), "DoRoomRoute", new[] { typeof(VMFindLocationResult) }),
                     prefix: new HarmonyMethod(typeof(DoorLocks), nameof(DoorLocks.BeforeRoomRoute)));
@@ -83,6 +89,17 @@ namespace CutContent
             //each on its own: one failing should not stop the other
             try { GhostSting.Find(); } catch (Exception e) { GhostSting.Status = "failed: " + e.Message; Log("ghost sting: " + e); }
             try { Kiosk.Restore(); } catch (Exception e) { Kiosk.Status = "failed: " + e.Message; Log("kiosk: " + e); }
+            try { Investments.Register(); } catch (Exception e) { Investments.Status = "failed: " + e.Message; Log("investments: " + e); }
+        }
+
+        public void OnLotLoaded(VM vm, string lotPath)
+        {
+            Investments.OnLotLoaded(vm, lotPath);
+        }
+
+        public void OnLotSaved(VM vm, string lotPath)
+        {
+            Investments.OnLotSaved(vm, lotPath);
         }
 
         private static bool Command(string[] args)
@@ -128,20 +145,22 @@ namespace CutContent
             text.AppendLine("Interactions put back in menus (found as objects are created):");
             foreach (var rule in AddedInteractions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);
             text.AppendLine("Locked doors: " + DoorLocks.Status);
+            text.AppendLine("Investment calls: " + Investments.StatusText((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm));
             text.AppendLine();
             text.AppendLine("Switched off interactions (found as their objects are clicked on):");
             foreach (var rule in Interactions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);
             if (Interactions.Force) text.AppendLine("(force is on)");
             text.AppendLine();
-            text.AppendLine("Not done yet: the limousine, the telephone investments, the Information Kiosk, the cut skills, the pickpocket.");
+            text.AppendLine("Not done yet: the limousine, the cut skills, the pickpocket. The Information Kiosk is not in this game.");
             return text.ToString();
         }
 
-        private static void Show(string title, string message)
+        public static void Show(string title, string message, VM onlyFor = null)
         {
             Log(message);
             GameThread.NextUpdate(x =>
             {
+                if (onlyFor != null && (GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm != onlyFor) return;
                 UIMobileAlert alert = null;
                 alert = new UIMobileAlert(new UIAlertOptions()
                 {

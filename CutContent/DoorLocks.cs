@@ -153,6 +153,12 @@ namespace CutContent
         {
             var parts = door.MultitileGroup?.Objects ?? new List<VMEntity> { door };
             if (!parts.Any(x => x.GetAttribute(0) != 0)) return false;
+            return CanLock(door);
+        }
+
+        /// <summary>Whether a door's file has Maxis's lock script.</summary>
+        public static bool CanLock(VMEntity door)
+        {
             var res = door.Object?.Resource;
             if (res == null) return false;
             if (!Lockable.TryGetValue(res, out var lockable))
@@ -161,6 +167,31 @@ namespace CutContent
                 Lockable.AddOrUpdate(res, lockable);
             }
             return lockable == Yes;
+        }
+
+        private static bool Noticed;
+
+        /// <summary>
+        /// After an attribute is set. The first time a door is locked in a session, say who a lock keeps out: a household's
+        /// own Sims still use their locked doors, so locking one shows nothing until someone else tries it.
+        /// </summary>
+        public static void AfterSetAttribute(VMEntity __instance, int index, short value)
+        {
+            if (Noticed || index != 0 || value == 0 || !(__instance is VMGameObject)) return;
+            try
+            {
+                if (__instance.Object?.OBJ?.ObjectType != OBJDType.Portal || !CanLock(__instance)) return;
+                var vm = __instance.Thread?.Context?.VM;
+                Noticed = true;
+                var message = Everyone
+                    ? "Door locked. A locked door keeps out everyone but the emergency services, your household as well. It can always be used to go outdoors."
+                    : "Door locked. A locked door keeps out everyone but your household, its pets and the emergency services, so your own Sims still use it. It can always be used to go outdoors.\n\nTo keep your household out too, type \"cutcontent locks everyone\" in the console (Ctrl+Shift+C).";
+                CutContentPack.Show("Door locks", message, vm);
+            }
+            catch (Exception e)
+            {
+                CutContentPack.Log("door locks: " + e.Message);
+            }
         }
     }
 }
