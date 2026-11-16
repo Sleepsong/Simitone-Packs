@@ -20,7 +20,7 @@ they are new objects with their own key system, not the code Maxis left in its o
 | Hire a limousine in place of a cab | Hot Date | Built. The Go Downtown phone plugin has texts no script uses: "Would you prefer a taxi or a limo?", "Excellent. A representative from our prestigious limosine service will be there with a car shortly." and a "lack of funds" apology. Its "Generate Cab" only ever makes the taxi, and Hot Date's own limousine (`CarLimo.iff`) has the taxi's shape and pictures but none of its scripts. The pack asks the question after "Do you need a ride?"; a limousine costs $150 on top of the fare, or brings the apology and a taxi if the household can't pay. The car that comes is the taxi, which works, drawn with Hot Date's limousine pictures, and it stays a limousine if the lot is saved. |
 | Investment offers by telephone | Base game | Built. The phone's "RandomCallDialog" has a branch no step reached: two chance calls in five would have offered to take a multiple of $50, with 20 placeholder texts ("Would you like to spend some money on something random? Variation 1" to 20). The pack leads the calls to the branch again, hands the amount to the text (Maxis never did), writes 20 offers in place of the placeholders, and finishes what Maxis never wrote: three to five days of play later an investment comes good (half as much again, two and a half times or four times) or goes bad, with a message. Pending investments are kept with the lot. |
 | Information Kiosk missing from buy mode | Superstar | Not in this game. None of the 1,195 object files has "kiosk" or "info" in its name, no object is a kiosk, and the only catalog object without catalog text is a dead mouse. The copy of the game surveyed doesn't have it. |
-| Cut skills: cleaning, gardening, music, literacy | Base game | Partly found. A Sim has four person-data numbers no part of the game shows: 9, 13, 14 and 16. Survey 6 settled them. **Cleaning** (9) is a working skill for NPCs only: the maid's and janitors' "init traits" set it to 1000 (the chef's to 3000), and the global "clean inc" and the showers' and pet bath's "tweak inc" read it to clean faster. Player Sims start at 0, never learn it, and no panel shows it. Survey 7 lists "clean inc" and what calls it, to let Sims learn it. **Gardening, music and literacy** (13, 14, 16) were reused by Hot Date for Sims' interests ("Add Hot Date Interests", the magazines' "Increase Interest", the topics Sims like to talk about), so nothing of them is left. |
+| Cut skills: cleaning, gardening, music, literacy | Base game | Partly found. The 1.0 base game's Behavior.iff lists ten skills, in the order of person data 9 to 18: Cleaning, Cooking, Social, Repair, Gardening, Music, Creative, Literacy, Physical, Logic. Six were shipped. Its labels already call 13 and 16 "gardening ( old )" and "literacy ( old )", so they were retired before release. **Cleaning** (9) still works for NPCs: maids and janitors start at 1000 (10 in 1.0), and the global "clean inc" and the showers', sinks' and baths' "tweak" scripts read it to clean faster. Player Sims never learn it, and no panel shows it. **Gardening, music and literacy** have no steps that teach or use them, in 1.0 or now, beyond NPCs' starting values and the outdoor flowers' "Look at"; Hot Date then reused their numbers for interests. The surveys now look for the last trace there could be: menu entries whose pull on a Sim is scaled by one of these skills, and objects' skill flags. |
 | Pickpocket | Vacation | Being looked into. Only his textures are in the game: a head with a five-o'clock shadow (`cvacationmalgt_pickpocket`, `cvacationmalgt_pick`), a skinny body (`vacationmasknlgt_pickpocket`) and beach, forest and lodge outfits (`vacationmafitlgt_pick...`). The burglar wears the skinny body `B003MASkn_01` and the head `C_Burglar`, and the pickpocket was to look like him. `cutcontent pickpocket` dresses the selected Sim in these, to see which meshes the textures fit before he is built. |
 
 Objects and interactions are found by the names of their scripts and menu entries, in English.
@@ -55,16 +55,16 @@ The terminal shows the same findings in lines starting with `[cut]`.
 ## The survey
 
 `cutcontent survey` writes down what the pack has found and done, and the names and numbers in the
-game's files that the restorations are written from. Version 7 lists the global "clean inc" routine,
-which reads the cleaning skill, and every script that calls it, with each Sim's hidden skill numbers.
+game's files that the restorations are written from. Version 8 lists the global "clean inc" routine,
+which reads the cleaning skill, and every script that calls it, each Sim's hidden skill numbers, the menu
+entries whose pull is scaled by a cut skill, and the objects' skill flags.
 Run it in a lot, with a Sim selected, and with every expansion you have installed.
 
-`cutcontent survey old FOLDER` is for the cut gardening, music and literacy skills. Hot Date took their
-person-data numbers (13, 14, 16) for interests, so any steps that still taught or used them would have
-been removed then. Pointed at an older copy's folder (the original 1.0 base game is best, or one with
-Livin' Large and House Party but no Hot Date), it lists what that copy has and the game being played no
-longer does. It reads `.far` archives and `.iff` files anywhere under the folder, skipping saved lots and
-families, and changes nothing.
+`cutcontent survey old [FOLDER]` reads an older copy's folder (the original 1.0 base game is best). It
+lists Behavior.iff's tables of names whole, the menu entries whose pull is scaled by a cut skill, the
+objects' skill flags, every text that mentions a skill, and every script step that reads or sets the
+hidden skill numbers, checked against the game being played. It reads `.far` archives and `.iff` files
+anywhere under the folder, skipping saved lots and families, and changes nothing.
 
 ## How it is made
 

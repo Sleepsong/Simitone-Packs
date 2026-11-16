@@ -69,7 +69,7 @@ namespace CutContent
             Listed = 0;
             ListedScripts.Clear();
             var report = new StringBuilder();
-            report.AppendLine("Cut Content survey, version 7");
+            report.AppendLine("Cut Content survey, version 8");
             report.AppendLine();
             report.AppendLine("== What the pack has done ==");
             report.AppendLine("Ghost sting: " + GhostSting.Status);
@@ -82,6 +82,19 @@ namespace CutContent
 
             Section(report, "Cut skills: who has them", SkillHolders);
             Section(report, "Cleaning skill: the routine that reads it, and what calls it", Cleaning);
+            Section(report, "Menu entries whose pull is scaled by a cut skill", report2 =>
+            {
+                var found = 0;
+                foreach (var (fileName, res) in AllFiles())
+                {
+                    List<TTAB> tables = null;
+                    try { tables = res.List<TTAB>(); } catch { }
+                    if (tables != null) SkillLinks.Ads(report2, fileName, tables, id => res.Get<TTAs>(id), ref found);
+                }
+                report2.AppendLine($"{found} entries.");
+            });
+            Section(report, "Objects' skill flags (the skills buy mode says they build)", report2 =>
+                SkillLinks.Flags(report2, AllFiles().SelectMany(f => { List<OBJD> o = null; try { o = f.Item2.List<OBJD>(); } catch { } return (o ?? new List<OBJD>()).Select(x => (f.Item1, x)); })));
             Section(report, "Sounds", Sounds);
             return report.ToString();
         }

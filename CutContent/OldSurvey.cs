@@ -128,6 +128,15 @@ namespace CutContent
 
             var files = Read(folder, report);
             report.AppendLine($"{files.Count} object and script files read.");
+            Section(report, "Behavior.iff's tables of names, whole", () => Labels(report, files));
+            Section(report, "Menu entries whose pull is scaled by a cut skill", () =>
+            {
+                var found = 0;
+                foreach (var file in files) SkillLinks.Ads(report, file.Name, List<TTAB>(file.Iff), id => file.Iff.Get<TTAs>(id), ref found);
+                report.AppendLine($"{found} entries.");
+            });
+            Section(report, "Objects' skill flags (the skills buy mode says they build)", () =>
+                SkillLinks.Flags(report, files.SelectMany(f => List<OBJD>(f.Iff).Select(o => (f.Name, o)))));
             Section(report, "Texts that mention a skill", () => Texts(report, files));
             Section(report, "Script steps that read or set person data 9, 13, 14 or 16", () => Steps(report, files));
             return report.ToString();
@@ -190,6 +199,27 @@ namespace CutContent
         private static List<T> List<T>(IffFile iff) where T : IffChunk
         {
             try { return iff.List<T>() ?? new List<T>(); } catch { return new List<T>(); }
+        }
+
+        /// <summary>The label tables a modding tool shows, which name person data, objects' fields and the "personality ads".</summary>
+        private static readonly int[] LabelTables = { 200, 232, 141, 204 };
+
+        private static void Labels(StringBuilder report, List<OldFile> files)
+        {
+            var behavior = files.FirstOrDefault(x => x.Name.Equals("Behavior.iff", StringComparison.OrdinalIgnoreCase));
+            if (behavior == null) { report.AppendLine("Behavior.iff was not found in the folder."); return; }
+            foreach (var id in LabelTables)
+            {
+                STR text = null;
+                try { text = behavior.Iff.Get<STR>((ushort)id); } catch { }
+                if (text == null) { report.AppendLine($"text {id}: not there"); continue; }
+                report.AppendLine($"text {id} \"{Survey.Clean(text.ChunkLabel)}\":");
+                for (int i = 0; i < text.Length; i++)
+                {
+                    var value = Survey.Clean(text.GetString(i));
+                    if (value.Length > 0) report.AppendLine($"  {i}: {value}");
+                }
+            }
         }
 
         // ---- texts ----
