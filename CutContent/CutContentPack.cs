@@ -9,6 +9,7 @@ using FSO.Client.UI.Controls;
 using FSO.Client.UI.Framework;
 using FSO.Common;
 using FSO.Common.Utils;
+using FSO.Content;
 using FSO.HIT;
 using FSO.SimAntics;
 using HarmonyLib;
@@ -50,6 +51,11 @@ namespace CutContent
                     prefix: new HarmonyMethod(typeof(Interactions), nameof(Interactions.BeforeGetAction)));
                 harmony.Patch(Find(typeof(HITVM), "PlaySoundEvent", new[] { typeof(string) }),
                     prefix: new HarmonyMethod(typeof(GhostSting), nameof(GhostSting.BeforeSoundEvent)));
+                //an object takes its interaction table when it is created, and a tile of a larger object takes its leader's
+                var setup = new HarmonyMethod(typeof(AddedInteractions), nameof(AddedInteractions.AfterSetup));
+                harmony.Patch(AccessTools.Constructor(typeof(VMEntity), new[] { typeof(GameObject) })
+                    ?? throw new Exception("VMEntity's constructor was not found: this pack was made for a different version of Simitone"), postfix: setup);
+                harmony.Patch(Find(typeof(VMEntity), "UseTreeTableOf", new[] { typeof(GameObject) }), postfix: setup);
             }
             catch
             {
@@ -100,6 +106,9 @@ namespace CutContent
             var text = new StringBuilder();
             text.AppendLine("Ghost sting: " + GhostSting.Status);
             text.AppendLine("Information Kiosk: " + Kiosk.Status);
+            text.AppendLine();
+            text.AppendLine("Interactions put back in menus (found as objects are created):");
+            foreach (var rule in AddedInteractions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);
             text.AppendLine();
             text.AppendLine("Switched off interactions (found as their objects are clicked on):");
             foreach (var rule in Interactions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);

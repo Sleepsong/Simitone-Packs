@@ -4,23 +4,31 @@ If a copy of the MPL was not distributed with this file, You can obtain one at
 http://mozilla.org/MPL/2.0/.
 */
 
+using FSO.Client;
 using FSO.Content;
+using FSO.Content.Codecs;
+using FSO.Content.Framework;
 using FSO.Content.TS1;
 using FSO.Files.Formats.IFF.Chunks;
 using FSO.SimAntics;
+using FSO.SimAntics.Engine;
 using FSO.SimAntics.Model;
-using FSO.Client;
+using HarmonyLib;
 using Simitone.Client.UI.Screens;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace CutContent
 {
     /// <summary>
     /// Writes down what the player's game holds for each cut feature: the objects, their interaction tables with the
-    /// marks on each entry, the scripts no table entry leads to, the texts, the sounds and the skins.
+    /// marks on each entry, the scripts no table entry leads to, the texts, the sounds and the skins. The second
+    /// version also lists the steps of the scripts that matter, reads the shared script files (semi-globals) that
+    /// objects like the phones and doors keep most of their code in, and lists objects that are not in the catalog.
     ///
     /// The restorations that are not done yet need the names and numbers in this report. It reads every object file
     /// in the game, so it takes a while.
@@ -31,10 +39,15 @@ namespace CutContent
         private static readonly string[] Words =
         {
             "hug", "toad", "lock", "litter", "limo", "invest", "kiosk", "pickpocket", "pick pocket",
-            "clean skill", "cleaning skill", "garden", "music skill", "literacy", "spooky",
+            "clean skill", "cleaning skill", "garden", "music skill", "literacy", "spooky", "stock", "placeholder",
         };
         /// <summary>Objects reported in full whatever they contain.</summary>
-        private static readonly string[] ObjectWords = { "toad", "kiosk", "trainer", "limo", "taxi", "cab", "phone", "pickpocket" };
+        private static readonly string[] ObjectWords = { "toad", "kiosk", "trainer", "limo", "taxi", "pickpocket" };
+        /// <summary>Scripts whose steps are listed.</summary>
+        private static readonly Regex ScriptsToList = new Regex(
+            @"lock/unlock|litter|tree hug|kiss toad|limo|invest|stock|kiosk|portal|pickpocket|\bcab\b|placeholder|random call",
+            RegexOptions.IgnoreCase);
+        private const int MaxScriptsListed = 300;
 
         private static bool Has(string text, string[] words)
         {
@@ -48,20 +61,28 @@ namespace CutContent
             return (text ?? "").TrimEnd('\0').Replace("\r", " ").Replace("\n", " ");
         }
 
+        private static int Listed;
+        private static HashSet<BHAV> ListedScripts = new HashSet<BHAV>();
+
         public static string Run()
         {
+            Listed = 0;
+            ListedScripts.Clear();
             var report = new StringBuilder();
-            report.AppendLine("Cut Content survey");
+            report.AppendLine("Cut Content survey, version 2");
             report.AppendLine();
             report.AppendLine("== What the pack has done ==");
             report.AppendLine("Ghost sting: " + GhostSting.Status);
             report.AppendLine("Information Kiosk: " + Kiosk.Status);
+            foreach (var rule in AddedInteractions.Rules) report.AppendLine(rule.Name + ": " + rule.Status);
             foreach (var rule in Interactions.Rules) report.AppendLine(rule.Name + ": " + rule.Status);
 
             Section(report, "Sounds", Sounds);
             Section(report, "Skins", Skins);
             Section(report, "The selected Sim's skill numbers", Skills);
+            Section(report, "Objects that are not in the catalog", Uncatalogued);
             Section(report, "Objects", Objects);
+            Section(report, "Shared script files (semi-globals)", SemiGlobals);
             return report.ToString();
         }
 
@@ -73,27 +94,29 @@ namespace CutContent
             catch (Exception e) { report.AppendLine("This part failed: " + e); }
         }
 
+        /// <summary>Runs one part of a file's report, so a chunk that can't be read doesn't lose the rest of the file.</summary>
+        private static T Try<T>(List<string> lines, string what, Func<T> get)
+        {
+            try { return get(); }
+            catch (Exception e) { lines.Add($"  ({what} could not be read: {e.Message})"); return default(T); }
+        }
+
         private static void Sounds(StringBuilder report)
         {
-            var events = Content.Get().Audio?.Events;
+            var audio = Content.Get().Audio as TS1Audio;
+            var events = audio?.Events;
             if (events == null) return;
-            var groups = new HashSet<FSO.Content.Model.HITResourceGroup>();
             foreach (var evt in events.OrderBy(x => x.Key))
             {
-                if (evt.Value.ResGroup != null) groups.Add(evt.Value.ResGroup);
-                if (evt.Key.Contains("sting") || evt.Key.Contains("spooky") || evt.Key.Contains("ghost"))
-                    report.AppendLine($"event {evt.Key}: type {evt.Value.EventType}, track {evt.Value.TrackID:x}");
+                if (!evt.Key.Contains("spooky")) continue;
+                var track = audio.GetTrack(evt.Value.TrackID, 0, evt.Value.ResGroup);
+                var list = (track != null && track.HitlistID != 0) ? audio.GetHitlist(track.HitlistID, evt.Value.ResGroup) : null;
+                report.AppendLine($"event {evt.Key}: track {evt.Value.TrackID:x}, track sound {track?.SoundID:x}, subroutine {track?.SubroutineID:x}, " +
+                    $"list {track?.HitlistID:x} = {((list == null) ? "none" : string.Join(", ", list.IDs.Select(x => x.ToString("x"))))}");
             }
-            foreach (var group in groups)
-            {
-                if (group.hot?.Patches == null) continue;
-                foreach (var patch in group.hot.Patches)
-                {
-                    var file = (patch.Value.Filename ?? "").ToLowerInvariant();
-                    if (file.Contains("sting") || file.Contains("spooky") || file.Contains("ghost"))
-                        report.AppendLine($"patch {patch.Key:x}: {patch.Value.Name} = {patch.Value.Filename}");
-                }
-            }
+            var wavs = AccessTools.Field(typeof(TS1Audio), "WAVSounds")?.GetValue(audio) as TS1SubProvider<DecodedSFX>;
+            var names = wavs?.GetAllNames().Where(x => x.ToLowerInvariant().Contains("spooky") || x.ToLowerInvariant().Contains("ghost")).OrderBy(x => x).ToList();
+            report.AppendLine("Sound files with spooky or ghost in the name: " + ((names == null) ? "(couldn't list)" : string.Join(", ", names)));
         }
 
         private static void Skins(StringBuilder report)
@@ -122,6 +145,31 @@ namespace CutContent
                 report.AppendLine($"{sim.Name}, number {slot.index} ({slot.name}): {sim.GetPersonData((VMPersonDataVariable)slot.index)}");
         }
 
+        /// <summary>For finding the Information Kiosk: every whole object (not a tile of a larger one) that buy mode doesn't show.</summary>
+        private static void Uncatalogued(StringBuilder report)
+        {
+            var objects = Content.Get().WorldObjects as TS1ObjectProvider;
+            if (objects == null) return;
+            foreach (var entry in objects.Entries.Values.OrderBy(x => x.FileName).ThenBy(x => x.Name))
+            {
+                try
+                {
+                    if (entry.SubIndex != -1 && entry.Group != 0) continue; //a tile of a larger object
+                    if (objects.GetItemByGUID((uint)entry.ID) != null) continue;
+                    var objd = objects.Get(entry.ID)?.OBJ;
+                    if (objd == null || objd.ObjectType != OBJDType.Normal) continue;
+                    if (!objd.IsMultiTile && objd.NumGraphics == 0) continue;
+                    report.AppendLine($"{entry.FileName}: \"{Clean(objd.ChunkLabel)}\" {objd.GUID:x8} (category {objd.FunctionFlags:x}, build {objd.BuildModeType}, " +
+                        $"rooms {objd.RoomFlags:x}, price {objd.Price}, off {objd.Disabled}, graphics {objd.NumGraphics}, catalog text {objd.CatalogStringsID}, " +
+                        $"sorts {objd.FunctionSubsort}/{objd.CommunitySubsort}/{objd.DTSubsort}/{objd.VacationSubsort}/{objd.STSubsort}/{objd.MTSubsort})");
+                }
+                catch (Exception e)
+                {
+                    report.AppendLine($"{entry.FileName} \"{entry.Name}\": could not be read ({e.Message})");
+                }
+            }
+        }
+
         private static void Objects(StringBuilder report)
         {
             var objects = Content.Get().WorldObjects as TS1ObjectProvider;
@@ -129,56 +177,74 @@ namespace CutContent
             var done = new HashSet<object>();
             foreach (var entry in objects.Entries.Values.OrderBy(x => x.FileName).ThenBy(x => x.Name))
             {
+                GameObjectResource res = null;
                 try
                 {
-                    var obj = objects.Get(entry.ID);
-                    var res = obj?.Resource;
-                    if (res == null || !done.Add(res)) continue;
-                    File(report, objects, entry.FileName, res);
+                    res = objects.Get(entry.ID)?.Resource;
                 }
                 catch (Exception e)
                 {
-                    report.AppendLine($"{entry.FileName}: could not be read ({e.Message})");
+                    report.AppendLine($"{entry.FileName}: could not be loaded ({e.Message})");
+                    continue;
                 }
+                if (res == null || !done.Add(res)) continue;
+                File(report, objects, entry.FileName, res, res.SemiGlobal);
             }
         }
 
-        private static void File(StringBuilder report, TS1ObjectProvider catalog, string fileName, GameObjectResource res)
+        private static void SemiGlobals(StringBuilder report)
         {
-            var objds = res.List<OBJD>() ?? new List<OBJD>();
-            var tables = res.List<TTAB>() ?? new List<TTAB>();
-            var scripts = res.List<BHAV>() ?? new List<BHAV>();
-            var texts = res.List<STR>() ?? new List<STR>();
+            var objects = Content.Get().WorldObjects as TS1ObjectProvider;
+            if (objects == null) return;
+            var done = new HashSet<object>();
+            foreach (var entry in objects.Entries.Values.OrderBy(x => x.FileName))
+            {
+                GameIffResource sg = null;
+                try { sg = objects.Get(entry.ID)?.Resource?.SemiGlobal; } catch { }
+                if (sg == null || !done.Add(sg)) continue;
+                File(report, null, sg.MainIff?.Filename ?? "(semi-global)", sg, null);
+            }
+            var global = Content.Get().WorldObjectGlobals.Get("global")?.Resource;
+            if (global != null) File(report, null, "global.iff", global, null);
+        }
+
+        private static void File(StringBuilder report, TS1ObjectProvider catalog, string fileName, GameIffResource res, GameIffResource semiGlobal)
+        {
+            var lines = new List<string>();
+            var objds = Try(lines, "objects", () => res.List<OBJD>()) ?? new List<OBJD>();
+            var tables = Try(lines, "interaction tables", () => res.List<TTAB>()) ?? new List<TTAB>();
+            var scripts = Try(lines, "scripts", () => res.List<BHAV>()) ?? new List<BHAV>();
+            var texts = Try(lines, "texts", () => res.List<STR>()) ?? new List<STR>();
             var whole = Has(fileName, ObjectWords) || objds.Any(x => Has(x.ChunkLabel, ObjectWords));
 
-            var lines = new List<string>();
             var called = new HashSet<ushort>();
             foreach (var table in tables)
             {
-                var strings = res.Get<TTAs>(table.ChunkID);
+                var strings = Try(lines, $"strings of table {table.ChunkID}", () => res.Get<TTAs>(table.ChunkID));
                 foreach (var entry in table.Interactions)
                 {
                     called.Add(entry.ActionFunction);
                     called.Add(entry.TestFunction);
                     var label = Clean(strings?.GetString((int)entry.TTAIndex));
-                    var action = res.Get<BHAV>(entry.ActionFunction);
-                    var check = res.Get<BHAV>(entry.TestFunction);
+                    var action = Find(res, semiGlobal, entry.ActionFunction);
+                    var check = Find(res, semiGlobal, entry.TestFunction);
                     if (!whole && !Has(label, Words) && !Has(action?.ChunkLabel, Words) && !Has(check?.ChunkLabel, Words)) continue;
                     var marks = new List<string>();
                     if (entry.Debug) marks.Add("debug only");
                     if (!entry.TS1AllowChild) marks.Add("no children");
                     if (!entry.TS1AllowAdults) marks.Add("no adults");
                     if (entry.TS1AllowVisitors) marks.Add("visitors");
-                    if (entry.TestFunction != 0 && check == null && entry.TestFunction >= 4096 && entry.TestFunction < 8192) marks.Add("CHECK SCRIPT MISSING: never shown");
-                    if (action == null && entry.ActionFunction >= 4096 && entry.ActionFunction < 8192) marks.Add("ACTION SCRIPT MISSING");
                     lines.Add($"  table {table.ChunkID} entry {entry.TTAIndex} \"{label}\": marks {(uint)entry.Flags:x} [{string.Join(", ", marks)}], " +
                         $"action {entry.ActionFunction} \"{Clean(action?.ChunkLabel)}\", check {entry.TestFunction} \"{Clean(check?.ChunkLabel)}\"");
                 }
             }
+            var toList = new List<BHAV>();
             foreach (var script in scripts)
             {
-                if (!Has(script.ChunkLabel, Words)) continue;
-                lines.Add($"  script {script.ChunkID} \"{Clean(script.ChunkLabel)}\"{(called.Contains(script.ChunkID) ? "" : " (no table entry leads straight to it)")}");
+                var label = Clean(script.ChunkLabel);
+                if (ScriptsToList.IsMatch(label)) toList.Add(script);
+                if (!Has(label, Words)) continue;
+                lines.Add($"  script {script.ChunkID} \"{label}\"{(called.Contains(script.ChunkID) ? "" : " (no table entry leads straight to it)")}");
             }
             foreach (var text in texts)
             {
@@ -189,18 +255,106 @@ namespace CutContent
                     if (Has(value, Words)) lines.Add($"  text {text.ChunkID} \"{Clean(text.ChunkLabel)}\" line {i}: {Clean(value)}");
                 }
             }
+            foreach (var script in toList)
+            {
+                if (Listed >= MaxScriptsListed) { lines.Add("  (no more scripts listed: the limit was reached)"); break; }
+                if (!ListedScripts.Add(script)) continue;
+                Listed++;
+                Steps(lines, res, semiGlobal, script);
+            }
             if (lines.Count == 0 && !whole) return;
 
             report.AppendLine();
-            report.AppendLine(fileName);
+            report.AppendLine(fileName + ((semiGlobal != null) ? $" (shares scripts with {semiGlobal.MainIff?.Filename})" : ""));
             foreach (var objd in objds)
             {
-                var inCatalog = catalog.GetItemByGUID(objd.GUID) != null;
+                var inCatalog = catalog?.GetItemByGUID(objd.GUID) != null;
                 report.AppendLine($"  object \"{Clean(objd.ChunkLabel)}\" {objd.GUID:x8}: type {objd.ObjectType}, table {objd.TreeTableID}, " +
                     $"{(inCatalog ? "in catalog" : "not in catalog")} (category {objd.FunctionFlags:x}, build {objd.BuildModeType}, rooms {objd.RoomFlags:x}, " +
                     $"price {objd.Price}, off {objd.Disabled}, graphics {objd.NumGraphics}, part {objd.MasterID}/{objd.SubIndex}, catalog text {objd.CatalogStringsID})");
             }
             foreach (var line in lines) report.AppendLine(line);
+        }
+
+        private static BHAV Find(GameIffResource res, GameIffResource semiGlobal, ushort id)
+        {
+            try
+            {
+                if (id == 0) return null;
+                if (id < 4096) return Content.Get().WorldObjectGlobals.Get("global")?.Resource?.Get<BHAV>(id);
+                if (id < 8192) return res.Get<BHAV>(id);
+                return (semiGlobal ?? res).Get<BHAV>(id);
+            }
+            catch { return null; }
+        }
+
+        /// <summary>Lists a script's steps: what each does, with its settings, and where it goes next.</summary>
+        private static void Steps(List<string> lines, GameIffResource res, GameIffResource semiGlobal, BHAV script)
+        {
+            lines.Add($"  steps of script {script.ChunkID} \"{Clean(script.ChunkLabel)}\" (arguments {script.Args}, locals {script.Locals}):");
+            for (int i = 0; i < script.Instructions.Length; i++)
+            {
+                var inst = script.Instructions[i];
+                string what;
+                if (inst.Opcode >= 256)
+                {
+                    var sub = Find(res, semiGlobal, inst.Opcode);
+                    var kind = (inst.Opcode < 4096) ? "global" : (inst.Opcode < 8192) ? "own" : "shared";
+                    what = $"call {kind} {inst.Opcode} \"{Clean(sub?.ChunkLabel)}\" with {Hex(inst.Operand)}";
+                }
+                else
+                {
+                    var prim = (inst.Opcode < VMContext.Primitives.Length) ? VMContext.Primitives[inst.Opcode] : null;
+                    what = $"{prim?.Name ?? ("primitive " + inst.Opcode)} {Operand(prim, inst.Operand)}";
+                }
+                lines.Add($"    {i}: {what} -> true {Next(inst.TruePointer)}, false {Next(inst.FalsePointer)}");
+            }
+        }
+
+        private static string Next(byte pointer)
+        {
+            switch (pointer)
+            {
+                case 253: return "error";
+                case 254: return "return true";
+                case 255: return "return false";
+                default: return pointer.ToString();
+            }
+        }
+
+        private static string Hex(byte[] bytes)
+        {
+            return (bytes == null) ? "" : string.Join(" ", bytes.Select(x => x.ToString("x2")));
+        }
+
+        /// <summary>The settings of a step, read by the engine's own reader for that kind of step.</summary>
+        private static string Operand(VMPrimitiveRegistration prim, byte[] bytes)
+        {
+            var raw = "[" + Hex(bytes) + "]";
+            if (prim?.OperandModel == null || bytes == null) return raw;
+            try
+            {
+                var operand = (VMPrimitiveOperand)Activator.CreateInstance(prim.OperandModel);
+                operand.Read(bytes);
+                var parts = new List<string>();
+                foreach (var member in prim.OperandModel.GetMembers(BindingFlags.Public | BindingFlags.Instance))
+                {
+                    object value;
+                    if (member is FieldInfo field) value = field.GetValue(operand);
+                    else if (member is PropertyInfo prop && prop.GetIndexParameters().Length == 0 && prop.CanRead)
+                    {
+                        try { value = prop.GetValue(operand); } catch { continue; }
+                    }
+                    else continue;
+                    if (value is byte[] array) value = Hex(array);
+                    parts.Add($"{member.Name}={value}");
+                }
+                return "{" + string.Join(", ", parts) + "} " + raw;
+            }
+            catch
+            {
+                return raw;
+            }
         }
     }
 }
