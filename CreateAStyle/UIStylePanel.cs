@@ -33,7 +33,7 @@ namespace CreateAStyle
         private const int Margin = 12;
         private const int HeaderHeight = 52;
         private const int BlockHeight = 96;
-        private const int FooterHeight = 48;
+        private const int FooterHeight = 74;
         private const int SliderX = 92;
         private const int SliderWidth = PanelWidth - SliderX - Margin;
         private const int SliderHeight = 14;
@@ -47,6 +47,7 @@ namespace CreateAStyle
         private Texture2D White;
 
         private Rectangle ResetButton, DoneButton;
+        private UILabel Status;
         private bool WasDown;
         /// <summary>The slider being dragged: the part's number times 3, plus 0 for hue, 1 for strength, 2 for lightness. Or -1.</summary>
         private int Dragging = -1;
@@ -113,7 +114,8 @@ namespace CreateAStyle
                 AddLabel("Light", SliderX - 62, top + 22 + SliderGap * 2, 58, 10, new Color(190, 200, 215), TextAlignment.Right | TextAlignment.Top);
             }
 
-            var buttonY = PanelHeight - FooterHeight + 10;
+            Status = AddLabel("", Margin, PanelHeight - FooterHeight + 4, PanelWidth - Margin * 2, 10, new Color(190, 200, 215));
+            var buttonY = PanelHeight - 38;
             ResetButton = new Rectangle(Margin, buttonY, 130, 28);
             DoneButton = new Rectangle(PanelWidth - Margin - 130, buttonY, 130, 28);
             AddLabel("Reset", ResetButton.X, ResetButton.Y + 5, ResetButton.Width, 12, Color.White, TextAlignment.Center | TextAlignment.Top);
@@ -124,7 +126,7 @@ namespace CreateAStyle
             Place();
         }
 
-        private void AddLabel(string text, int x, int y, int width, int size, Color colour, TextAlignment align = TextAlignment.Left | TextAlignment.Top)
+        private UILabel AddLabel(string text, int x, int y, int width, int size, Color colour, TextAlignment align = TextAlignment.Left | TextAlignment.Top)
         {
             var label = new UILabel();
             label.CaptionStyle = label.CaptionStyle.Clone();
@@ -136,6 +138,7 @@ namespace CreateAStyle
             label.Position = new Vector2(x, y);
             label.Caption = text;
             Add(label);
+            return label;
         }
 
         private void Place()
@@ -246,6 +249,10 @@ namespace CreateAStyle
 
             //the object follows the sliders, but not on every twitch: each change makes its textures again
             if (Unapplied && (!down || Environment.TickCount64 - LastApplied > 80)) ApplyNow();
+
+            //how the recolouring is going, so that if it is not, it says why
+            var status = CreateAStylePack.StatusOf(Entity) ?? (Working.Channels.Count > 0 && Working.IsDefault ? "Move a slider to change a part." : "");
+            if (Status.Caption != status) Status.Caption = status;
         }
 
         private void Changed()

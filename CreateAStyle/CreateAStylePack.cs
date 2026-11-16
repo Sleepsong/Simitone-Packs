@@ -9,7 +9,6 @@ using FSO.Content.Interfaces;
 using FSO.Files.Formats.IFF.Chunks;
 using FSO.Files.RC;
 using FSO.LotView.Components;
-using FSO.LotView.Effects;
 using FSO.LotView.Utils;
 using FSO.SimAntics;
 using HarmonyLib;
@@ -37,9 +36,10 @@ namespace CreateAStyle
     ///
     ///  1. Which objects are styled. The engine knows nothing of it: it is kept beside the objects.
     ///  2. Drawing in 2D. An object's sprites are swapped for the styled copies as the engine lists them for drawing.
-    ///  3. Drawing in 3D. A model's textures are swapped as the engine hands each one to its shader. A model the
-    ///     engine built from the sprites uses those sprites' textures, so it is recoloured from the same pixels. A
-    ///     model somebody remade, with a texture of its own, has that texture read back and recoloured instead.
+    ///  3. Drawing in 3D. A model is shared by every object of its kind, so its textures are swapped for the styled
+    ///     copies only while a styled object is being drawn, and put back after. A model the engine built from the
+    ///     sprites uses those sprites' textures; a model somebody remade has a texture of its own. Both are recoloured
+    ///     from the texture's own pixels.
     ///  4. Saving. Styles are this pack's own data for the lot, by object, and are put back when the lot is loaded.
     ///  5. The tool. A Style Brush in build mode, with the wall coverings.
     /// </summary>
@@ -98,9 +98,8 @@ namespace CreateAStyle
             harmony.Patch(Find(typeof(DGRPRenderer), "ValidateSprite"), postfix: Mine(nameof(StyleSprites)));
             // 3
             harmony.Patch(Find(typeof(DGRPRenderer), "Draw3D"), prefix: Mine(nameof(EnterDraw3D)), finalizer: Mine(nameof(LeaveDraw3D)));
-            harmony.Patch(AccessTools.PropertySetter(typeof(RCObjectEffect), "MeshTex") ?? throw WrongVersion("RCObjectEffect.MeshTex"),
-                prefix: Mine(nameof(StyleMeshTexture)));
-            // 4 (saving is OnLotSaved and OnLotLoaded, below: no patch. this applies what was loaded once the lot is there)
+            // 4 (saving is OnLotSaved and OnLotLoaded, below: no patch. this applies what was loaded once the lot is there,
+            //    and has objects whose pictures were not ready drawn again)
             harmony.Patch(Find(typeof(VM), "Update"), prefix: Mine(nameof(BeforeUpdate)));
             // 5
             harmony.Patch(Find(typeof(UIBuyBrowsePanel), "AddWallpapers"), postfix: Mine(nameof(AddStyleBrush)));
@@ -114,8 +113,9 @@ namespace CreateAStyle
             public StyleTextures Textures;
             public WeakReference<VMEntity> Entity;
             public WeakReference<VM> Lot;
-            /// <summary>For each of the model's textures, the sprite it is from (null: it is the model's own).</summary>
-            public Dictionary<Texture2D, DGRPSprite> Sources = new Dictionary<Texture2D, DGRPSprite>();
+            public WeakReference<ObjectComponent> Component;
+            /// <summary>Some of the object's pictures could not be recoloured yet: it is to be drawn again a little later.</summary>
+            public bool Pending;
         }
 
         private static ConditionalWeakTable<VMEntity, Style> Styles = new ConditionalWeakTable<VMEntity, Style>();
@@ -152,7 +152,12 @@ namespace CreateAStyle
             if (component == null) return;
             var renderer = RendererOf(component);
             if (renderer == null) return;
+            Show(renderer, style, entity, vm, component);
+        }
 
+        /// <summary>Has the engine draw an object's pictures with a style, or (null) as they were made.</summary>
+        private static void Show(DGRPRenderer renderer, Style style, VMEntity entity, VM vm, ObjectComponent component)
+        {
             if (ShownBy.TryGetValue(renderer, out var old))
             {
                 ShownBy.Remove(renderer);
@@ -165,15 +170,38 @@ namespace CreateAStyle
                 {
                     Textures = StyleTextures.Acquire(style),
                     Entity = new WeakReference<VMEntity>(entity),
-                    Lot = new WeakReference<VM>(vm)
+                    Lot = new WeakReference<VM>(vm),
+                    Component = new WeakReference<ObjectComponent>(component)
                 };
                 ShownBy.Add(renderer, shown);
                 Live.Add((new WeakReference<DGRPRenderer>(renderer), shown));
             }
+            Redraw(renderer, component);
+        }
 
-            //have the engine list the object's sprites again, and draw it again
+        /// <summary>Has the engine list an object's sprites again, and draw it again.</summary>
+        private static void Redraw(DGRPRenderer renderer, ObjectComponent component)
+        {
             renderer.InvalidateRotation();
-            component.blueprint?.Changes.RegisterObjectChange(component);
+            component?.blueprint?.Changes.RegisterObjectChange(component);
+        }
+
+        /// <summary>
+        /// How the styling of an object is going, in a few words for the panel. Null if it has no style on show.
+        /// </summary>
+        public static string StatusOf(VMEntity entity)
+        {
+            var tiles = Whole(entity);
+            var textures = Live.Where(x => x.shown.Entity.TryGetTarget(out var e) && tiles.Contains(e))
+                .Select(x => x.shown.Textures).Distinct().ToList();
+            if (textures.Count == 0) return null;
+            var styled = textures.Sum(x => x.Styled);
+            var waiting = textures.Sum(x => x.Waiting);
+            var failed = textures.Sum(x => x.Failed);
+            if (failed > 0) return $"Could not recolour {failed} picture{(failed == 1 ? "" : "s")}: {textures.Select(x => x.LastError).FirstOrDefault(x => x != null)}";
+            if (waiting > 0) return "Getting the object's pictures ready...";
+            if (styled == 0) return "None of the pictures on show have the colours changed.";
+            return $"Recoloured {styled} picture{(styled == 1 ? "" : "s")}.";
         }
 
         /// <summary>Gives back the textures of styled objects that are gone: deleted, or of a lot that is not this one.</summary>
@@ -209,7 +237,7 @@ namespace CreateAStyle
                     if (image == null) continue;
                     foreach (var sprite in image.Sprites)
                     {
-                        if (sprite != null) Pixels.Count(Pixels.OfSprite(sprite, out _, out _), colours);
+                        if (sprite != null) Pixels.Count(Pixels.ForAnalysis(sprite, GameFacade.GraphicsDevice), colours);
                     }
                 }
 
@@ -245,76 +273,61 @@ namespace CreateAStyle
             {
                 var pixel = item.Sprite.Pixel;
                 if (pixel == null || textures.IsMine(pixel)) continue;
-                var styled = textures.Get(pixel, item.DGRPSprite);
+                var styled = textures.Get(pixel, item.DGRPSprite, out var pending);
                 if (styled != pixel) item.Sprite.Pixel = styled;
+                if (pending) shown.Pending = true;
             }
         }
 
         // ---- 3. drawing in 3D ----
 
-        [ThreadStatic] private static DGRPRenderer Drawing;
-        [ThreadStatic] private static Shown DrawingShown;
+        /// <summary>The textures of the model being drawn that were swapped for styled copies, to put back after.</summary>
+        [ThreadStatic] private static List<(DGRP3DGeometry geom, Texture2D original)> Swapped;
 
+        /// <summary>
+        /// The engine is about to draw an object's model. The model is shared by every object of its kind, so there is
+        /// nowhere on it to keep a styled texture: instead, while a styled object is drawn, its textures are swapped for
+        /// the styled copies, and put back as soon as it is done (LeaveDraw3D).
+        /// </summary>
         public static void EnterDraw3D(DGRPRenderer __instance)
         {
-            if (ShownBy.TryGetValue(__instance, out var shown))
+            PutBack();
+            if (!ShownBy.TryGetValue(__instance, out var shown)) return;
+            __instance.GetBounds(); //makes sure the model is the one the engine is about to draw: it does the same first
+            var mesh = MeshOf(__instance);
+            if (mesh?.Geoms == null) return;
+            foreach (var geom in mesh.Geoms.SelectMany(x => x.Values))
             {
-                Drawing = __instance;
-                DrawingShown = shown;
+                var pixel = geom.Pixel;
+                if (pixel == null || shown.Textures.IsMine(pixel)) continue;
+                var styled = shown.Textures.Get(pixel, SpriteOf(__instance, geom), out var pending);
+                if (pending) shown.Pending = true;
+                if (styled == pixel) continue;
+                (Swapped ??= new List<(DGRP3DGeometry, Texture2D)>()).Add((geom, pixel));
+                geom.Pixel = styled;
             }
         }
 
         public static Exception LeaveDraw3D(Exception __exception)
         {
-            Drawing = null;
-            DrawingShown = null;
+            PutBack();
             return __exception;
         }
 
-        /// <summary>
-        /// The engine is handing a texture of a model to the shader. The model is shared by every object of its kind, so
-        /// there is nowhere on it to put a styled texture: instead, while a styled object is being drawn, the texture is
-        /// changed on its way in.
-        /// </summary>
-        public static void StyleMeshTexture(ref Texture2D value)
+        private static void PutBack()
         {
-            var shown = DrawingShown;
-            if (shown == null || value == null || shown.Textures.IsMine(value)) return;
-            if (!shown.Sources.TryGetValue(value, out var sprite))
-            {
-                if (shown.Sources.Count > 256) shown.Sources.Clear();
-                sprite = SpriteOf(Drawing, value);
-                shown.Sources[value] = sprite;
-            }
-            value = shown.Textures.Get(value, sprite);
+            if (Swapped == null || Swapped.Count == 0) return;
+            foreach (var (geom, original) in Swapped) geom.Pixel = original;
+            Swapped.Clear();
         }
 
         /// <summary>The sprite a texture of an object's model is from, or null if it is the model's own texture.</summary>
-        private static DGRPSprite SpriteOf(DGRPRenderer renderer, Texture2D texture)
+        private static DGRPSprite SpriteOf(DGRPRenderer renderer, DGRP3DGeometry geom)
         {
-            var dgrp = renderer.DGRP;
-            var mesh = MeshOf(renderer);
-            if (dgrp == null || mesh?.Geoms == null) return null;
-            var gd = texture.GraphicsDevice;
-            foreach (var geom in mesh.Geoms.SelectMany(x => x.Values))
-            {
-                if (geom.Pixel != texture) continue;
-                if (geom.CustomTexture != 0) return null;
-                //the model says which sprite: the one at this place in the object's picture from this side
-                var sprites = dgrp.GetImage(1, 3, geom.PixelDir)?.Sprites;
-                if (sprites != null && geom.PixelSPR < sprites.Length && sprites[geom.PixelSPR]?.GetTexture(gd) == texture) return sprites[geom.PixelSPR];
-            }
-            //or look for it
-            for (uint rotation = 0; rotation < 4; rotation++)
-            {
-                var sprites = dgrp.GetImage(1, 3, rotation)?.Sprites;
-                if (sprites == null) continue;
-                foreach (var sprite in sprites)
-                {
-                    if (sprite?.GetTexture(gd) == texture) return sprite;
-                }
-            }
-            return null;
+            if (geom.CustomTexture != 0) return null;
+            //the model says which: the sprite at this place in the object's picture, close up, from this side
+            var sprites = renderer.DGRP?.GetImage(1, 3, geom.PixelDir)?.Sprites;
+            return (sprites != null && geom.PixelSPR < sprites.Length) ? sprites[geom.PixelSPR] : null;
         }
 
         // ---- 4. saving ----
@@ -361,8 +374,11 @@ namespace CreateAStyle
             if (saved != null) Loaded.Add(vm, saved);
         }
 
+        private static long NextRetry;
+
         public static void BeforeUpdate(VM __instance)
         {
+            RetryPending();
             if (!Loaded.TryGetValue(__instance, out var saved)) return;
             if (__instance.Entities.Count == 0) return; //not there yet
             Loaded.Remove(__instance);
@@ -386,6 +402,26 @@ namespace CreateAStyle
             catch (Exception e)
             {
                 Console.WriteLine("Create a Style: could not read this lot's styles: " + e.Message);
+            }
+        }
+
+        /// <summary>
+        /// Draws again the objects with pictures that could not be recoloured last time (most often, still loading).
+        /// In 2D an object that is not moving is drawn once into a layer that is kept, so it would not be tried again
+        /// on its own.
+        /// </summary>
+        private static void RetryPending()
+        {
+            var now = Environment.TickCount64;
+            if (now < NextRetry) return;
+            NextRetry = now + 250;
+            StyleTextures.Sweep();
+            foreach (var (rendererRef, shown) in Live)
+            {
+                if (!shown.Pending || !rendererRef.TryGetTarget(out var renderer)) continue;
+                shown.Pending = false;
+                shown.Component.TryGetTarget(out var component);
+                Redraw(renderer, component);
             }
         }
 

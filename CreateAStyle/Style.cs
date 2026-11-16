@@ -269,12 +269,14 @@ namespace CreateAStyle
             }
             peaks = peaks.OrderByDescending(x => smooth[x]).ToList();
 
-            //the biggest humps first, and none within 30 degrees of one already taken
+            //the biggest humps first. a smaller one is a part of its own if it is 30 degrees or more from each hump already
+            //taken, or nearer but with the count falling well away in between: red cushions on a wooden frame are two
+            //parts, though only 25 degrees apart, but the shades of one wood, spread over the same 25 degrees, are one
             var taken = new List<int>();
             foreach (var peak in peaks)
             {
                 if (taken.Count >= MaxColourParts) break;
-                if (taken.Any(x => BinDistance(x, peak) < 6)) continue;
+                if (taken.Any(x => !Apart(smooth, x, peak))) continue;
                 taken.Add(peak);
             }
 
@@ -316,6 +318,25 @@ namespace CreateAStyle
                 style.Channels.Add(grey);
             }
             return style;
+        }
+
+        /// <summary>Whether two humps are far enough apart, or divided enough, to be parts of their own.</summary>
+        private static bool Apart(double[] smooth, int a, int b)
+        {
+            var distance = BinDistance(a, b);
+            if (distance >= 6) return true;
+            return distance >= 2 && Valley(smooth, a, b) <= 0.5 * Math.Min(smooth[a], smooth[b]);
+        }
+
+        /// <summary>The lowest the count goes between two bins, the short way round the wheel.</summary>
+        private static double Valley(double[] smooth, int a, int b)
+        {
+            var forward = (b - a + Bins) % Bins;
+            var step = (forward <= Bins / 2) ? 1 : -1;
+            var length = (step == 1) ? forward : Bins - forward;
+            var low = double.MaxValue;
+            for (int i = 1; i < length; i++) low = Math.Min(low, smooth[(a + i * step + Bins) % Bins]);
+            return (low == double.MaxValue) ? Math.Min(smooth[a], smooth[b]) : low;
         }
 
         private static int BinDistance(int a, int b)
