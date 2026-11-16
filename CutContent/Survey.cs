@@ -69,7 +69,7 @@ namespace CutContent
             Listed = 0;
             ListedScripts.Clear();
             var report = new StringBuilder();
-            report.AppendLine("Cut Content survey, version 6");
+            report.AppendLine("Cut Content survey, version 7");
             report.AppendLine();
             report.AppendLine("== What the pack has done ==");
             report.AppendLine("Ghost sting: " + GhostSting.Status);
@@ -81,13 +81,8 @@ namespace CutContent
             report.AppendLine($"Limousine: {Limousine.Status}. This session: {Limousine.Hired} hired.");
 
             Section(report, "Cut skills: who has them", SkillHolders);
-            Section(report, "Cut skills: every script step that reads or sets them", SkillSteps);
-            Section(report, "Pickpocket: textures", Skins);
-            Section(report, "Pickpocket: body skins and meshes", Bodies);
-            Section(report, "Pickpocket: what each character wears", Outfits);
+            Section(report, "Cleaning skill: the routine that reads it, and what calls it", Cleaning);
             Section(report, "Sounds", Sounds);
-            Section(report, "Objects", Objects);
-            Section(report, "Shared script files (semi-globals)", SemiGlobals);
             return report.ToString();
         }
 
@@ -217,6 +212,34 @@ namespace CutContent
             var global = Content.Get().WorldObjectGlobals.Get("global")?.Resource;
             if (global != null && done.Add(global)) files.Add(("global.iff", global));
             return files;
+        }
+
+        /// <summary>
+        /// Global 304, "clean inc", reads person data 9 to work out how fast a Sim cleans. Its steps, and every step in the
+        /// game that calls it, with the steps of the first few callers, to see where a Sim could learn cleaning.
+        /// </summary>
+        private static void Cleaning(StringBuilder report)
+        {
+            var global = Content.Get().WorldObjectGlobals.Get("global")?.Resource;
+            if (global == null) { report.AppendLine("The global file was not found."); return; }
+            var lines = new List<string>();
+            var clean = global.Get<BHAV>(304);
+            if (clean != null) Steps(lines, global, null, clean);
+            else lines.Add("Global 304 was not found.");
+            var callers = new List<(string file, GameIffResource res, GameIffResource shared, BHAV script, int step)>();
+            foreach (var (fileName, res) in AllFiles())
+            {
+                List<BHAV> scripts = null;
+                try { scripts = res.List<BHAV>(); } catch { }
+                if (scripts == null) continue;
+                foreach (var script in scripts.OrderBy(x => x.ChunkID))
+                    for (int i = 0; i < script.Instructions.Length; i++)
+                        if (script.Instructions[i].Opcode == 304) callers.Add((fileName, res, (res as GameObjectResource)?.SemiGlobal, script, i));
+            }
+            lines.Add($"{callers.Count} steps call it:");
+            foreach (var c in callers) lines.Add($"  {c.file} script {c.script.ChunkID} \"{Clean(c.script.ChunkLabel)}\" step {c.step}");
+            foreach (var c in callers.GroupBy(x => x.script).Select(x => x.First()).Take(4)) Steps(lines, c.res, c.shared, c.script);
+            foreach (var line in lines) report.AppendLine(line);
         }
 
         private static readonly Regex BodyWords = new Regex("vacation|burglar|thief|pick|mafit|mafat|maskn|crook|robber", RegexOptions.IgnoreCase);

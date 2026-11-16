@@ -20,6 +20,7 @@ using Simitone.Client.UI.Panels;
 using Simitone.Client.UI.Screens;
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 
@@ -39,6 +40,7 @@ namespace CutContent
     /// Console commands (Ctrl+Shift+C):
     ///   cutcontent              what was found and restored so far
     ///   cutcontent survey       write the report, for working out the restorations that are not done yet
+    ///   cutcontent pickpocket   try the pickpocket's textures on the selected Sim (see Pickpocket.cs)
     ///   cutcontent doors        the doors on this lot that can be locked, and whether they are
     ///   cutcontent locks everyone|household   who a locked door keeps out (until the game closes)
     ///   cutcontent force on|off also show matched interactions whose own check says no (experimental, until the game closes)
@@ -121,6 +123,8 @@ namespace CutContent
                     File.WriteAllText(path, Survey.Run());
                     Show("Cut Content", "The survey was written to:\n" + Path.GetFullPath(path));
                     return true;
+                case "pickpocket":
+                    return Pickpocket.Command(args.Skip(1).ToArray());
                 case "doors":
                     Show("Door locks", DoorLocks.Report((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm));
                     return true;
