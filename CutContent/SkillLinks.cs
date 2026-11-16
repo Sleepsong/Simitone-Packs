@@ -46,6 +46,30 @@ namespace CutContent
             }
         }
 
+        /// <summary>
+        /// Career levels that ask for the unnamed skills. 1.0's Behavior.iff names a level's requirements "min cook skill",
+        /// "min repair skill", "min social skill", "min body skill", "min logic skill", "min creative skill", then "min req 7",
+        /// "min req 8" and "min req 9": room for three more skills. A level that fills one in says how a cut skill was to be used.
+        /// </summary>
+        public static void Careers(StringBuilder report, string fileName, IEnumerable<CARR> careers, ref int levels, ref int asking)
+        {
+            foreach (var career in careers)
+            {
+                if (career.JobLevels == null) continue;
+                for (int i = 0; i < career.JobLevels.Length; i++)
+                {
+                    var level = career.JobLevels[i];
+                    levels++;
+                    if (level?.MinRequired == null || level.MinRequired.Length < 10) continue;
+                    if (level.MinRequired[7] == 0 && level.MinRequired[8] == 0 && level.MinRequired[9] == 0) continue;
+                    asking++;
+                    report.AppendLine($"{fileName} career {career.ChunkID} \"{Survey.Clean(career.Name ?? career.ChunkLabel)}\" level {i} \"{Survey.Clean(level.JobName)}\": " +
+                        $"req 7 {level.MinRequired[7]}, req 8 {level.MinRequired[8]}, req 9 {level.MinRequired[9]} " +
+                        $"(and cooking {level.MinRequired[1]}, repair {level.MinRequired[2]}, social {level.MinRequired[3]}, body {level.MinRequired[4]}, logic {level.MinRequired[5]}, creative {level.MinRequired[6]})");
+                }
+            }
+        }
+
         /// <summary>Objects with skill flags, grouped by the flags, so a flag no shipped skill uses stands out.</summary>
         public static void Flags(StringBuilder report, IEnumerable<(string file, OBJD objd)> objects)
         {

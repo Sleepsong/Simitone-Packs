@@ -61,11 +61,15 @@ which reads the cleaning skill, and every script that calls it, each Sim's hidde
 entries whose pull is scaled by a cut skill, and the objects' skill flags.
 Run it in a lot, with a Sim selected, and with every expansion you have installed.
 
-`cutcontent survey old [FOLDER]` reads an older copy's folder (the original 1.0 base game is best). It
-lists Behavior.iff's tables of names whole, the menu entries whose pull is scaled by a cut skill, the
-objects' skill flags, every text that mentions a skill, and every script step that reads or sets the
-hidden skill numbers, checked against the game being played. It reads `.far` archives and `.iff` files
-anywhere under the folder, skipping saved lots and families, and changes nothing.
+`cutcontent survey old [FOLDER]` reads an older copy's folder: the original 1.0 base game, or a build from
+before the game came out. It lists what the copy's files are made of and anything the engine could not read
+(a build from before release may keep menu tables or object definitions in older forms, and then "nothing
+found" may only mean "not readable"); Behavior.iff's tables of names whole; career levels that ask for the
+three unnamed skills ("min req 7, 8, 9"); script names that mention a skill, learning, studying or
+practising; menu entries whose pull is scaled by a cut skill; objects' skill flags; every text that
+mentions a skill; and every script step that reads or sets the hidden skill numbers, checked against the
+game being played. It reads `.far` archives and `.iff` files anywhere under the folder, skipping saved lots
+and families, and changes nothing.
 
 ## How it is made
 

@@ -128,7 +128,20 @@ namespace CutContent
 
             var files = Read(folder, report);
             report.AppendLine($"{files.Count} object and script files read.");
+            Section(report, "What the files are made of, and what the engine could not read", () => Formats(report, files));
             Section(report, "Behavior.iff's tables of names, whole", () => Labels(report, files));
+            Section(report, "Career levels that ask for the three unnamed skills (min req 7, 8, 9)", () =>
+            {
+                int levels = 0, asking = 0;
+                foreach (var file in files) SkillLinks.Careers(report, file.Name, List<CARR>(file.Iff), ref levels, ref asking);
+                report.AppendLine($"{asking} of {levels} career levels ask for them.");
+            });
+            Section(report, "Script names that mention a skill, learning, studying or practising", () =>
+            {
+                foreach (var file in files)
+                    foreach (var script in List<BHAV>(file.Iff).Where(x => ScriptWords.IsMatch(x.ChunkLabel ?? "")).OrderBy(x => x.ChunkID))
+                        report.AppendLine($"{file.Name} script {script.ChunkID} \"{Survey.Clean(script.ChunkLabel)}\"");
+            });
             Section(report, "Menu entries whose pull is scaled by a cut skill", () =>
             {
                 var found = 0;
@@ -175,7 +188,7 @@ namespace CutContent
                             var name = Path.GetFileName(entry.Filename.Replace('\\', '/'));
                             try
                             {
-                                var iff = new IffFile();
+                                var iff = new IffFile { RetainChunkData = true };
                                 using (var stream = new MemoryStream(far.GetEntry(entry))) iff.Read(stream);
                                 files.Add(new OldFile { Name = name, Where = shown, Iff = iff });
                                 count++;
@@ -189,7 +202,7 @@ namespace CutContent
                 }
                 else if (ext == ".iff")
                 {
-                    try { files.Add(new OldFile { Name = Path.GetFileName(path), Where = shown, Iff = new IffFile(path) }); }
+                    try { files.Add(new OldFile { Name = Path.GetFileName(path), Where = shown, Iff = new IffFile(path, true) }); }
                     catch (Exception e) { report.AppendLine($"{shown}: could not be read ({e.Message})"); }
                 }
             }
@@ -199,6 +212,55 @@ namespace CutContent
         private static List<T> List<T>(IffFile iff) where T : IffChunk
         {
             try { return iff.List<T>() ?? new List<T>(); } catch { return new List<T>(); }
+        }
+
+        private static readonly Regex ScriptWords = new Regex(@"skill|garden|music|literac|learn|study|practi", RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// A copy from before the game came out may keep its data in older forms than the engine reads: menu tables before
+        /// version 4, and object definitions other than 138 to 142, are skipped. This counts each kind of data, its versions
+        /// read from the raw bytes, and what could not be read, so that "nothing found" can be told apart from "not readable".
+        /// </summary>
+        private static void Formats(StringBuilder report, List<OldFile> files)
+        {
+            var kinds = new Dictionary<string, int>();
+            var versions = new Dictionary<string, Dictionary<string, int>>();
+            var unread = new Dictionary<string, int>();
+            int oldTables = 0, oldEntries = 0;
+            void Count(Dictionary<string, int> d, string k) => d[k] = d.TryGetValue(k, out var n) ? n + 1 : 1;
+            void Version(string kind, string v) { if (!versions.TryGetValue(kind, out var d)) versions[kind] = d = new Dictionary<string, int>(); Count(d, v); }
+
+            foreach (var file in files)
+            {
+                foreach (var type in new[] { typeof(BHAV), typeof(TTAB), typeof(OBJD), typeof(STR), typeof(CARR), typeof(TTAs) })
+                {
+                    System.Collections.IList chunks;
+                    try { chunks = (System.Collections.IList)typeof(IffFile).GetMethod("List").MakeGenericMethod(type).Invoke(file.Iff, null); }
+                    catch { Count(unread, type.Name + " (a whole file's)"); continue; }
+                    if (chunks == null) continue;
+                    foreach (IffChunk chunk in chunks)
+                    {
+                        Count(kinds, type.Name);
+                        var raw = chunk.OriginalData;
+                        if (raw == null || raw.Length < 4) continue;
+                        if (chunk is TTAB table)
+                        {
+                            var count = BitConverter.ToUInt16(raw, 0);
+                            var version = (count == 0) ? "empty" : BitConverter.ToUInt16(raw, 2).ToString();
+                            Version("TTAB", version);
+                            if (count > 0 && table.Interactions.Length == 0) { oldTables++; oldEntries += count; }
+                        }
+                        else if (chunk is OBJD objd) Version("OBJD", BitConverter.ToUInt32(raw, 0).ToString());
+                        else if (chunk is BHAV) Version("BHAV", "0x" + BitConverter.ToUInt16(raw, 0).ToString("x4"));
+                    }
+                }
+            }
+            report.AppendLine("Counted: " + string.Join(", ", kinds.Select(x => $"{x.Value} {x.Key}")));
+            foreach (var kind in versions)
+                report.AppendLine($"{kind.Key} versions: " + string.Join(", ", kind.Value.OrderBy(x => x.Key).Select(x => $"{x.Key} ({x.Value})")));
+            report.AppendLine($"Menu tables the engine skipped as too old: {oldTables}, with {oldEntries} entries the survey could not see.");
+            if (unread.Count > 0) report.AppendLine("Could not be read: " + string.Join(", ", unread.Select(x => $"{x.Value} {x.Key}")));
+            report.AppendLine("The engine reads object definitions of versions 138 to 142 and menu tables from version 4; scripts 0x8000 to 0x8003.");
         }
 
         /// <summary>The label tables a modding tool shows, which name person data, objects' fields and the "personality ads".</summary>

@@ -94,6 +94,13 @@ namespace CutContent
                 }
                 report2.AppendLine($"{found} entries.");
             });
+            Section(report, "Career levels that ask for the three unnamed skills (min req 7, 8, 9)", report2 =>
+            {
+                int levels = 0, asking = 0;
+                var work = (Content.Get().Jobs as TS1JobProvider)?.JobResource;
+                if (work != null) SkillLinks.Careers(report2, "work.iff", work.List<CARR>() ?? new List<CARR>(), ref levels, ref asking);
+                report2.AppendLine($"{asking} of {levels} career levels ask for them.");
+            });
             Section(report, "Objects' skill flags (the skills buy mode says they build)", report2 =>
                 SkillLinks.Flags(report2, AllFiles().SelectMany(f => { List<OBJD> o = null; try { o = f.Item2.List<OBJD>(); } catch { } return (o ?? new List<OBJD>()).Select(x => (f.Item1, x)); })));
             Section(report, "Sounds", Sounds);
