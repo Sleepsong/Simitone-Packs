@@ -1,9 +1,9 @@
 {
   "id": "sample.cutcontent",
   "name": "Cut Content",
-  "version": "0.2",
+  "version": "0.3",
   "author": "Simitone",
-  "description": "Restores features Maxis left unfinished in The Sims and its expansions: hugging trees, locking doors, children kissing toads, the unused ghost sting and more. Work in progress. Type cutcontent in the console to see what it found in your game.",
+  "description": "Restores features Maxis left unfinished in The Sims and its expansions: hugging trees, locking doors that keep people out, selling a litter, children kissing toads and the unused ghost sting. Work in progress. Type cutcontent in the console to see what it found in your game.",
   "minSimitoneVersion": "0.8.22",
   "assembly": "CutContent.dll"
 }

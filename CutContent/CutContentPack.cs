@@ -12,6 +12,8 @@ using FSO.Common.Utils;
 using FSO.Content;
 using FSO.HIT;
 using FSO.SimAntics;
+using FSO.SimAntics.Engine;
+using FSO.SimAntics.Model;
 using HarmonyLib;
 using Simitone.Client.Packs;
 using Simitone.Client.UI.Panels;
@@ -56,6 +58,9 @@ namespace CutContent
                 harmony.Patch(AccessTools.Constructor(typeof(VMEntity), new[] { typeof(GameObject) })
                     ?? throw new Exception("VMEntity's constructor was not found: this pack was made for a different version of Simitone"), postfix: setup);
                 harmony.Patch(Find(typeof(VMEntity), "UseTreeTableOf", new[] { typeof(GameObject) }), postfix: setup);
+                //a Sim plans which doors to go through: leave out the ones locked against them
+                harmony.Patch(Find(typeof(VMRoutingFrame), "DoRoomRoute", new[] { typeof(VMFindLocationResult) }),
+                    prefix: new HarmonyMethod(typeof(DoorLocks), nameof(DoorLocks.BeforeRoomRoute)));
             }
             catch
             {
@@ -109,12 +114,13 @@ namespace CutContent
             text.AppendLine();
             text.AppendLine("Interactions put back in menus (found as objects are created):");
             foreach (var rule in AddedInteractions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);
+            text.AppendLine("Locked doors: " + DoorLocks.Status);
             text.AppendLine();
             text.AppendLine("Switched off interactions (found as their objects are clicked on):");
             foreach (var rule in Interactions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);
             if (Interactions.Force) text.AppendLine("(force is on)");
             text.AppendLine();
-            text.AppendLine("Not started: the cut skills, the Vacation pickpocket.");
+            text.AppendLine("Not done yet: the limousine, the telephone investments, the Information Kiosk, the cut skills, the pickpocket.");
             return text.ToString();
         }
 

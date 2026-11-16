@@ -45,7 +45,7 @@ namespace CutContent
         private static readonly string[] ObjectWords = { "toad", "kiosk", "trainer", "limo", "taxi", "pickpocket" };
         /// <summary>Scripts whose steps are listed.</summary>
         private static readonly Regex ScriptsToList = new Regex(
-            @"lock/unlock|litter|tree hug|kiss toad|limo|invest|stock|kiosk|portal|pickpocket|\bcab\b|placeholder|random call",
+            @"limo|invest|stock|offer|kiosk|pickpocket|placeholder|random call",
             RegexOptions.IgnoreCase);
         private const int MaxScriptsListed = 300;
 
@@ -69,14 +69,18 @@ namespace CutContent
             Listed = 0;
             ListedScripts.Clear();
             var report = new StringBuilder();
-            report.AppendLine("Cut Content survey, version 2");
+            report.AppendLine("Cut Content survey, version 3");
             report.AppendLine();
             report.AppendLine("== What the pack has done ==");
             report.AppendLine("Ghost sting: " + GhostSting.Status);
             report.AppendLine("Information Kiosk: " + Kiosk.Status);
             foreach (var rule in AddedInteractions.Rules) report.AppendLine(rule.Name + ": " + rule.Status);
             foreach (var rule in Interactions.Rules) report.AppendLine(rule.Name + ": " + rule.Status);
+            report.AppendLine("Locked doors: " + DoorLocks.Status);
 
+            Section(report, "Files in full", Whole);
+            Section(report, "Texts repeated five or more times (placeholders)", Repeated);
+            Section(report, "Object files with kiosk or info in the name, and files that failed to load", KioskFiles);
             Section(report, "Sounds", Sounds);
             Section(report, "Skins", Skins);
             Section(report, "The selected Sim's skill numbers", Skills);
@@ -101,8 +105,138 @@ namespace CutContent
             catch (Exception e) { lines.Add($"  ({what} could not be read: {e.Message})"); return default(T); }
         }
 
+        /// <summary>Files listed in full: every object, table entry, script with its steps, and text.</summary>
+        private static readonly string[] WholeFiles =
+        {
+            "GoDowntownPhonePlugin.iff", // Hot Date: the unused "taxi or a limo?" texts
+            "CarLimo.iff",               // Hot Date's limousine, which has no menu
+            "CarTaxi.iff",               // the taxi it would stand in for
+            "phonecall.iff",             // the random calls, where the investment offers would have come
+            "phones.iff",
+            "PetMaternityBox.iff",       // for its attribute names
+        };
+        /// <summary>Shared script files listed in full, but with only some scripts' steps.</summary>
+        private static readonly (string file, Regex steps)[] WholeShared =
+        {
+            ("phoneglobals", new Regex("random|invest|stock|offer|money|ring", RegexOptions.IgnoreCase)),
+        };
+
+        private static void Whole(StringBuilder report)
+        {
+            var objects = Content.Get().WorldObjects as TS1ObjectProvider;
+            if (objects == null) return;
+            foreach (var name in WholeFiles)
+            {
+                var entry = objects.Entries.Values.FirstOrDefault(x => string.Equals(System.IO.Path.GetFileName(x.FileName ?? ""), name, StringComparison.OrdinalIgnoreCase));
+                if (entry == null) { report.AppendLine(); report.AppendLine(name + ": not in this game"); continue; }
+                GameObjectResource res = null;
+                try { res = objects.Get(entry.ID)?.Resource; }
+                catch (Exception e) { report.AppendLine(); report.AppendLine($"{name}: could not be loaded ({e.Message})"); continue; }
+                if (res != null) Full(report, objects, name, res, res.SemiGlobal, null);
+            }
+            foreach (var (file, steps) in WholeShared)
+            {
+                var res = Content.Get().WorldObjectGlobals.Get(file)?.Resource;
+                if (res == null) { report.AppendLine(); report.AppendLine(file + ": not in this game"); continue; }
+                Full(report, null, file + ".iff", res, null, steps);
+            }
+        }
+
+        private static void Full(StringBuilder report, TS1ObjectProvider catalog, string fileName, GameIffResource res, GameIffResource semiGlobal, Regex steps)
+        {
+            var lines = new List<string>();
+            report.AppendLine();
+            report.AppendLine($"{fileName} in full" + ((semiGlobal != null) ? $" (shares scripts with {semiGlobal.MainIff?.Filename})" : ""));
+            foreach (var objd in Try(lines, "objects", () => res.List<OBJD>()) ?? new List<OBJD>())
+            {
+                report.AppendLine($"  object \"{Clean(objd.ChunkLabel)}\" {objd.GUID:x8}: type {objd.ObjectType}, table {objd.TreeTableID}, " +
+                    $"{((catalog?.GetItemByGUID(objd.GUID) != null) ? "in catalog" : "not in catalog")} (category {objd.FunctionFlags:x}, rooms {objd.RoomFlags:x}, price {objd.Price}, part {objd.MasterID}/{objd.SubIndex}, attributes {objd.NumAttributes})");
+            }
+            foreach (var table in Try(lines, "interaction tables", () => res.List<TTAB>()) ?? new List<TTAB>())
+            {
+                var strings = Try(lines, $"strings of table {table.ChunkID}", () => res.Get<TTAs>(table.ChunkID));
+                foreach (var entry in table.Interactions)
+                {
+                    lines.Add($"  table {table.ChunkID} entry {entry.TTAIndex} \"{Clean(strings?.GetString((int)entry.TTAIndex))}\": marks {(uint)entry.Flags:x}, " +
+                        $"action {entry.ActionFunction} \"{Clean(Find(res, semiGlobal, entry.ActionFunction)?.ChunkLabel)}\", check {entry.TestFunction} \"{Clean(Find(res, semiGlobal, entry.TestFunction)?.ChunkLabel)}\"");
+                }
+            }
+            foreach (var text in Try(lines, "texts", () => res.List<STR>()) ?? new List<STR>())
+            {
+                for (int i = 0; i < text.Length; i++)
+                {
+                    var value = text.GetString(i);
+                    if (!string.IsNullOrEmpty(value)) lines.Add($"  text {text.ChunkID} \"{Clean(text.ChunkLabel)}\" line {i}: {Clean(value)}");
+                }
+            }
+            foreach (var script in (Try(lines, "scripts", () => res.List<BHAV>()) ?? new List<BHAV>()).OrderBy(x => x.ChunkID))
+            {
+                if (steps == null || steps.IsMatch(Clean(script.ChunkLabel))) Steps(lines, res, semiGlobal, script);
+                else lines.Add($"  script {script.ChunkID} \"{Clean(script.ChunkLabel)}\"");
+            }
+            foreach (var line in lines) report.AppendLine(line);
+        }
+
+        /// <summary>Finds texts that one table repeats many times, as Maxis's placeholders do.</summary>
+        private static void Repeated(StringBuilder report)
+        {
+            var objects = Content.Get().WorldObjects as TS1ObjectProvider;
+            if (objects == null) return;
+            var done = new HashSet<object>();
+            var files = new List<(string name, GameIffResource res)>();
+            foreach (var entry in objects.Entries.Values.OrderBy(x => x.FileName))
+            {
+                GameObjectResource res = null;
+                try { res = objects.Get(entry.ID)?.Resource; } catch { }
+                if (res != null && done.Add(res)) files.Add((entry.FileName, res));
+                if (res?.SemiGlobal != null && done.Add(res.SemiGlobal)) files.Add((res.SemiGlobal.MainIff?.Filename ?? "(semi-global)", res.SemiGlobal));
+            }
+            foreach (var (name, res) in files)
+            {
+                List<STR> texts = null;
+                try { texts = res.List<STR>(); } catch { }
+                if (texts == null) continue;
+                foreach (var text in texts)
+                {
+                    var counts = new Dictionary<string, List<int>>();
+                    for (int i = 0; i < text.Length; i++)
+                    {
+                        var value = Clean(text.GetString(i)).Trim();
+                        if (value.Length < 4) continue;
+                        if (!counts.TryGetValue(value, out var at)) counts[value] = at = new List<int>();
+                        at.Add(i);
+                    }
+                    foreach (var repeat in counts.Where(x => x.Value.Count >= 5))
+                        report.AppendLine($"{name} text {text.ChunkID} \"{Clean(text.ChunkLabel)}\": {repeat.Value.Count} times (lines {string.Join(", ", repeat.Value.Take(30))}): {repeat.Key}");
+                }
+            }
+        }
+
+        /// <summary>The kiosk is in no object the game lists. Maybe its file is there with no object in it, or failed to load.</summary>
+        private static void KioskFiles(StringBuilder report)
+        {
+            var objects = Content.Get().WorldObjects as TS1ObjectProvider;
+            var provider = AccessTools.Field(typeof(TS1ObjectProvider), "GameObjects")?.GetValue(objects) as TS1SubProvider<FSO.Files.Formats.IFF.IffFile>;
+            var names = provider?.GetAllNames().ToList();
+            if (names == null) report.AppendLine("(couldn't list the object files)");
+            else
+            {
+                report.AppendLine($"{names.Count} object files.");
+                foreach (var name in names.Where(x => Regex.IsMatch(x, "kiosk|info", RegexOptions.IgnoreCase)).OrderBy(x => x)) report.AppendLine("file: " + name);
+            }
+            foreach (var failed in Content.FailedContentFiles ?? Enumerable.Empty<TS1BCFProvider.FailedFileInfo>())
+                report.AppendLine($"failed: {failed.Filename}: {failed.ErrorType}: {failed.ErrorMessage}");
+        }
+
         private static void Sounds(StringBuilder report)
         {
+            {
+                var audio1 = Content.Get().Audio as TS1Audio;
+                var all = AccessTools.Field(typeof(TS1Audio), "HitlistsById")?.GetValue(audio1) as Dictionary<uint, FSO.Files.HIT.Hitlist>;
+                if (all != null && all.TryGetValue(0x31f, out var spooky))
+                    report.AppendLine($"list 31f, from all sound files: {string.Join(", ", spooky.IDs.Select(x => x.ToString("x")))}");
+                else report.AppendLine("list 31f is in no sound file");
+            }
             var audio = Content.Get().Audio as TS1Audio;
             var events = audio?.Events;
             if (events == null) return;

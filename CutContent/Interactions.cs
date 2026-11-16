@@ -71,9 +71,6 @@ namespace CutContent
         public static readonly InteractionRule[] Rules =
         {
             new InteractionRule { Name = "Children kiss toads (Makin' Magic)", Objects = new[] { "toad" }, Labels = new[] { "kiss" }, ForChildren = true },
-            new InteractionRule { Name = "Sell a litter to the Pet Trainer (Unleashed)", Objects = new[] { "trainer" }, Labels = new[] { "litter", "sell" } },
-            new InteractionRule { Name = "Hire a limousine (Hot Date)", Labels = new[] { "limo" } },
-            new InteractionRule { Name = "Investment offers by telephone", Labels = new[] { "invest" } },
         };
 
         private class Match

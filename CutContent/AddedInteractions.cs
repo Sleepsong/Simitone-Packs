@@ -29,6 +29,12 @@ namespace CutContent
         public string Label;
         /// <summary>Marks for the entry, as the game's own entries have them.</summary>
         public TTABFlags Flags;
+        /// <summary>Another script the object must have, to be sure it is the right object. Optional.</summary>
+        public string Requires;
+        /// <summary>Makes a check script when Maxis left none. Optional.</summary>
+        public Func<GameIffResource, BHAV, BHAV> MakeCheck;
+        /// <summary>Finishes the action script, once per script. Returns false if the script isn't as expected, and then the entry isn't added.</summary>
+        public Func<GameIffResource, BHAV, bool> FixAction;
 
         public int Objects;
         public List<string> Seen = new List<string>();
@@ -58,6 +64,9 @@ namespace CutContent
             // Doors3_SP.iff, Doors3SP2.iff, Doors4.iff, DoorsUnleashed.iff and others: the check names the entry Lock or Unlock.
             // only the household can lock their doors
             new AddedInteraction { Name = "Lock and unlock doors (Superstar, Makin' Magic)", Action = "Interaction Lock/unlock", Check = "Interaction Lock/unlock TEST", Label = "Lock" },
+            // PetMaternityBox.iff: the box's own finished "Sell Litter", with no menu entry. adults of the household only
+            new AddedInteraction { Name = "Sell a litter (Unleashed)", Action = "Sell Litter", Requires = "care for litter", Label = "Sell Litter",
+                Flags = TTABFlags.TS1NoChild | TTABFlags.TS1NoDemoChild, MakeCheck = Litter.MakeCheck, FixAction = Litter.FixAction },
         };
 
         private class Added
@@ -67,6 +76,8 @@ namespace CutContent
         }
 
         /// <summary>For each object file, its tables with the entries added. Keyed on the file so they go when it does.</summary>
+        private static ConditionalWeakTable<BHAV, object> Fixed = new ConditionalWeakTable<BHAV, object>();
+
         private static ConditionalWeakTable<GameIffResource, Dictionary<object, Added>> Done = new ConditionalWeakTable<GameIffResource, Dictionary<object, Added>>();
         private static readonly object NoTable = new object();
 
@@ -117,10 +128,25 @@ namespace CutContent
             foreach (var rule in Rules)
             {
                 if (!byName.TryGetValue(rule.Action, out var action)) continue;
+                if (rule.Requires != null && !byName.ContainsKey(rule.Requires)) continue;
                 BHAV check = null;
                 if (rule.Check != null && !byName.TryGetValue(rule.Check, out check)) continue;
                 //already in the menu?
                 if (entity.TreeTable != null && entity.TreeTable.Interactions.Any(x => x.ActionFunction == action.ChunkID)) continue;
+                try
+                {
+                    if (rule.FixAction != null && !Fixed.TryGetValue(action, out _))
+                    {
+                        if (!rule.FixAction(res, action)) { CutContentPack.Log($"{rule.Name}: the script {action.ChunkID} is not as expected, so it was left out"); continue; }
+                        Fixed.AddOrUpdate(action, action);
+                    }
+                    if (check == null && rule.MakeCheck != null) check = rule.MakeCheck(res, action);
+                }
+                catch (Exception e)
+                {
+                    CutContentPack.Log($"{rule.Name}: couldn't prepare the scripts: {e.Message}");
+                    continue;
+                }
                 rules.Add((rule, action, check));
             }
             if (rules.Count == 0) return null;
