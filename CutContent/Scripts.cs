@@ -7,6 +7,7 @@ http://mozilla.org/MPL/2.0/.
 using FSO.Content;
 using FSO.Files.Formats.IFF.Chunks;
 using FSO.SimAntics;
+using FSO.SimAntics.Engine;
 using System;
 using System.Linq;
 
@@ -30,6 +31,26 @@ namespace CutContent
                 if (VMContext.Primitives[i]?.Name == name) return (ushort)i;
             }
             throw new Exception($"the engine has no \"{name}\" primitive");
+        }
+
+        /// <summary>Registers a primitive of the pack's under a free number, for steps that call into the pack.</summary>
+        public static void RegisterPrimitive(string name, VMPrimitiveHandler handler)
+        {
+            for (int op = 200; op < VMContext.Primitives.Length; op++)
+            {
+                if (VMContext.Primitives[op] != null) continue;
+                Simitone.Client.Packs.PackManager.RegisterPrimitive(new VMPrimitiveRegistration(handler) { Opcode = (ushort)op, Name = name, OperandModel = typeof(NoOperand) });
+                CutContentPack.Log($"primitive {op} is {name}");
+                return;
+            }
+            throw new Exception("no free primitive number for " + name);
+        }
+
+        /// <summary>The settings of the pack's own primitives: none.</summary>
+        public class NoOperand : VMPrimitiveOperand
+        {
+            public void Read(byte[] bytes) { }
+            public void Write(byte[] bytes) { }
         }
 
         public static BHAVInstruction Step(string primitive, byte[] operand, byte onTrue, byte onFalse)

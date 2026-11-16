@@ -1,7 +1,7 @@
 # Cut Content
 
 Restores features Maxis left unfinished or switched off in The Sims and its expansion packs. **Version
-0.5**, written from four surveys of a real game. Hugging a tree and locking a door have been played
+0.6**, written from four surveys of a real game. Hugging a tree and locking a door have been played
 and work; the rest has not been played yet. Nothing in the game's files is
 changed: the pack finds each feature in your own game while it runs, and tells you what it found.
 
@@ -17,7 +17,7 @@ they are new objects with their own key system, not the code Maxis left in its o
 | Lock and unlock doors | Vacation, Unleashed, Superstar, Makin' Magic | Built, and locking works. "Interaction Lock/unlock" sets the door's attribute 0, but nothing read it, so a locked door stopped no one. The pack adds the menu entry (the check names it **Lock** or **Unlock**) and finishes the lock: a locked door keeps out everyone but the household, its pets and the emergency services, so your own Sims still use it (`cutcontent locks everyone` keeps the household out too). Anyone can still use it to go outdoors, so nobody is shut in. The lock is saved with the lot. The first lock in a session says who it keeps out. Only doors from these four expansions have the lock: not the base game's, Livin' Large's or Hot Date's. |
 | Sell a litter | Unleashed | Built. The Pet Maternity Box has a finished "Sell Litter" script with three offers ("This litter has potential. I'll give you 50 for them."), paying $25, $50 or $100, but no menu entry. The pack adds **Sell Litter** to the box, for adults of the household, when the box holds a litter. After a sale the litter goes, as when Animal Control takes it. (The Pet Trainer's own **Sell Litter** wants the box in the Sim's inventory, which the game never does, so it stays hidden.) |
 | Children kiss toads | Makin' Magic | Built. The toad's **Kiss** is marked "no children"; the pack lifts the mark. The script already plays the child animations and gives Toad Sweat only to adults. |
-| Hire a limousine in place of a cab | Hot Date | Found, not built yet. The Go Downtown phone plugin has the unused texts "Would you prefer a taxi or a limo?", the limousine service's reply and a chauffeur's three "where to?" lines, but no script uses them, and "Generate Cab" only ever makes the taxi. Hot Date's own limousine (`CarLimo.iff`) has none of the taxi's scripts. Superstar's black limousine has them all, step for step, except that it hands Sims to Studio Town's plugin instead of Go Downtown's: the next version sends one downtown. |
+| Hire a limousine in place of a cab | Hot Date | Built. The Go Downtown phone plugin has texts no script uses: "Would you prefer a taxi or a limo?", "Excellent. A representative from our prestigious limosine service will be there with a car shortly." and a "lack of funds" apology. Its "Generate Cab" only ever makes the taxi, and Hot Date's own limousine (`CarLimo.iff`) has the taxi's shape and pictures but none of its scripts. The pack asks the question after "Do you need a ride?"; a limousine costs $150 on top of the fare, or brings the apology and a taxi if the household can't pay. The car that comes is the taxi, which works, drawn with Hot Date's limousine pictures, and it stays a limousine if the lot is saved. |
 | Investment offers by telephone | Base game | Built. The phone's "RandomCallDialog" has a branch no step reached: two chance calls in five would have offered to take a multiple of $50, with 20 placeholder texts ("Would you like to spend some money on something random? Variation 1" to 20). The pack leads the calls to the branch again, hands the amount to the text (Maxis never did), writes 20 offers in place of the placeholders, and finishes what Maxis never wrote: three to five days of play later an investment comes good (half as much again, two and a half times or four times) or goes bad, with a message. Pending investments are kept with the lot. |
 | Information Kiosk missing from buy mode | Superstar | Not in this game. None of the 1,195 object files has "kiosk" or "info" in its name, no object is a kiosk, and the only catalog object without catalog text is a dead mouse. The copy of the game surveyed doesn't have it. |
 | Cut skills: cleaning, gardening, music, literacy | Base game | Not started. |
@@ -68,6 +68,8 @@ lot, with a Sim selected, and with every expansion you have installed.
 - `Interactions.cs` runs before the engine looks an interaction up in an object's table, and lifts the
   marks on the cut ones the first time each table is seen.
 - `GhostSting.cs` runs before each spooky sting, and one time in three plays the third one instead.
+- `Limousine.cs` adds the question to the Go Downtown plugin when it is created, marks the car with a
+  primitive of its own, and draws a marked taxi with the limousine's pictures.
 - `Investments.cs` finishes the phone's chance calls when a phone is created, records investments with a
   primitive of its own, and counts them down as the lot's clock runs.
 - `Kiosk.cs` adds the catalog entry once the game's content is loaded.

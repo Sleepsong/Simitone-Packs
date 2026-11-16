@@ -171,12 +171,6 @@ namespace CutContent
 
         // ---- recording an investment ----
 
-        public class NoOperand : VMPrimitiveOperand
-        {
-            public void Read(byte[] bytes) { }
-            public void Write(byte[] bytes) { }
-        }
-
         public class RecordPrimitive : VMPrimitiveHandler
         {
             public override VMPrimitiveExitCode Execute(VMStackFrame context, VMPrimitiveOperand operand)
@@ -199,18 +193,6 @@ namespace CutContent
                 }
                 return VMPrimitiveExitCode.GOTO_TRUE;
             }
-        }
-
-        public static void Register()
-        {
-            for (int op = 200; op < VMContext.Primitives.Length; op++)
-            {
-                if (VMContext.Primitives[op] != null) continue;
-                PackManager.RegisterPrimitive(new VMPrimitiveRegistration(new RecordPrimitive()) { Opcode = (ushort)op, Name = PrimitiveName, OperandModel = typeof(NoOperand) });
-                CutContentPack.Log($"investments: primitive {op} records investments");
-                return;
-            }
-            throw new Exception("no free primitive number");
         }
 
         // ---- coming due ----

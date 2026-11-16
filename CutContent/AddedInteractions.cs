@@ -88,6 +88,7 @@ namespace CutContent
             try
             {
                 Investments.Prepare(__instance);
+                Limousine.Prepare(__instance);
             }
             catch (Exception e)
             {

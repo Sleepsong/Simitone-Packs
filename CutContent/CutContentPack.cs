@@ -65,6 +65,8 @@ namespace CutContent
                 //a door is locked: say who a lock keeps out, once
                 harmony.Patch(Find(typeof(VMEntity), "SetAttribute", new[] { typeof(int), typeof(short) }),
                     postfix: new HarmonyMethod(typeof(DoorLocks), nameof(DoorLocks.AfterSetAttribute)));
+                //an object's picture is set: a taxi sent as a limousine looks like one
+                harmony.Patch(Find(typeof(VMGameObject), "RefreshGraphic", Type.EmptyTypes), postfix: new HarmonyMethod(typeof(Limousine), nameof(Limousine.AfterRefreshGraphic)));
                 //the lot ticks: count down investments
                 harmony.Patch(Find(typeof(VM), "Tick", Type.EmptyTypes), postfix: new HarmonyMethod(typeof(Investments), nameof(Investments.AfterTick)));
                 //a Sim plans which doors to go through: leave out the ones locked against them
@@ -89,7 +91,10 @@ namespace CutContent
             //each on its own: one failing should not stop the other
             try { GhostSting.Find(); } catch (Exception e) { GhostSting.Status = "failed: " + e.Message; Log("ghost sting: " + e); }
             try { Kiosk.Restore(); } catch (Exception e) { Kiosk.Status = "failed: " + e.Message; Log("kiosk: " + e); }
-            try { Investments.Register(); } catch (Exception e) { Investments.Status = "failed: " + e.Message; Log("investments: " + e); }
+            try { Scripts.RegisterPrimitive(Investments.PrimitiveName, new Investments.RecordPrimitive()); }
+            catch (Exception e) { Investments.Status = "failed: " + e.Message; Log("investments: " + e); }
+            try { Scripts.RegisterPrimitive(Limousine.PrimitiveName, new Limousine.MarkPrimitive()); }
+            catch (Exception e) { Limousine.Status = "failed: " + e.Message; Log("limousine: " + e); }
         }
 
         public void OnLotLoaded(VM vm, string lotPath)
@@ -146,12 +151,13 @@ namespace CutContent
             foreach (var rule in AddedInteractions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);
             text.AppendLine("Locked doors: " + DoorLocks.Status);
             text.AppendLine("Investment calls: " + Investments.StatusText((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm));
+            text.AppendLine($"Limousine: {Limousine.Status}. This session: {Limousine.Hired} hired.");
             text.AppendLine();
             text.AppendLine("Switched off interactions (found as their objects are clicked on):");
             foreach (var rule in Interactions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);
             if (Interactions.Force) text.AppendLine("(force is on)");
             text.AppendLine();
-            text.AppendLine("Not done yet: the limousine, the cut skills, the pickpocket. The Information Kiosk is not in this game.");
+            text.AppendLine("Not done yet: the cut skills, the pickpocket. The Information Kiosk is not in this game.");
             return text.ToString();
         }
 

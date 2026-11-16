@@ -78,6 +78,7 @@ namespace CutContent
             foreach (var rule in Interactions.Rules) report.AppendLine(rule.Name + ": " + rule.Status);
             report.AppendLine("Locked doors: " + DoorLocks.Status);
             report.AppendLine("Investment calls: " + Investments.StatusText((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm));
+            report.AppendLine($"Limousine: {Limousine.Status}. This session: {Limousine.Hired} hired.");
 
             Section(report, "Files in full", Whole);
             Section(report, "Object files with kiosk or info in the name, and files that failed to load", KioskFiles);
