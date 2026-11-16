@@ -39,6 +39,11 @@ namespace CutContent
         public static int TurnedAway;
         public static string Status => (TurnedAway == 0) ? "no one turned away yet" : $"{TurnedAway} route{(TurnedAway == 1 ? "" : "s")} kept from a locked door";
 
+        /// <summary>Set with "cutcontent locks everyone": locked doors keep out the household and its pets as well. Lasts until the game closes.</summary>
+        public static bool Everyone;
+
+        private static HashSet<(short sim, short door)> Logged = new HashSet<(short, short)>();
+
         private static ConditionalWeakTable<GameIffResource, object> Lockable = new ConditionalWeakTable<GameIffResource, object>();
         private static readonly object Yes = new object(), No = new object();
 
@@ -63,6 +68,8 @@ namespace CutContent
                         var door = vm.GetObjectById(portal.ObjectID);
                         if (door == null || !IsLocked(door)) continue;
                         if (___IgnoredRooms.Add(portal)) kept = true;
+                        if (Logged.Add((sim.ObjectID, door.ObjectID)))
+                            CutContentPack.Log($"locked door: {door} is left out of {sim.Name}'s routes");
                     }
                 }
                 if (kept) TurnedAway++;
@@ -75,11 +82,71 @@ namespace CutContent
 
         private static bool MayPass(VM vm, VMAvatar sim)
         {
+            var name = (sim.Object?.OBJ?.ChunkLabel ?? "").ToLowerInvariant();
+            if (Emergency.Any(x => name.Contains(x))) return true;
+            if (Everyone) return false;
             var family = vm.TS1State?.CurrentFamily;
             if (family == null) return true; //no household to lock anyone out for
-            if (sim.GetPersonData(VMPersonDataVariable.TS1FamilyNumber) == family.ChunkID) return true; //the household, and its pets
-            var name = (sim.Object?.OBJ?.ChunkLabel ?? "").ToLowerInvariant();
-            return Emergency.Any(x => name.Contains(x));
+            return sim.GetPersonData(VMPersonDataVariable.TS1FamilyNumber) == family.ChunkID; //the household, and its pets
+        }
+
+        /// <summary>
+        /// The check for the menu entry. Maxis's "Interaction Lock/unlock TEST" first calls global 323, "Trigger Prude Finger -
+        /// 1.4", a Hot Date routine for the old prude that has nothing to do with doors, and returns false when it does. Its
+        /// other three steps name the entry Lock or Unlock from attribute 0. This is those three steps without the first.
+        /// If the check is not as the survey found it, Maxis's is used as it is.
+        /// </summary>
+        public static BHAV MakeCheck(GameIffResource res, BHAV action)
+        {
+            if (Checks.TryGetValue(res, out var made)) return made;
+            var test = res.List<BHAV>()?.FirstOrDefault(x => (x.ChunkLabel ?? "").TrimEnd('\0') == LockScript + " TEST");
+            if (test == null) return null;
+            var steps = test.Instructions;
+            BHAV check = test;
+            if (steps.Length == 4 && steps[0].Opcode == 323 && steps[0].TruePointer == 1)
+            {
+                var kept = new BHAVInstruction[3];
+                for (int i = 1; i < 4; i++)
+                {
+                    var step = steps[i];
+                    kept[i - 1] = new BHAVInstruction { Opcode = step.Opcode, Operand = step.Operand, TruePointer = Back(step.TruePointer), FalsePointer = Back(step.FalsePointer) };
+                }
+                check = Scripts.Add(res, LockScript + " TEST (Cut Content)", kept, test);
+                CutContentPack.Log($"door locks: check script {check.ChunkID} in {res.MainIff?.Filename} is Maxis's without the call to global 323");
+            }
+            else CutContentPack.Log($"door locks: the check in {res.MainIff?.Filename} is not as the survey found it, so Maxis's is used as it is");
+            Checks.AddOrUpdate(res, check);
+            return check;
+        }
+
+        private static ConditionalWeakTable<GameIffResource, BHAV> Checks = new ConditionalWeakTable<GameIffResource, BHAV>();
+
+        private static byte Back(byte pointer) => (pointer < 253) ? (byte)(pointer - 1) : pointer;
+
+        /// <summary>For "cutcontent doors": every door on the lot that can be locked, and whether it is.</summary>
+        public static string Report(VM vm)
+        {
+            if (vm == null) return "Not in a lot.";
+            var lines = new List<string>();
+            var doors = vm.Entities.Where(x => x is VMGameObject && x.Object?.OBJ?.ObjectType == OBJDType.Portal && x.MultitileGroup != null)
+                .Select(x => x.MultitileGroup).Distinct().ToList();
+            int lockable = 0, locked = 0;
+            foreach (var group in doors)
+            {
+                var part = group.Objects.FirstOrDefault();
+                if (part == null) continue;
+                var res = part.Object?.Resource;
+                var canLock = res?.List<BHAV>()?.Any(x => (x.ChunkLabel ?? "").TrimEnd('\0') == LockScript) == true;
+                if (!canLock) continue;
+                lockable++;
+                var isLocked = IsLocked(part);
+                if (isLocked) locked++;
+                lines.Add($"{(string.IsNullOrEmpty(group.Name) ? part.ToString() : group.Name)}: {(isLocked ? "locked" : "unlocked")} (attribute 0 of its parts: {string.Join(", ", group.Objects.Select(x => x.GetAttribute(0)))})");
+            }
+            var who = Everyone ? "everyone but the emergency services" : "everyone but the household, its pets and the emergency services";
+            lines.Insert(0, $"{lockable} door{(lockable == 1 ? "" : "s")} on this lot can be locked, {locked} {(locked == 1 ? "is" : "are")} locked. Locked doors keep out {who}, on the way in. {Status}.");
+            if (lockable == 0) lines.Add("Only doors from Vacation, Unleashed, Superstar and Makin' Magic have Maxis's lock: the base game's and Livin' Large's and Hot Date's doors do not.");
+            return string.Join("\n", lines);
         }
 
         public static bool IsLocked(VMEntity door)

@@ -63,7 +63,8 @@ namespace CutContent
                 Flags = TTABFlags.AllowVisitors | TTABFlags.TS1NoChild | TTABFlags.TS1NoDemoChild },
             // Doors3_SP.iff, Doors3SP2.iff, Doors4.iff, DoorsUnleashed.iff and others: the check names the entry Lock or Unlock.
             // only the household can lock their doors
-            new AddedInteraction { Name = "Lock and unlock doors (Superstar, Makin' Magic)", Action = "Interaction Lock/unlock", Check = "Interaction Lock/unlock TEST", Label = "Lock" },
+            new AddedInteraction { Name = "Lock and unlock doors (Superstar, Makin' Magic)", Action = "Interaction Lock/unlock", Requires = "Interaction Lock/unlock TEST", Label = "Lock",
+                MakeCheck = DoorLocks.MakeCheck },
             // PetMaternityBox.iff: the box's own finished "Sell Litter", with no menu entry. adults of the household only
             new AddedInteraction { Name = "Sell a litter (Unleashed)", Action = "Sell Litter", Requires = "care for litter", Label = "Sell Litter",
                 Flags = TTABFlags.TS1NoChild | TTABFlags.TS1NoDemoChild, MakeCheck = Litter.MakeCheck, FixAction = Litter.FixAction },

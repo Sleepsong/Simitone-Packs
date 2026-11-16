@@ -69,7 +69,7 @@ namespace CutContent
             Listed = 0;
             ListedScripts.Clear();
             var report = new StringBuilder();
-            report.AppendLine("Cut Content survey, version 3");
+            report.AppendLine("Cut Content survey, version 4");
             report.AppendLine();
             report.AppendLine("== What the pack has done ==");
             report.AppendLine("Ghost sting: " + GhostSting.Status);
@@ -79,12 +79,10 @@ namespace CutContent
             report.AppendLine("Locked doors: " + DoorLocks.Status);
 
             Section(report, "Files in full", Whole);
-            Section(report, "Texts repeated five or more times (placeholders)", Repeated);
             Section(report, "Object files with kiosk or info in the name, and files that failed to load", KioskFiles);
             Section(report, "Sounds", Sounds);
             Section(report, "Skins", Skins);
             Section(report, "The selected Sim's skill numbers", Skills);
-            Section(report, "Objects that are not in the catalog", Uncatalogued);
             Section(report, "Objects", Objects);
             Section(report, "Shared script files (semi-globals)", SemiGlobals);
             return report.ToString();
@@ -108,17 +106,16 @@ namespace CutContent
         /// <summary>Files listed in full: every object, table entry, script with its steps, and text.</summary>
         private static readonly string[] WholeFiles =
         {
-            "GoDowntownPhonePlugin.iff", // Hot Date: the unused "taxi or a limo?" texts
-            "CarLimo.iff",               // Hot Date's limousine, which has no menu
-            "CarTaxi.iff",               // the taxi it would stand in for
-            "phonecall.iff",             // the random calls, where the investment offers would have come
-            "phones.iff",
-            "PetMaternityBox.iff",       // for its attribute names
+            "CarLimoBlack.iff",          // Superstar's limousine, which has the taxi's "Get In Cab": can it go downtown?
+            "doors6.iff",                // Vacation's doors, with the lock: their own portal scripts
         };
         /// <summary>Shared script files listed in full, but with only some scripts' steps.</summary>
         private static readonly (string file, Regex steps)[] WholeShared =
         {
-            ("phoneglobals", new Regex("random|invest|stock|offer|money|ring", RegexOptions.IgnoreCase)),
+            ("phoneglobals", new Regex("chance|prank|RandomCall|salesman|invest", RegexOptions.IgnoreCase)), // the cut investment calls
+            ("doorglobals", new Regex("portal|lock|open|allow|pass", RegexOptions.IgnoreCase)),             // how a door lets Sims through
+            ("carglobals", new Regex("cab|limo|downtown|arrive|leave", RegexOptions.IgnoreCase)),           // what a limousine would need
+            ("global", new Regex("prude", RegexOptions.IgnoreCase)),                                        // global 323, which the lock's check calls
         };
 
         private static void Whole(StringBuilder report)
@@ -177,41 +174,6 @@ namespace CutContent
             foreach (var line in lines) report.AppendLine(line);
         }
 
-        /// <summary>Finds texts that one table repeats many times, as Maxis's placeholders do.</summary>
-        private static void Repeated(StringBuilder report)
-        {
-            var objects = Content.Get().WorldObjects as TS1ObjectProvider;
-            if (objects == null) return;
-            var done = new HashSet<object>();
-            var files = new List<(string name, GameIffResource res)>();
-            foreach (var entry in objects.Entries.Values.OrderBy(x => x.FileName))
-            {
-                GameObjectResource res = null;
-                try { res = objects.Get(entry.ID)?.Resource; } catch { }
-                if (res != null && done.Add(res)) files.Add((entry.FileName, res));
-                if (res?.SemiGlobal != null && done.Add(res.SemiGlobal)) files.Add((res.SemiGlobal.MainIff?.Filename ?? "(semi-global)", res.SemiGlobal));
-            }
-            foreach (var (name, res) in files)
-            {
-                List<STR> texts = null;
-                try { texts = res.List<STR>(); } catch { }
-                if (texts == null) continue;
-                foreach (var text in texts)
-                {
-                    var counts = new Dictionary<string, List<int>>();
-                    for (int i = 0; i < text.Length; i++)
-                    {
-                        var value = Clean(text.GetString(i)).Trim();
-                        if (value.Length < 4) continue;
-                        if (!counts.TryGetValue(value, out var at)) counts[value] = at = new List<int>();
-                        at.Add(i);
-                    }
-                    foreach (var repeat in counts.Where(x => x.Value.Count >= 5))
-                        report.AppendLine($"{name} text {text.ChunkID} \"{Clean(text.ChunkLabel)}\": {repeat.Value.Count} times (lines {string.Join(", ", repeat.Value.Take(30))}): {repeat.Key}");
-                }
-            }
-        }
-
         /// <summary>The kiosk is in no object the game lists. Maybe its file is there with no object in it, or failed to load.</summary>
         private static void KioskFiles(StringBuilder report)
         {
@@ -226,6 +188,23 @@ namespace CutContent
             }
             foreach (var failed in Content.FailedContentFiles ?? Enumerable.Empty<TS1BCFProvider.FailedFileInfo>())
                 report.AppendLine($"failed: {failed.Filename}: {failed.ErrorType}: {failed.ErrorMessage}");
+
+            //The Sims shows an object in buy mode only with its catalog text. Simitone doesn't ask for it, so the kiosk may
+            //already be in Simitone's catalog, with no name: list the catalog's objects that have no catalog text
+            report.AppendLine("Objects in Simitone's catalog with no catalog text (The Sims would not show these):");
+            foreach (var item in objects?.All() ?? new List<FSO.Content.Interfaces.ObjectCatalogItem>())
+            {
+                try
+                {
+                    var obj = objects.Get(item.GUID);
+                    if (obj?.OBJ == null) continue;
+                    var ctss = obj.Resource.Get<CTSS>(obj.OBJ.CatalogStringsID);
+                    var name = ctss?.GetString(0);
+                    if (string.IsNullOrWhiteSpace(name))
+                        report.AppendLine($"  \"{Clean(obj.OBJ.ChunkLabel)}\" {item.GUID:x8} in {obj.Resource.Name}: catalog text {obj.OBJ.CatalogStringsID} {(ctss == null ? "missing" : "empty")}, category {item.Category}, price {item.Price}");
+                }
+                catch (Exception e) { report.AppendLine($"  {item.GUID:x8}: could not be read ({e.Message})"); }
+            }
         }
 
         private static void Sounds(StringBuilder report)
@@ -277,31 +256,6 @@ namespace CutContent
             };
             foreach (var slot in slots)
                 report.AppendLine($"{sim.Name}, number {slot.index} ({slot.name}): {sim.GetPersonData((VMPersonDataVariable)slot.index)}");
-        }
-
-        /// <summary>For finding the Information Kiosk: every whole object (not a tile of a larger one) that buy mode doesn't show.</summary>
-        private static void Uncatalogued(StringBuilder report)
-        {
-            var objects = Content.Get().WorldObjects as TS1ObjectProvider;
-            if (objects == null) return;
-            foreach (var entry in objects.Entries.Values.OrderBy(x => x.FileName).ThenBy(x => x.Name))
-            {
-                try
-                {
-                    if (entry.SubIndex != -1 && entry.Group != 0) continue; //a tile of a larger object
-                    if (objects.GetItemByGUID((uint)entry.ID) != null) continue;
-                    var objd = objects.Get(entry.ID)?.OBJ;
-                    if (objd == null || objd.ObjectType != OBJDType.Normal) continue;
-                    if (!objd.IsMultiTile && objd.NumGraphics == 0) continue;
-                    report.AppendLine($"{entry.FileName}: \"{Clean(objd.ChunkLabel)}\" {objd.GUID:x8} (category {objd.FunctionFlags:x}, build {objd.BuildModeType}, " +
-                        $"rooms {objd.RoomFlags:x}, price {objd.Price}, off {objd.Disabled}, graphics {objd.NumGraphics}, catalog text {objd.CatalogStringsID}, " +
-                        $"sorts {objd.FunctionSubsort}/{objd.CommunitySubsort}/{objd.DTSubsort}/{objd.VacationSubsort}/{objd.STSubsort}/{objd.MTSubsort})");
-                }
-                catch (Exception e)
-                {
-                    report.AppendLine($"{entry.FileName} \"{entry.Name}\": could not be read ({e.Message})");
-                }
-            }
         }
 
         private static void Objects(StringBuilder report)

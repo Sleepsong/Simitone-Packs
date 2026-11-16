@@ -1,7 +1,8 @@
 # Cut Content
 
 Restores features Maxis left unfinished or switched off in The Sims and its expansion packs. **Version
-0.3**, written from two surveys of a real game, but still not played. Nothing in the game's files is
+0.4**, written from three surveys of a real game. Hugging a tree has been played and works; the rest
+has not been played yet. Nothing in the game's files is
 changed: the pack finds each feature in your own game while it runs, and tells you what it found.
 
 No other mod was found that restores any of these. Simlogical's lockable doors are the nearest thing:
@@ -13,12 +14,12 @@ they are new objects with their own key system, not the code Maxis left in its o
 |---|---|---|
 | The unused third "spooky" sting for when a ghost appears | Base game | Built. `sting_spooky3.wav` is in the game but in no sound list. One time in three that the game plays its spooky sting, the third one plays instead. |
 | Hug a tree | Vacation | Built. The palm (`trees2.iff`) and the large fir, spruce and pine (`Trees4.iff`) have a finished "Tree Hug" script with hug, sigh and kiss loops and two need boosts, but no menu entry. The pack adds **Hug**. Adults only, as the script itself requires. |
-| Lock and unlock doors | Superstar, Makin' Magic | Built. "Interaction Lock/unlock" sets the door's attribute 0, but nothing read it, so a locked door stopped no one. The pack adds the menu entry (the check names it **Lock** or **Unlock**) and finishes the lock: a locked door keeps out everyone but the household, its pets and the emergency services. Anyone can still use it to go outdoors, so nobody is shut in. The lock is saved with the lot. |
+| Lock and unlock doors | Vacation, Unleashed, Superstar, Makin' Magic | Built, not working yet in the first test. "Interaction Lock/unlock" sets the door's attribute 0, but nothing read it, so a locked door stopped no one. The pack adds the menu entry (the check names it **Lock** or **Unlock**) and finishes the lock: a locked door keeps out everyone but the household, its pets and the emergency services (or the household too, with `cutcontent locks everyone`). Anyone can still use it to go outdoors, so nobody is shut in. The lock is saved with the lot. Maxis's check first calls a Hot Date routine for the old prude, which may hide the entry; 0.4 leaves that call out. Only doors from these four expansions have the lock. |
 | Sell a litter | Unleashed | Built. The Pet Maternity Box has a finished "Sell Litter" script with three offers ("This litter has potential. I'll give you 50 for them."), paying $25, $50 or $100, but no menu entry. The pack adds **Sell Litter** to the box, for adults of the household, when the box holds a litter. After a sale the litter goes, as when Animal Control takes it. (The Pet Trainer's own **Sell Litter** wants the box in the Sim's inventory, which the game never does, so it stays hidden.) |
 | Children kiss toads | Makin' Magic | Built. The toad's **Kiss** is marked "no children"; the pack lifts the mark. The script already plays the child animations and gives Toad Sweat only to adults. |
-| Hire a limousine in place of a cab | Hot Date | Found. The Go Downtown phone plugin has the unused texts "Would you prefer a taxi or a limo?" and the limousine service's reply, but no script uses them. Survey 3 lists the plugin and both cars in full, to write the missing part from. |
-| Investment offers by telephone | Base game | Not found yet. Survey 3 looks for the placeholder texts. |
-| Information Kiosk missing from buy mode | Superstar | Not found yet. No object the game loads is a kiosk. Survey 3 looks for its file by name. |
+| Hire a limousine in place of a cab | Hot Date | Found, not built. The Go Downtown phone plugin has the unused texts "Would you prefer a taxi or a limo?", the limousine service's reply and a chauffeur's three "where to?" lines, but no script uses them, and its "Generate Cab" only ever makes the taxi. Hot Date's own limousine (`CarLimo.iff`) has none of the taxi's scripts. Superstar's limousines have the taxi's "Get In Cab"; survey 4 lists one in full to see whether it can go downtown. |
+| Investment offers by telephone | Base game | Found, not built. The phone's "RandomCallDialog" has a branch that no step reaches: two calls in five would have offered to spend a multiple of $50, with the 20 placeholder texts "Would you like to spend some money on something random? Variation 1" to 20. The phone's texts also have a "Salesman:" caller and "Sucker! You just bought some worthless swamp land". Survey 4 lists the scripts that show these calls, to finish the texts and the payoff. |
+| Information Kiosk missing from buy mode | Superstar | Not found. No object file has "kiosk" or "info" in its name, and no object is a kiosk. The Sims needs an object's catalog text to show it; Simitone doesn't, so the kiosk may already be in Simitone's catalog with no name. Survey 4 lists those. |
 | Cut skills: cleaning, gardening, music, literacy | Base game | Not started. |
 | Pickpocket | Vacation | Not started. His textures are in the game (`cvacationmalgt_pickpocket.bmp`, `vacationmasknlgt_pickpocket.bmp` and beach, forest and lodge outfits), but no character uses them. |
 
@@ -43,6 +44,8 @@ Open the console (Ctrl+Shift+C):
 |---|---|
 | `cutcontent` | Shows what has been found and restored so far. Interactions are found as you click on their objects. |
 | `cutcontent survey` | Writes `cutcontent-survey.txt` to Simitone's user directory (next to `config.ini`). Takes a while: it reads every object in the game. |
+| `cutcontent doors` | The doors on this lot that can be locked, and whether they are. |
+| `cutcontent locks everyone` / `household` | Who a locked door keeps out. Lasts until the game closes. |
 | `cutcontent force on` / `off` | Also shows matched interactions whose own check says no. Experimental, and lasts until the game closes. |
 
 The terminal shows the same findings in lines starting with `[cut]`.
@@ -50,10 +53,10 @@ The terminal shows the same findings in lines starting with `[cut]`.
 ## The survey
 
 The restorations that are not done need names and numbers from the game's files. `cutcontent survey`
-writes them down. Version 3 lists in full the files the remaining features live in (the Go Downtown phone
-plugin, the limousine and the taxi, the random phone calls, the phones and their shared scripts), looks
-for texts a table repeats many times (the investment placeholders), and looks for the kiosk's file by
-name. Run it in a lot, with a Sim selected, and with every expansion you have installed.
+writes them down. Version 4 lists in full Superstar's black limousine and Vacation's doors, the steps of
+the phones' chance calls, the doors' shared scripts and the cars' cab scripts, the global routine the
+lock's check calls, and the objects in Simitone's catalog that have no catalog text. Run it in a lot, with
+a Sim selected, and with every expansion you have installed.
 
 ## How it is made
 
