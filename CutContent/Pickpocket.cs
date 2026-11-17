@@ -54,12 +54,23 @@ namespace CutContent
         /// </summary>
         public static bool Command(string[] args)
         {
-            var sim = (GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.SelectedAvatar;
+            var screen = GameFacade.Screens.CurrentUIScreen as TS1GameScreen;
+            var sim = screen?.SelectedAvatar;
+            var first = (args.Length > 0) ? args[0].ToLowerInvariant() : "";
+            if (first == "come" || first == "leave")
+            {
+                if (screen?.vm == null) { CutContentPack.Show("Pickpocket", "Load a lot first."); return true; }
+                CutContentPack.Show("Pickpocket", first == "come" ? PickpocketNpc.Come(screen.vm) : PickpocketNpc.SendAway(screen.vm));
+                return true;
+            }
             if (args.Length == 0)
             {
                 var list = new List<string> { "Dress the selected Sim in one of these to see how the pickpocket's textures fit. Change back with \"cutcontent pickpocket off\" (loading the lot again does too)." };
                 for (int i = 0; i < Looks.Length; i++) list.Add($"{i + 1}: {Looks[i].name}");
                 list.Add("Or try any mesh: \"cutcontent pickpocket body MESH TEXTURE\" or \"cutcontent pickpocket head MESH TEXTURE\".");
+                list.Add("");
+                list.Add("The pickpocket himself: " + PickpocketNpc.Status + $". This session: {PickpocketNpc.Came} visits, {PickpocketNpc.Picked} pockets picked, {PickpocketNpc.CaughtCount} times caught.");
+                list.Add("\"cutcontent pickpocket come\" brings him to this lot now; \"cutcontent pickpocket leave\" sends him off.");
                 CutContentPack.Show("Pickpocket", string.Join("\n", list));
                 return true;
             }
@@ -102,7 +113,7 @@ namespace CutContent
         /// hands, and a pie menu's picture of the Sim (a copy of their appearance) then looks for hands where there are none
         /// and the game closes. The hands come from the Sim's own outfit, or are The Sims' default hands.
         /// </summary>
-        private static VMOutfitReference Body(VMAvatar sim, string data)
+        internal static VMOutfitReference Body(VMAvatar sim, string data)
         {
             var outfit = new VMOutfitReference(data, false);
             FSO.Vitaboy.HandGroup hands = null;

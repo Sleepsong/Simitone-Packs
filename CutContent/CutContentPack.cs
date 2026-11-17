@@ -44,7 +44,7 @@ namespace CutContent
     ///   cutcontent survey kiosk|pickpocket   a quick survey about the one thing (see FocusedSurveys.cs)
     ///   cutcontent survey old [FOLDER]   read an older copy of the game from its folder, or from the pack's folder (see OldSurvey.cs)
     ///   cutcontent skills [SKILL POINTS]   the household's gardening, music and literacy, or set one to try things out (see RestoredSkills.cs)
-    ///   cutcontent pickpocket   try the pickpocket's textures on the selected Sim (see Pickpocket.cs)
+    ///   cutcontent pickpocket   try the pickpocket's textures on the selected Sim (see Pickpocket.cs); "come" brings him, "leave" sends him off (see PickpocketNpc.cs)
     ///   cutcontent doors        the doors on this lot that can be locked, and whether they are
     ///   cutcontent locks everyone|household   who a locked door keeps out (until the game closes)
     ///   cutcontent force on|off also show matched interactions whose own check says no (experimental, until the game closes)
@@ -54,7 +54,7 @@ namespace CutContent
         public static void Log(string msg) => Console.WriteLine("[cut] " + msg);
 
         /// <summary>The version this code is, kept the same as pack.json's.</summary>
-        public const string Build = "0.9.4";
+        public const string Build = "0.10";
 
         /// <summary>Which version is running and from where, to tell an old copy of the pack from a new one.</summary>
         public static string Running = "Cut Content " + Build;
@@ -88,9 +88,11 @@ namespace CutContent
                 harmony.Patch(Find(typeof(VM), "Tick", Type.EmptyTypes), postfix: new HarmonyMethod(typeof(Investments), nameof(Investments.AfterTick)));
                 //...and Sims learn gardening, music and literacy
                 harmony.Patch(Find(typeof(VM), "Tick", Type.EmptyTypes), postfix: new HarmonyMethod(typeof(RestoredSkills), nameof(RestoredSkills.AfterTick)));
-                //an object is looked up: the Information Kiosk, made in memory, is put back if its file was loaded again
+                //...and the pickpocket comes to Vacation lots
+                harmony.Patch(Find(typeof(VM), "Tick", Type.EmptyTypes), postfix: new HarmonyMethod(typeof(PickpocketNpc), nameof(PickpocketNpc.AfterTick)));
+                //an object is looked up: objects made in memory (the kiosk, the pickpocket) are put back if their file was loaded again
                 harmony.Patch(Find(typeof(FSO.Content.Interfaces.AbstractObjectProvider), "Get", new[] { typeof(ulong) }),
-                    postfix: new HarmonyMethod(typeof(Kiosk), nameof(Kiosk.AfterGet)));
+                    postfix: new HarmonyMethod(typeof(MadeObjects), nameof(MadeObjects.AfterGet)));
                 //a Sim plans which doors to go through: leave out the ones locked against them
                 harmony.Patch(Find(typeof(VMRoutingFrame), "DoRoomRoute", new[] { typeof(VMFindLocationResult) }),
                     prefix: new HarmonyMethod(typeof(DoorLocks), nameof(DoorLocks.BeforeRoomRoute)));
@@ -136,6 +138,14 @@ namespace CutContent
             catch (Exception e) { Limousine.Status = "failed: " + e.Message; Log("limousine: " + e); }
             try { Scripts.RegisterPrimitive(Cleaning.PrimitiveName, new Cleaning.LearnPrimitive()); }
             catch (Exception e) { Cleaning.Status = "failed: " + e.Message; Log("cleaning: " + e); }
+            try
+            {
+                Scripts.RegisterPrimitive(PickpocketNpc.InitName, new PickpocketNpc.InitPrimitive());
+                Scripts.RegisterPrimitive(PickpocketNpc.ThinkName, new PickpocketNpc.ThinkPrimitive());
+                Scripts.RegisterPrimitive(PickpocketNpc.StealName, new PickpocketNpc.StealPrimitive());
+                PickpocketNpc.Make();
+            }
+            catch (Exception e) { PickpocketNpc.Status = "failed: " + e.Message; Log("pickpocket: " + e); }
         }
 
         public void OnLotLoaded(VM vm, string lotPath)
@@ -235,7 +245,7 @@ namespace CutContent
             foreach (var rule in Interactions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);
             if (Interactions.Force) text.AppendLine("(force is on)");
             text.AppendLine();
-            text.AppendLine("Not done yet: the pickpocket.");
+            text.AppendLine($"Pickpocket: {PickpocketNpc.Status}. This session: {PickpocketNpc.Came} visits, {PickpocketNpc.Picked} pockets picked, {PickpocketNpc.CaughtCount} times caught (\"cutcontent pickpocket come\" brings him now).");
             return text.ToString();
         }
 

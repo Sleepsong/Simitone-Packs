@@ -40,8 +40,7 @@ namespace CutContent
         public const uint Price = 750;
         private static readonly Regex KioskText = new Regex(@"information kiosk", RegexOptions.IgnoreCase);
 
-        private static OBJD Made;     //the kiosk's definition
-        private static uint LikeGuid; //an object of the same file, to find the file by
+        private static OBJD Made; //the kiosk's definition
 
         public static void Restore()
         {
@@ -95,7 +94,7 @@ namespace CutContent
                     continue;
                 }
 
-                Made = Copy(iff, like);
+                Made = MadeObjects.Copy(iff, like);
                 Made.GUID = Guid;
                 Made.ChunkID = (ushort)(objds.Max(o => o.ChunkID) + 1);
                 Made.ChunkLabel = "Sculptures - Information Kiosk (Cut Content)";
@@ -122,12 +121,8 @@ namespace CutContent
                     Made.MTSubsort = sorts.MTSubsort;
                 }
                 else if (Made.RoomFlags == 0) Made.RoomFlags = 0x40; //miscellaneous
-                Made = Copy(iff, Made); //written out and read in again, so its raw values (which scripts read) agree
-                Made.ChunkProcessed = true;
-                Made.AddedByPatch = true;
-                iff.AddChunk(Made);
-                LikeGuid = like.GUID;
-                objects.AddObject(iff, Made);
+                Made = MadeObjects.Copy(iff, Made); //written out and read in again, so its raw values (which scripts read) agree
+                MadeObjects.Add(res, like.GUID, Made, new List<IffChunk> { Made });
                 AddToCatalog(byCategory, byGUID, Made, text.GetString(0));
                 notes.Add($"made from its catalog text ({text.ChunkID}) and picture ({picture.ChunkID}) in {entry.FileName}, which no object used, on the model of \"{like.ChunkLabel}\"; " +
                     $"in buy mode for ${Price}, sorted as \"{sorts?.ChunkLabel ?? like.ChunkLabel}\" (home lots: Decorative > Sculptures; community lots: their decorative section)");
@@ -136,32 +131,6 @@ namespace CutContent
 
             Status = notes.Count > 0 ? (Made != null || notes.Any(n => n.StartsWith("added")) ? "restored: " : "not added: ") + string.Join("; ", notes) : "no kiosk found (it needs Superstar)";
             CutContentPack.Log("kiosk: " + Status);
-        }
-
-        /// <summary>
-        /// After the game looks up an object: if the kiosk was asked for and the game had loaded its file again (without the
-        /// kiosk, which is only in memory), put it back in and hand it over.
-        /// </summary>
-        public static void AfterGet(ulong id, ref GameObject __result)
-        {
-            if (__result != null || id != Guid || Made == null) return;
-            try
-            {
-                var res = Content.Get().WorldObjects.Get(LikeGuid)?.Resource;
-                if (res?.MainIff == null) return;
-                if (!(res.MainIff.List<OBJD>() ?? new List<OBJD>()).Any(o => o.GUID == Guid)) res.MainIff.AddChunk(Made);
-                __result = new GameObject { GUID = Guid, OBJ = Made, Resource = res };
-            }
-            catch (Exception e) { CutContentPack.Log("kiosk: could not put it back: " + e.Message); }
-        }
-
-        private static OBJD Copy(IffFile iff, OBJD from)
-        {
-            byte[] bytes;
-            using (var stream = new MemoryStream()) { from.Write(iff, stream); bytes = stream.ToArray(); }
-            var copy = new OBJD { ChunkID = from.ChunkID, ChunkLabel = from.ChunkLabel, ChunkType = "OBJD", ChunkFlags = from.ChunkFlags };
-            using (var stream = new MemoryStream(bytes)) copy.Read(iff, stream);
-            return copy;
         }
 
         private static void AddToCatalog(List<ObjectCatalogItem>[] byCategory, Dictionary<uint, ObjectCatalogItem> byGUID, OBJD obj, string name)
