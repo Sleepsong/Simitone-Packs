@@ -28,7 +28,8 @@ namespace CutContent
     ///
     /// So it is made again, in memory, from its nearest sibling: the TV camera's definition, a single-tile film-set item,
     /// given its own number, the kiosk's picture and catalog text, and a price. It goes into the file (in memory), the
-    /// game's list of objects and buy mode (Decorative, where the film-set pieces are). If the game ever loads the file
+    /// game's list of objects and buy mode, sorted as the film-set bust is: home lots' Decorative > Sculptures and every
+    /// community lot (buy mode leaves out of home lots anything with no room sort, as the TV camera has). If the game ever loads the file
     /// again, the kiosk is put back as it is asked for, so lots with a kiosk still load. Without the pack, a saved kiosk is
     /// an object the game doesn't know, and is left out when the lot loads.
     /// </summary>
@@ -105,6 +106,22 @@ namespace CutContent
                 Made.MasterID = 0;
                 Made.SubIndex = 0;
                 Made.Disabled = 0;
+                //where buy mode shows it: as the film-set piece of the file sold on every kind of lot (the bust: home lots'
+                //Decorative > Sculptures, and every community lot). On a home lot buy mode leaves out anything with no room
+                //sort, as the TV camera has, so the camera's own sorts would show the kiosk on community lots only
+                var sorts = singles.Where(o => o.RoomFlags != 0 && o.FunctionSubsort != 0 && byGUID.ContainsKey(o.GUID)).OrderBy(o => o.BaseGraphicID).FirstOrDefault();
+                if (sorts != null)
+                {
+                    Made.FunctionFlags = sorts.FunctionFlags;
+                    Made.RoomFlags = sorts.RoomFlags;
+                    Made.FunctionSubsort = sorts.FunctionSubsort;
+                    Made.CommunitySubsort = sorts.CommunitySubsort;
+                    Made.DTSubsort = sorts.DTSubsort;
+                    Made.VacationSubsort = sorts.VacationSubsort;
+                    Made.STSubsort = sorts.STSubsort;
+                    Made.MTSubsort = sorts.MTSubsort;
+                }
+                else if (Made.RoomFlags == 0) Made.RoomFlags = 0x40; //miscellaneous
                 Made = Copy(iff, Made); //written out and read in again, so its raw values (which scripts read) agree
                 Made.ChunkProcessed = true;
                 Made.AddedByPatch = true;
@@ -112,7 +129,8 @@ namespace CutContent
                 LikeGuid = like.GUID;
                 objects.AddObject(iff, Made);
                 AddToCatalog(byCategory, byGUID, Made, text.GetString(0));
-                notes.Add($"made from its catalog text ({text.ChunkID}) and picture ({picture.ChunkID}) in {entry.FileName}, which no object used, on the model of \"{like.ChunkLabel}\"; added to buy mode, Decorative, ${Price}");
+                notes.Add($"made from its catalog text ({text.ChunkID}) and picture ({picture.ChunkID}) in {entry.FileName}, which no object used, on the model of \"{like.ChunkLabel}\"; " +
+                    $"in buy mode for ${Price}, sorted as \"{sorts?.ChunkLabel ?? like.ChunkLabel}\" (home lots: Decorative > Sculptures; community lots: their decorative section)");
                 CutContentPack.Log($"kiosk: made object {Guid:x8} in {entry.FileName}: picture {picture.ChunkID}, catalog text {text.ChunkID}, like {like.ChunkLabel} ({like.GUID:x8})");
             }
 
