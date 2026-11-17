@@ -370,6 +370,13 @@ namespace OpenForBusiness
             Shop.Loaded(vm, LotPackData.Read(PackId, lotPath));
         }
 
+        /// <summary>
+        /// A copy of the lot is being made, to be put down as another lot (the Lots Bin pack does this). The book stays
+        /// behind: its takings, customers, rank, perks, staff and owner are the family's business, not the building's.
+        /// What is for sale goes with the copy anyway, since prices are in the lot's own save (SalePrice).
+        /// </summary>
+        public byte[] OnLotExport(string lotPath, byte[] saved) => null;
+
         // ---- the "business" command ----
 
         private static bool ShowBusiness(string[] args)

@@ -116,6 +116,10 @@ The `business` console command (Ctrl+Shift+C) shows what is for sale, what has s
 restocking would cost, the till and whether anyone is at it, the latest sales and lost customers, the
 rank and the stars behind it, the employees and their wages, and the house's totals.
 
+A copy of the lot made with the [Lots Bin](../LotsBin) pack takes none of the books: the takings,
+customers, rank, perks, employees and owner belong to the family. What is up for sale, and at what
+price, does go with it, since prices are kept in the lot's own save.
+
 ## The stages
 
 | Stage | What | State |
