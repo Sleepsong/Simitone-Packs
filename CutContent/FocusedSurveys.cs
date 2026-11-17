@@ -209,7 +209,9 @@ namespace CutContent
         private static List<(string file, GameObject obj)> AllObjects(TS1ObjectProvider catalog)
         {
             var list = new List<(string, GameObject)>();
-            foreach (var entry in catalog.Entries.Values)
+            List<GameObjectReference> entries;
+            lock (catalog.Entries) entries = catalog.Entries.Values.ToList(); //loading an object can add to the list
+            foreach (var entry in entries)
             {
                 GameObject obj = null;
                 try { obj = catalog.Get(entry.ID); } catch { }

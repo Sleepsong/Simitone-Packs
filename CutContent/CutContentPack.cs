@@ -54,7 +54,7 @@ namespace CutContent
         public static void Log(string msg) => Console.WriteLine("[cut] " + msg);
 
         /// <summary>The version this code is, kept the same as pack.json's.</summary>
-        public const string Build = "0.9.2";
+        public const string Build = "0.9.3";
 
         /// <summary>Which version is running and from where, to tell an old copy of the pack from a new one.</summary>
         public static string Running = "Cut Content " + Build;
@@ -88,6 +88,9 @@ namespace CutContent
                 harmony.Patch(Find(typeof(VM), "Tick", Type.EmptyTypes), postfix: new HarmonyMethod(typeof(Investments), nameof(Investments.AfterTick)));
                 //...and Sims learn gardening, music and literacy
                 harmony.Patch(Find(typeof(VM), "Tick", Type.EmptyTypes), postfix: new HarmonyMethod(typeof(RestoredSkills), nameof(RestoredSkills.AfterTick)));
+                //an object is looked up: the Information Kiosk, made in memory, is put back if its file was loaded again
+                harmony.Patch(Find(typeof(FSO.Content.Interfaces.AbstractObjectProvider), "Get", new[] { typeof(ulong) }),
+                    postfix: new HarmonyMethod(typeof(Kiosk), nameof(Kiosk.AfterGet)));
                 //a Sim plans which doors to go through: leave out the ones locked against them
                 harmony.Patch(Find(typeof(VMRoutingFrame), "DoRoomRoute", new[] { typeof(VMFindLocationResult) }),
                     prefix: new HarmonyMethod(typeof(DoorLocks), nameof(DoorLocks.BeforeRoomRoute)));
@@ -232,7 +235,7 @@ namespace CutContent
             foreach (var rule in Interactions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);
             if (Interactions.Force) text.AppendLine("(force is on)");
             text.AppendLine();
-            text.AppendLine("Not done yet: the pickpocket. The Information Kiosk is not in this game.");
+            text.AppendLine("Not done yet: the pickpocket.");
             return text.ToString();
         }
 
