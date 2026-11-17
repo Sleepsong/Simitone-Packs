@@ -133,7 +133,7 @@ namespace CutContent
                     Book[id] = skills;
                 }
             }
-            Status = $"restored and improvised: household Sims learn gardening by tending plants, music by playing instruments, literacy by reading. {Book.Count} Sims of this neighbourhood have some";
+            Status = "restored and improvised: household Sims learn gardening by tending plants, music by playing instruments, literacy by reading";
         }
 
         /// <summary>A lot is saved: keep the neighbourhood's skills with it.</summary>
@@ -259,7 +259,7 @@ namespace CutContent
                 Set(selected, (Skill)index, points);
                 return true;
             }
-            var text = new StringBuilder(Status + ".\n\n");
+            var text = new StringBuilder(Status + $". {Book.Count(x => x.Value.Any(v => v > 0))} Sims of this neighbourhood have some.\n\n");
             var family = vm?.TS1State?.CurrentFamily;
             foreach (var sim in vm?.Context.ObjectQueries.Avatars.OfType<VMAvatar>() ?? Enumerable.Empty<VMAvatar>())
             {

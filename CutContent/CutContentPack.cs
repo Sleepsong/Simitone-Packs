@@ -41,6 +41,7 @@ namespace CutContent
     /// Console commands (Ctrl+Shift+C):
     ///   cutcontent              what was found and restored so far
     ///   cutcontent survey       write the report, for working out the restorations that are not done yet
+    ///   cutcontent survey kiosk|pickpocket   a quick survey about the one thing (see FocusedSurveys.cs)
     ///   cutcontent survey old [FOLDER]   read an older copy of the game from its folder, or from the pack's folder (see OldSurvey.cs)
     ///   cutcontent skills [SKILL POINTS]   the household's gardening, music and literacy, or set one to try things out (see RestoredSkills.cs)
     ///   cutcontent pickpocket   try the pickpocket's textures on the selected Sim (see Pickpocket.cs)
@@ -53,7 +54,7 @@ namespace CutContent
         public static void Log(string msg) => Console.WriteLine("[cut] " + msg);
 
         /// <summary>The version this code is, kept the same as pack.json's.</summary>
-        public const string Build = "0.9";
+        public const string Build = "0.9.1";
 
         /// <summary>Which version is running and from where, to tell an old copy of the pack from a new one.</summary>
         public static string Running = "Cut Content " + Build;
@@ -169,6 +170,14 @@ namespace CutContent
                         var oldPath = Path.Combine(FSOEnvironment.UserDir, "cutcontent-survey-old.txt");
                         File.WriteAllText(oldPath, OldSurvey.Run(typed));
                         Show("Cut Content", explained.TrimEnd() + "\n\nThe survey of the older copy was written to:\n" + Path.GetFullPath(oldPath));
+                        return true;
+                    }
+                    if (args.Length >= 2 && (args[1].ToLowerInvariant() == "kiosk" || args[1].ToLowerInvariant() == "pickpocket"))
+                    {
+                        var which = args[1].ToLowerInvariant();
+                        var focusedPath = Path.Combine(FSOEnvironment.UserDir, $"cutcontent-survey-{which}.txt");
+                        File.WriteAllText(focusedPath, which == "kiosk" ? FocusedSurveys.Kiosk() : FocusedSurveys.Pickpocket());
+                        Show("Cut Content", "The survey was written to:\n" + Path.GetFullPath(focusedPath));
                         return true;
                     }
                     var path = Path.Combine(FSOEnvironment.UserDir, "cutcontent-survey.txt");

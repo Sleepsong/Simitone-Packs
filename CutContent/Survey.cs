@@ -278,7 +278,7 @@ namespace CutContent
         }
 
         /// <summary>Every object file, its shared script file and the global file, once each.</summary>
-        private static List<(string, GameIffResource)> AllFiles()
+        internal static List<(string, GameIffResource)> AllFiles()
         {
             var files = new List<(string, GameIffResource)>();
             var objects = Content.Get().WorldObjects as TS1ObjectProvider;
@@ -466,7 +466,7 @@ namespace CutContent
             foreach (var line in lines) report.AppendLine(line);
         }
 
-        private static BHAV Find(GameIffResource res, GameIffResource semiGlobal, ushort id)
+        internal static BHAV Find(GameIffResource res, GameIffResource semiGlobal, ushort id)
         {
             try
             {
@@ -479,7 +479,7 @@ namespace CutContent
         }
 
         /// <summary>Lists a script's steps: what each does, with its settings, and where it goes next.</summary>
-        private static void Steps(List<string> lines, GameIffResource res, GameIffResource semiGlobal, BHAV script)
+        internal static void Steps(List<string> lines, GameIffResource res, GameIffResource semiGlobal, BHAV script)
         {
             lines.Add($"  steps of script {script.ChunkID} \"{Clean(script.ChunkLabel)}\" (arguments {script.Args}, locals {script.Locals}):");
             for (int i = 0; i < script.Instructions.Length; i++)
