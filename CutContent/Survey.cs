@@ -81,6 +81,8 @@ namespace CutContent
             report.AppendLine("Investment calls: " + Investments.StatusText((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm));
             report.AppendLine($"Limousine: {Limousine.Status}. This session: {Limousine.Hired} hired.");
             report.AppendLine($"Cleaning skill: {CutContent.Cleaning.Status}. This session: {CutContent.Cleaning.Lessons} times round.");
+            report.AppendLine($"Gardening, music and literacy: {RestoredSkills.Status}. This session: {RestoredSkills.Minutes} minutes learned.");
+            foreach (var line in RestoredSkills.Seen) report.AppendLine("  " + line);
 
             Section(report, "Cut skills: who has them", SkillHolders);
             Section(report, "Cleaning skill: the routine that reads it, and what calls it", Cleaning);

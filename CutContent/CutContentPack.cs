@@ -42,6 +42,7 @@ namespace CutContent
     ///   cutcontent              what was found and restored so far
     ///   cutcontent survey       write the report, for working out the restorations that are not done yet
     ///   cutcontent survey old [FOLDER]   read an older copy of the game from its folder, or from the pack's folder (see OldSurvey.cs)
+    ///   cutcontent skills [SKILL POINTS]   the household's gardening, music and literacy, or set one to try things out (see RestoredSkills.cs)
     ///   cutcontent pickpocket   try the pickpocket's textures on the selected Sim (see Pickpocket.cs)
     ///   cutcontent doors        the doors on this lot that can be locked, and whether they are
     ///   cutcontent locks everyone|household   who a locked door keeps out (until the game closes)
@@ -52,7 +53,7 @@ namespace CutContent
         public static void Log(string msg) => Console.WriteLine("[cut] " + msg);
 
         /// <summary>The version this code is, kept the same as pack.json's.</summary>
-        public const string Build = "0.8.6";
+        public const string Build = "0.9";
 
         /// <summary>Which version is running and from where, to tell an old copy of the pack from a new one.</summary>
         public static string Running = "Cut Content " + Build;
@@ -63,6 +64,7 @@ namespace CutContent
             Running = $"Cut Content {Build}" + (listed != null && listed != Build ? $" (but its pack.json says {listed})" : "") + $", loaded from {pack.Folder}";
             Log(Running);
             Investments.PackId = pack.Id;
+            RestoredSkills.PackId = pack.Id;
             OldSurvey.PackFolder = pack.Folder;
             var harmony = new Harmony("pack." + pack.Id);
             try
@@ -83,6 +85,8 @@ namespace CutContent
                 harmony.Patch(Find(typeof(VMGameObject), "RefreshGraphic", Type.EmptyTypes), postfix: new HarmonyMethod(typeof(Limousine), nameof(Limousine.AfterRefreshGraphic)));
                 //the lot ticks: count down investments
                 harmony.Patch(Find(typeof(VM), "Tick", Type.EmptyTypes), postfix: new HarmonyMethod(typeof(Investments), nameof(Investments.AfterTick)));
+                //...and Sims learn gardening, music and literacy
+                harmony.Patch(Find(typeof(VM), "Tick", Type.EmptyTypes), postfix: new HarmonyMethod(typeof(RestoredSkills), nameof(RestoredSkills.AfterTick)));
                 //a Sim plans which doors to go through: leave out the ones locked against them
                 harmony.Patch(Find(typeof(VMRoutingFrame), "DoRoomRoute", new[] { typeof(VMFindLocationResult) }),
                     prefix: new HarmonyMethod(typeof(DoorLocks), nameof(DoorLocks.BeforeRoomRoute)));
@@ -101,6 +105,14 @@ namespace CutContent
                     postfix: new HarmonyMethod(typeof(Cleaning), nameof(Cleaning.AfterPanelUpdate)));
             }
             catch (Exception e) { Log("cleaning: no bar in the skills panel: " + e.Message); }
+            try
+            {
+                harmony.Patch(AccessTools.Constructor(typeof(UIJobSubpanel), new[] { typeof(TS1GameScreen) }) ?? throw new Exception("the skills panel was not found"),
+                    postfix: new HarmonyMethod(typeof(RestoredSkills), nameof(RestoredSkills.AfterPanel)));
+                harmony.Patch(AccessTools.DeclaredMethod(typeof(UIJobSubpanel), "Update") ?? throw new Exception("the skills panel's Update was not found"),
+                    postfix: new HarmonyMethod(typeof(RestoredSkills), nameof(RestoredSkills.AfterPanelUpdate)));
+            }
+            catch (Exception e) { Log("skills: no bars in the skills panel: " + e.Message); }
             PackManager.RegisterCommand("cutcontent", Command);
         }
 
@@ -125,11 +137,13 @@ namespace CutContent
         public void OnLotLoaded(VM vm, string lotPath)
         {
             Investments.OnLotLoaded(vm, lotPath);
+            try { RestoredSkills.OnLotLoaded(vm, lotPath); } catch (Exception e) { RestoredSkills.Status = "failed to read: " + e.Message; Log("skills: " + e); }
         }
 
         public void OnLotSaved(VM vm, string lotPath)
         {
             Investments.OnLotSaved(vm, lotPath);
+            try { RestoredSkills.OnLotSaved(vm, lotPath); } catch (Exception e) { Log("skills: could not save: " + e); }
         }
 
         private static bool Command(string[] args)
@@ -163,6 +177,12 @@ namespace CutContent
                     return true;
                 case "pickpocket":
                     return Pickpocket.Command(args.Skip(1).ToArray());
+                case "skills":
+                case "skill":
+                    {
+                        var screen = GameFacade.Screens.CurrentUIScreen as TS1GameScreen;
+                        return RestoredSkills.Command(args.Skip(1).ToArray(), screen?.SelectedAvatar, screen?.vm);
+                    }
                 case "doors":
                     Show("Door locks", DoorLocks.Report((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm));
                     return true;
@@ -197,12 +217,13 @@ namespace CutContent
             text.AppendLine("Investment calls: " + Investments.StatusText((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm));
             text.AppendLine($"Limousine: {Limousine.Status}. This session: {Limousine.Hired} hired.");
             text.AppendLine($"Cleaning skill: {Cleaning.Status}. This session: {Cleaning.Lessons} times round.");
+            text.AppendLine($"Gardening, music and literacy: {RestoredSkills.Status}. This session: {RestoredSkills.Minutes} minutes learned (\"cutcontent skills\" for more).");
             text.AppendLine();
             text.AppendLine("Switched off interactions (found as their objects are clicked on):");
             foreach (var rule in Interactions.Rules) text.AppendLine(rule.Name + ": " + rule.Status);
             if (Interactions.Force) text.AppendLine("(force is on)");
             text.AppendLine();
-            text.AppendLine("Not done yet: the pickpocket. Gardening, music and literacy left only their names. The Information Kiosk is not in this game.");
+            text.AppendLine("Not done yet: the pickpocket. The Information Kiosk is not in this game.");
             return text.ToString();
         }
 
