@@ -1,0 +1,262 @@
+// Every number the Wants, Fears and Aspirations pack plays by. Edit it in the pack's folder, then type
+// "aspire reload" in the cheat console (Ctrl+Shift+C) to use it at once, or restart Simitone. If the file
+// cannot be read, the log says why and the pack uses the copy it was built with. README.md explains each part.
+//
+// Points: a want is worth points. Fulfilling it adds them to the Sim's reward points, and moves the meter up by
+// points x meter.perPoint. A fear that comes true moves the meter down the same way, but takes no reward points.
+// The meter runs from -100 to 100.
+{
+  "slots": { "wants": 4, "fears": 3, "locks": 1 },
+
+  "meter": {
+    "perPoint": 0.01,
+    // how far an hour in the best of moods (100) lifts the meter; the worst (-100) lowers it as far
+    "moodPerHour": 0.8,
+    "start": 0,
+    // once a lifetime want is fulfilled, the meter never goes below this (Gold)
+    "lifetimeFloor": 55,
+    "failure": {
+      // falling into aspiration failure is a breakdown: these needs drop at once
+      "breakdown": { "Fun": -40, "Social": -40, "Comfort": -20 },
+      // after this many hours of failure the Sim pulls themselves together, to this meter (0: never)
+      "recoverHours": 24,
+      "recoverTo": -45,
+      "margin": 10
+    }
+  },
+
+  // from: where on the meter the level starts. decayPerHour: how far the meter falls each hour there, before
+  // mood. needDecay: how fast needs fall there (1 as the game has it). backfire: the chance a reward goes wrong.
+  "levels": [
+    { "name": "Aspiration Failure", "from": -100, "decayPerHour": 0,   "needDecay": 1.15, "backfire": 0.6 },
+    { "name": "Low",                "from": -70,  "decayPerHour": 0.3, "needDecay": 1.05, "backfire": 0.3 },
+    { "name": "Steady",             "from": -20,  "decayPerHour": 0.6, "needDecay": 1.0,  "backfire": 0.05 },
+    { "name": "Gold",               "from": 50,   "decayPerHour": 1.2, "needDecay": 0.9,  "backfire": 0 },
+    { "name": "Platinum",           "from": 85,   "decayPerHour": 2.4, "needDecay": 0.75, "backfire": 0 }
+  ],
+
+  "relationships": {
+    "friendDaily": 50,
+    "bestLifetime": 70,
+    "bestDaily": 90,
+    // where the game marks love: not yet checked against the game. Aspirations.log lists what it sees
+    "loveIndex": 1,
+    "loveMask": 2
+  },
+
+  // fit: how chance chooses an aspiration for a Sim nobody chose one for. Traits (Neat, Outgoing, Active,
+  // Playful, Nice) and skills count 0 to 1; so do HasJob, JobLevel, HasChildren and Friends (up to 10).
+  "aspirations": [
+    { "id": "Romance", "name": "Romance", "about": "Lives for flirting, kissing and falling in love, many times over.",
+      "fit": { "Playful": 1.0, "Outgoing": 0.8, "Body": 0.6, "Charisma": 0.4 } },
+    { "id": "Family", "name": "Family", "about": "Wants a partner, children and a happy home.",
+      "fit": { "Nice": 1.0, "Neat": 0.4, "Cooking": 0.4, "HasChildren": 1.2 } },
+    { "id": "Fortune", "name": "Fortune", "about": "Wants money, a career at the top, and the things money buys.",
+      "fit": { "Active": 0.4, "HasJob": 0.6, "JobLevel": 1.2, "Logic": 0.3, "Charisma": 0.3 } },
+    { "id": "Popularity", "name": "Popularity", "about": "Wants friends, parties and to be liked by everyone.",
+      "fit": { "Outgoing": 1.2, "Charisma": 0.6, "Friends": 1.0 } },
+    { "id": "Knowledge", "name": "Knowledge", "about": "Wants to learn every skill there is.",
+      "fit": { "Logic": 1.0, "Creativity": 0.6, "Mechanical": 0.6, "Cooking": 0.3, "Neat": 0.2 } },
+    { "id": "Pleasure", "name": "Pleasure", "about": "Wants to have a good time, now, and as often as possible.",
+      "fit": { "Playful": 1.2, "Active": 0.3, "Outgoing": 0.4 } },
+    { "id": "GrowUp", "name": "Grow Up", "child": true, "about": "A child's aspiration: good grades, friends, skills and fun." }
+  ],
+
+  // kind: what the want is (see README.md). weights: how likely it is to be rolled for each aspiration ("Any" for
+  // the rest). points: what it is worth; perLevel: more for each level the Sim has in the skill or career.
+  // ages: "adult", "child" or "any". Interactions are matched by words in their names, in the English game.
+  "wants": [
+    { "id": "skill_any", "kind": "SkillUp", "text": "Gain a skill point in {skill}", "points": 600, "perLevel": 120,
+      "weights": { "Knowledge": 9, "Fortune": 2, "Popularity": 1, "Pleasure": 1, "Romance": 1, "Family": 1, "GrowUp": 4 } },
+    { "id": "skill_charisma", "kind": "SkillUp", "skill": "Charisma", "text": "Gain a skill point in Charisma", "points": 700, "perLevel": 120,
+      "weights": { "Popularity": 5, "Romance": 3, "Knowledge": 1 } },
+    { "id": "skill_body", "kind": "SkillUp", "skill": "Body", "text": "Gain a skill point in Body", "points": 700, "perLevel": 120,
+      "weights": { "Romance": 3, "Pleasure": 2, "Knowledge": 1 } },
+    { "id": "skill_cooking", "kind": "SkillUp", "skill": "Cooking", "text": "Gain a skill point in Cooking", "points": 700, "perLevel": 120,
+      "weights": { "Family": 4, "Knowledge": 1 } },
+    { "id": "skill_logic", "kind": "SkillUp", "skill": "Logic", "text": "Gain a skill point in Logic", "points": 700, "perLevel": 120,
+      "weights": { "Knowledge": 4, "GrowUp": 1 } },
+    { "id": "skill_creativity", "kind": "SkillUp", "skill": "Creativity", "text": "Gain a skill point in Creativity", "points": 700, "perLevel": 120,
+      "weights": { "Knowledge": 3, "Pleasure": 2, "GrowUp": 1 } },
+    { "id": "skill_career", "kind": "CareerSkill", "text": "Gain a point in {skill} for the next promotion", "points": 900, "perLevel": 100,
+      "ages": "adult", "weights": { "Fortune": 7, "Knowledge": 2, "Popularity": 1, "Family": 1 } },
+    { "id": "skill_max", "kind": "SkillMax", "threshold": 8, "text": "Reach the top of the {skill} skill", "points": 3500,
+      "weights": { "Knowledge": 5, "Fortune": 1, "Pleasure": 1 } },
+
+    { "id": "get_job", "kind": "GetJob", "text": "Get a job", "points": 1500, "ages": "adult",
+      "weights": { "Fortune": 8, "Family": 2, "Knowledge": 2, "Popularity": 2, "Romance": 1, "Pleasure": 1 } },
+    { "id": "promotion", "kind": "Promotion", "text": "Get promoted", "points": 2200, "perLevel": 200, "ages": "adult",
+      "weights": { "Fortune": 9, "Knowledge": 3, "Popularity": 3, "Family": 2, "Romance": 1, "Pleasure": 1 } },
+    { "id": "top_career", "kind": "TopOfCareer", "count": 2, "text": "Reach the top of the {career} career", "points": 6000, "ages": "adult",
+      "weights": { "Fortune": 4, "Knowledge": 2, "Popularity": 1 } },
+    { "id": "performance", "kind": "Performance", "threshold": 60, "text": "Do well at work", "points": 800, "ages": "adult",
+      "weights": { "Fortune": 3, "Knowledge": 1 } },
+    { "id": "grades", "kind": "Grades", "threshold": 60, "text": "Get good grades", "points": 1200, "ages": "child",
+      "weights": { "GrowUp": 8 } },
+    { "id": "child_grades", "kind": "ChildGrades", "threshold": 60, "text": "See a child get good grades", "points": 1200, "ages": "adult",
+      "weights": { "Family": 5, "Knowledge": 1 } },
+
+    { "id": "earn", "kind": "Earn", "amount": 1000, "fraction": 0.1, "text": "Earn {amount}", "points": 1500, "ages": "adult",
+      "weights": { "Fortune": 8, "Family": 1, "Pleasure": 1 } },
+    { "id": "funds", "kind": "HaveFunds", "milestones": [5000, 10000, 20000, 35000, 50000, 75000, 100000, 150000, 250000, 500000, 1000000],
+      "text": "Have {amount}", "points": 3000, "ages": "adult", "weights": { "Fortune": 4, "Family": 1 } },
+    { "id": "buy_small", "kind": "Buy", "amount": 500, "text": "Buy something worth {amount} or more", "points": 700, "ages": "adult",
+      "weights": { "Pleasure": 4, "Fortune": 3, "Family": 2, "Romance": 1, "Popularity": 1 } },
+    { "id": "buy_big", "kind": "Buy", "amount": 3000, "text": "Buy something worth {amount} or more", "points": 2000, "ages": "adult",
+      "weights": { "Fortune": 4, "Pleasure": 2 } },
+
+    { "id": "new_friend", "kind": "NewFriend", "text": "Make a new friend", "points": 1500,
+      "weights": { "Popularity": 9, "Romance": 3, "Pleasure": 2, "Family": 2, "Knowledge": 1, "Fortune": 1, "GrowUp": 5 } },
+    { "id": "friends", "kind": "Friends", "count": 2, "text": "Have {count} friends", "points": 3000,
+      "weights": { "Popularity": 5, "GrowUp": 1 } },
+    { "id": "best_friend", "kind": "BestFriend", "text": "Make a best friend", "points": 2500,
+      "weights": { "Popularity": 4, "Family": 2, "Romance": 1, "GrowUp": 2 } },
+    { "id": "fall_in_love", "kind": "FallInLove", "text": "Fall in love", "points": 3000, "ages": "adult",
+      "weights": { "Romance": 7, "Family": 3 } },
+    { "id": "housemate", "kind": "NewHousemate", "text": "Marry, or move someone in", "points": 5000, "ages": "adult",
+      "weights": { "Family": 5, "Romance": 2 } },
+    { "id": "baby", "kind": "Baby", "text": "Have a baby", "points": 6000, "ages": "adult",
+      "weights": { "Family": 8, "Romance": 1 } },
+
+    { "id": "kiss", "kind": "Interaction", "match": ["kiss"], "with": "person", "outcome": "accepted", "text": "Kiss someone", "points": 1000, "ages": "adult",
+      "weights": { "Romance": 8, "Family": 1, "Popularity": 1, "Pleasure": 1 } },
+    { "id": "flirt", "kind": "Interaction", "match": ["flirt"], "with": "person", "outcome": "accepted", "text": "Flirt", "points": 600, "ages": "adult",
+      "weights": { "Romance": 5, "Pleasure": 1 } },
+    { "id": "hug", "kind": "Interaction", "match": ["hug"], "with": "person", "outcome": "accepted", "text": "Hug someone", "points": 600,
+      "weights": { "Family": 3, "Romance": 2, "Popularity": 2, "GrowUp": 1 } },
+    { "id": "back_rub", "kind": "Interaction", "match": ["back rub", "backrub", "massage"], "with": "person", "outcome": "accepted", "text": "Give a back rub", "points": 600, "ages": "adult",
+      "weights": { "Romance": 2, "Pleasure": 2, "Family": 1 } },
+    { "id": "dance", "kind": "Interaction", "match": ["dance"], "with": "person", "text": "Dance with someone", "points": 700,
+      "weights": { "Pleasure": 5, "Romance": 2, "Popularity": 2 } },
+    { "id": "joke", "kind": "Interaction", "match": ["joke", "entertain"], "with": "person", "outcome": "accepted", "text": "Make someone laugh", "points": 500,
+      "weights": { "Popularity": 4, "Pleasure": 2, "GrowUp": 2 } },
+    { "id": "compliment", "kind": "Interaction", "match": ["compliment", "admire"], "with": "person", "outcome": "accepted", "text": "Pay someone a compliment", "points": 500,
+      "weights": { "Popularity": 3, "Romance": 2 } },
+    { "id": "talk", "kind": "Interaction", "match": ["talk", "chat"], "with": "other", "text": "Talk with someone outside the household", "points": 400,
+      "weights": { "Popularity": 3, "GrowUp": 2, "Romance": 1 } },
+    { "id": "family_time", "kind": "Interaction", "match": ["tickle", "play", "hug", "talk", "tag", "read"], "with": "household", "text": "Spend time with the family", "points": 800,
+      "weights": { "Family": 6, "GrowUp": 4 } },
+    { "id": "study", "kind": "Interaction", "match": ["study", "homework", "read"], "with": "object", "text": "Hit the books", "points": 600,
+      "weights": { "GrowUp": 4, "Knowledge": 3 } },
+    { "id": "play_game", "kind": "Interaction", "match": ["play"], "with": "object", "text": "Play a game", "points": 500,
+      "weights": { "Pleasure": 5, "GrowUp": 3, "Popularity": 1 } },
+    { "id": "swim", "kind": "Interaction", "match": ["swim"], "with": "object", "text": "Go for a swim", "points": 500,
+      "weights": { "Pleasure": 3, "Romance": 1, "GrowUp": 1 } },
+    { "id": "cook", "kind": "Interaction", "match": ["cook", "prepare", "have breakfast", "have lunch", "have dinner", "group meal", "make breakfast", "make lunch", "make dinner", "serve"], "with": "object", "text": "Cook a meal", "points": 600, "ages": "adult",
+      "weights": { "Family": 4, "Pleasure": 1 } },
+    { "id": "arts", "kind": "Interaction", "match": ["paint", "piano", "guitar", "sculpt", "play music"], "with": "object", "text": "Paint or play music", "points": 600,
+      "weights": { "Knowledge": 2, "Pleasure": 2, "Romance": 1 } },
+    { "id": "stargaze", "kind": "Interaction", "match": ["telescope", "stargaze", "star gaze", "look through"], "with": "object", "text": "Look through a telescope", "points": 700,
+      "weights": { "Knowledge": 4, "GrowUp": 1 } },
+    { "id": "chess", "kind": "Interaction", "match": ["chess"], "with": "any", "text": "Play chess", "points": 700,
+      "weights": { "Knowledge": 4, "GrowUp": 1 } },
+
+    { "id": "party", "kind": "Party", "count": 5, "text": "Have {count} guests over at once", "points": 2500, "ages": "adult",
+      "weights": { "Popularity": 6, "Pleasure": 4 } },
+    { "id": "visitors", "kind": "Party", "count": 2, "text": "Have friends over", "points": 1000,
+      "weights": { "Popularity": 3, "Pleasure": 2, "Romance": 1, "Family": 1, "GrowUp": 1 } },
+    { "id": "outing", "kind": "Outing", "text": "Go out on the town", "points": 1500, "ages": "adult",
+      "weights": { "Pleasure": 3, "Romance": 2, "Popularity": 2 } },
+    { "id": "great_mood", "kind": "NeedHigh", "need": "Mood", "threshold": 70, "text": "Be in a great mood", "points": 800,
+      "weights": { "Pleasure": 7, "GrowUp": 2, "Any": 1 } },
+    { "id": "blast", "kind": "NeedHigh", "need": "Fun", "threshold": 90, "text": "Have a blast", "points": 600,
+      "weights": { "Pleasure": 5, "GrowUp": 3 } },
+    { "id": "social_butterfly", "kind": "NeedHigh", "need": "Social", "threshold": 90, "text": "Have a good long talk", "points": 600,
+      "weights": { "Popularity": 3, "Romance": 1 } }
+  ],
+
+  "fears": [
+    { "id": "fired", "kind": "Fired", "text": "Lose their job", "points": 2500, "ages": "adult",
+      "weights": { "Fortune": 9, "Knowledge": 3, "Popularity": 3, "Family": 3, "Romance": 2, "Pleasure": 2 } },
+    { "id": "demoted", "kind": "Demoted", "text": "Be demoted", "points": 2000, "ages": "adult",
+      "weights": { "Fortune": 6, "Knowledge": 2, "Popularity": 1 } },
+    { "id": "bad_work", "kind": "LowPerformance", "threshold": -50, "text": "Do badly at work", "points": 800, "ages": "adult",
+      "weights": { "Fortune": 4, "Knowledge": 2 } },
+    { "id": "bad_grades", "kind": "LowPerformance", "threshold": -20, "text": "Get bad grades", "points": 1200, "ages": "child",
+      "weights": { "GrowUp": 8 } },
+    { "id": "child_bad_grades", "kind": "ChildBadGrades", "threshold": -20, "text": "See a child get bad grades", "points": 1200, "ages": "adult",
+      "weights": { "Family": 4, "Knowledge": 1 } },
+    { "id": "broke", "kind": "Broke", "amount": 500, "text": "Have less than {amount}", "points": 2000, "ages": "adult",
+      "weights": { "Fortune": 6, "Family": 2, "Pleasure": 2, "Any": 1 } },
+    { "id": "lose_friend", "kind": "LoseFriend", "text": "Lose a friend", "points": 2000,
+      "weights": { "Popularity": 8, "Romance": 2, "Family": 2, "GrowUp": 4, "Pleasure": 1 } },
+    { "id": "rejected", "kind": "Interaction", "match": ["kiss", "flirt", "hug", "dance", "back rub", "propose", "move in", "go steady"], "with": "person", "outcome": "rejected",
+      "text": "Be turned down", "points": 1500, "ages": "adult", "weights": { "Romance": 7, "Popularity": 5, "Pleasure": 2, "Family": 1 } },
+    { "id": "slapped", "kind": "Received", "match": ["slap", "insult", "fight", "poke", "shove"], "text": "Be slapped or insulted", "points": 1000,
+      "weights": { "Popularity": 4, "Romance": 2, "Family": 2, "GrowUp": 4, "Any": 1 } },
+    { "id": "fire", "kind": "Fire", "text": "Have a fire", "points": 3000,
+      "weights": { "Family": 5, "Knowledge": 3, "Fortune": 3, "Any": 2 } },
+    { "id": "burglar", "kind": "Visitor", "match": ["burglar", "robber", "thief"], "text": "Be burgled", "points": 2500,
+      "weights": { "Fortune": 5, "Family": 3, "Any": 1 } },
+    { "id": "repo", "kind": "Visitor", "match": ["repo"], "text": "Have things repossessed", "points": 2500, "ages": "adult",
+      "weights": { "Fortune": 5, "Family": 2 } },
+    { "id": "lose_member", "kind": "LoseMember", "text": "Lose someone from the household", "points": 5000,
+      "weights": { "Family": 9, "Romance": 3, "Any": 2 } },
+    { "id": "starving", "kind": "NeedLow", "need": "Hunger", "threshold": -80, "text": "Go hungry", "points": 800,
+      "weights": { "Family": 2, "GrowUp": 2, "Pleasure": 2, "Any": 1 } },
+    { "id": "exhausted", "kind": "NeedLow", "need": "Energy", "threshold": -80, "text": "Collapse from exhaustion", "points": 800,
+      "weights": { "Knowledge": 2, "Fortune": 2, "Any": 1 } },
+    { "id": "accident", "kind": "NeedLow", "need": "Bladder", "threshold": -90, "text": "Have an accident", "points": 1000,
+      "weights": { "Popularity": 3, "Romance": 2, "GrowUp": 3, "Any": 1 } },
+    { "id": "bored", "kind": "NeedLow", "need": "Fun", "threshold": -60, "text": "Be bored stiff", "points": 800,
+      "weights": { "Pleasure": 7, "GrowUp": 2 } },
+    { "id": "lonely", "kind": "NeedLow", "need": "Social", "threshold": -60, "text": "Be lonely", "points": 800,
+      "weights": { "Popularity": 6, "Romance": 2, "Family": 2 } },
+    { "id": "filthy", "kind": "NeedLow", "need": "Hygiene", "threshold": -70, "text": "Be filthy", "points": 600,
+      "weights": { "Romance": 3, "Popularity": 2 } },
+    { "id": "miserable", "kind": "NeedLow", "need": "Mood", "threshold": -50, "text": "Be miserable", "points": 800,
+      "weights": { "Pleasure": 4, "Any": 1 } }
+  ],
+
+  // one for each grown Sim, for life. Fulfilling it pays its points and keeps the meter at lifetimeFloor or above.
+  "lifetime": [
+    { "id": "life_career", "kind": "CareerTop", "text": "Reach the top of a career", "points": 20000, "ages": "adult",
+      "weights": { "Fortune": 5, "Knowledge": 3, "Popularity": 2, "Family": 1 } },
+    { "id": "life_funds", "kind": "HaveFunds", "total": 100000, "text": "Have {amount}", "points": 20000, "ages": "adult",
+      "weights": { "Fortune": 5, "Pleasure": 1 } },
+    { "id": "life_skills", "kind": "SkillsMaxed", "total": 4, "text": "Reach the top of {total} skills", "points": 20000, "ages": "adult",
+      "weights": { "Knowledge": 6, "Pleasure": 1, "Fortune": 1 } },
+    { "id": "life_friends", "kind": "Friends", "total": 15, "text": "Have {count} friends", "points": 20000, "ages": "adult",
+      "weights": { "Popularity": 6, "Pleasure": 2 } },
+    { "id": "life_kisses", "kind": "Interaction", "match": ["kiss"], "with": "person", "outcome": "accepted", "total": 10, "text": "Kiss {total} different Sims", "points": 20000, "ages": "adult",
+      "weights": { "Romance": 6 } },
+    { "id": "life_children", "kind": "Children", "total": 3, "text": "Raise {total} children", "points": 20000, "ages": "adult",
+      "weights": { "Family": 6 } },
+    { "id": "life_dances", "kind": "Interaction", "match": ["dance"], "with": "person", "total": 12, "text": "Dance with {total} different Sims", "points": 20000, "ages": "adult",
+      "weights": { "Pleasure": 5, "Romance": 1 } }
+  ],
+
+  // cost: reward points. cooldown: sim hours before the same Sim can use it again. safe: never goes wrong.
+  // effect and backfire: see README.md for the kinds. With no backfire, a reward that goes wrong does nothing.
+  "rewards": [
+    { "id": "tonic", "name": "Wake-Up Tonic", "about": "Energy, full, at once.", "cost": 4000, "cooldown": 12,
+      "effect": { "kind": "Needs", "needs": ["Energy"], "set": 100, "text": "Wide awake." },
+      "backfire": { "kind": "Needs", "needs": ["Energy"], "add": -60, "text": "The tonic knocks them flat: energy drained." } },
+    { "id": "full_belly", "name": "Hearty Charm", "about": "Hunger and Bladder kept full for a day.", "cost": 6000, "cooldown": 48,
+      "effect": { "kind": "Freeze", "needs": ["Hunger", "Bladder"], "set": 100, "hours": 24, "text": "Hunger and Bladder will stay full for a day." },
+      "backfire": { "kind": "Needs", "needs": ["Hunger"], "add": -50, "text": "The charm turns their stomach: hunger drops." } },
+    { "id": "serenity", "name": "Serenity", "about": "Every need kept full for eight hours.", "cost": 18000, "cooldown": 72,
+      "effect": { "kind": "Freeze", "needs": ["All"], "set": 100, "hours": 8, "text": "Every need will stay full for eight hours." },
+      "backfire": { "kind": "Needs", "needs": ["All"], "add": -30, "text": "Serenity curdles: every need drops." } },
+    { "id": "quick_study", "name": "Quick Study", "about": "Skills learned twice as fast for a day.", "cost": 8000, "cooldown": 48,
+      "effect": { "kind": "SkillGain", "times": 2, "hours": 24, "text": "Learning comes twice as fast for a day." },
+      "backfire": { "kind": "Needs", "needs": ["Energy", "Fun"], "add": -40, "text": "A splitting headache instead: energy and fun drop." } },
+    { "id": "tutor", "name": "Tutor's Notes", "about": "A skill point in the skill you choose.", "cost": 6000, "cooldown": 24,
+      "effect": { "kind": "SkillPoint", "points": 1, "text": "A point in {skill}." },
+      "backfire": { "kind": "Needs", "needs": ["Fun"], "add": -40, "text": "The notes make no sense: fun drops, and nothing is learned." } },
+    { "id": "windfall", "name": "Windfall", "about": "§2,000 for the household, at once.", "cost": 6000, "cooldown": 24, "ages": "adult",
+      "effect": { "kind": "Money", "amount": 2000, "text": "§2,000 for the household." } },
+    { "id": "dividend", "name": "Dividend", "about": "§400 each morning at nine, for a week.", "cost": 9000, "cooldown": 168, "ages": "adult",
+      "effect": { "kind": "Dividend", "amount": 400, "days": 7, "text": "§400 will come each morning at nine, for a week." } },
+    { "id": "review", "name": "Glowing Review", "about": "Job performance (or a child's grades) at the very top.", "cost": 7000, "cooldown": 72,
+      "effect": { "kind": "Performance", "set": 100, "text": "Performance at the top: a promotion is close." },
+      "backfire": { "kind": "Performance", "add": -40, "text": "The review is a disaster: performance drops." } },
+    { "id": "charm", "name": "Charm Bracelet", "about": "Everyone else on the lot gets on better with this Sim.", "cost": 6000, "cooldown": 24,
+      "effect": { "kind": "Charm", "daily": 15, "lifetime": 5, "text": "Everyone here likes them a little more." },
+      "backfire": { "kind": "Charm", "daily": -15, "text": "The bracelet puts everyone off: relationships drop." } },
+    { "id": "voucher", "name": "Shopping Voucher", "about": "The next object bought, up to §3,000, costs nothing.", "cost": 9000, "ages": "adult", "safe": true,
+      "effect": { "kind": "Voucher", "amount": 3000, "text": "The next object bought, up to §3,000, is free." } },
+    { "id": "second_wind", "name": "Second Wind", "about": "Lifts the meter out of the red, to Steady.", "cost": 5000, "cooldown": 72, "safe": true,
+      "effect": { "kind": "Meter", "set": 0, "text": "Back on their feet." } }
+  ]
+}

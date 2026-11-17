@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>Aspirations</AssemblyName>
+    <RootNamespace>Aspirations</RootNamespace>
+    <DebugType>none</DebugType>
+    <!-- the tests are a project of their own, in a folder under this one -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;pack/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- compile against Simitone. the pack must not ship Simitone's files: the game shares its own with it -->
+    <ProjectReference Include="$(SimitonePath)\Client\Simitone\Simitone.Client\Simitone.Client.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- the numbers the pack starts from, inside the .dll too: used if balance.json is missing from the pack's folder or cannot be read -->
+    <EmbeddedResource Include="balance.json" LogicalName="Aspirations.balance.json" />
+  </ItemGroup>
+
+  <!-- after building, put just the pack's own files in pack/aspirations/, ready to copy into Simitone's Packs folder -->
+  <Target Name="MakePackFolder" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath);pack.json;balance.json" DestinationFolder="$(MSBuildProjectDirectory)\pack\aspirations" />
+  </Target>
+
+</Project>

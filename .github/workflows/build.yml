@@ -92,6 +92,12 @@ jobs:
     - name: Test Life Stages' patches and rules
       run: dotnet run --project LifeStages/tests -c Release
 
+    - name: Build Wants, Fears and Aspirations
+      run: dotnet build Aspirations/Aspirations.csproj -c Release
+
+    - name: Test Wants, Fears and Aspirations' patches, rules and balance
+      run: dotnet run --project Aspirations/tests -c Release -- --report
+
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
 
@@ -191,6 +197,13 @@ jobs:
       with:
         name: LifeStages
         path: LifeStages/pack/
+        if-no-files-found: error
+
+    - name: Upload Wants, Fears and Aspirations
+      uses: actions/upload-artifact@v4
+      with:
+        name: Aspirations
+        path: Aspirations/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube

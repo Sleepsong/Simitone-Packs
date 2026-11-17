@@ -1,0 +1,9 @@
+{
+  "id": "sample.aspirations",
+  "name": "Wants, Fears and Aspirations",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "The Sims 2's aspirations: each Sim has an aspiration, four wants and three fears, and a meter from Aspiration Failure to Platinum. Fulfilled wants earn points to spend on rewards, which are effects rather than objects. A first stage, not yet run against a game: back up your saves first. F7 or Options > Aspiration; type aspire help in the console.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "Aspirations.dll"
+}
