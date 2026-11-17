@@ -92,6 +92,14 @@ jobs:
     - name: Test Life Stages' patches and rules
       run: dotnet run --project LifeStages/tests -c Release
 
+    # Undo needs Simitone's calls for putting a lot back (PackManager.SnapshotLot), on the Simitone branch
+    # ccr-ca684fdd-yft7sx until that is merged: run this workflow with simitone_ref set to it until then
+    - name: Build Undo and Redo
+      run: dotnet build Undo/Undo.csproj -c Release
+
+    - name: Test Undo's patches, history and money, and that every pack here takes part
+      run: dotnet run --project Undo/tests -c Release
+
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
 
@@ -191,6 +199,13 @@ jobs:
       with:
         name: LifeStages
         path: LifeStages/pack/
+        if-no-files-found: error
+
+    - name: Upload Undo and Redo
+      uses: actions/upload-artifact@v4
+      with:
+        name: Undo
+        path: Undo/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- the checks run against the real engine and Simitone's pack code. they need no copy of The Sims, and do not
+         start the game -->
+    <ProjectReference Include="$(SimitonePath)\Client\Simitone\Simitone.Client\Simitone.Client.csproj" />
+    <ProjectReference Include="..\Undo.csproj" />
+    <!-- every code pack in this repository, to check that undo is not refused with any of them on -->
+    <ProjectReference Include="..\..\Apartments\Apartments.csproj" />
+    <ProjectReference Include="..\..\BuildCheats\BuildCheats.csproj" />
+    <ProjectReference Include="..\..\CreateAStyle\CreateAStyle.csproj" />
+    <ProjectReference Include="..\..\CutContent\CutContent.csproj" />
+    <ProjectReference Include="..\..\DiagonalDoors\DiagonalDoors.csproj" />
+    <ProjectReference Include="..\..\Driveways\Driveways.csproj" />
+    <ProjectReference Include="..\..\FamilyTree\FamilyTree.csproj" />
+    <ProjectReference Include="..\..\Foundations\Foundations.csproj" />
+    <ProjectReference Include="..\..\FurnishedMoveIn\FurnishedMoveIn.csproj" />
+    <ProjectReference Include="..\..\HalfWalls\HalfWalls.csproj" />
+    <ProjectReference Include="..\..\LifeStages\LifeStages.csproj" />
+    <ProjectReference Include="..\..\OpenForBusiness\OpenForBusiness.csproj" />
+    <ProjectReference Include="..\..\RoofTool\RoofTool.csproj" />
+    <ProjectReference Include="..\..\TerrainPaint\TerrainPaint.csproj" />
+    <ProjectReference Include="..\..\TryForBaby\TryForBaby.csproj" />
+  </ItemGroup>
+
+</Project>

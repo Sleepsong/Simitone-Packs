@@ -1,0 +1,9 @@
+{
+  "id": "sample.undo",
+  "name": "Undo and Redo",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Undo and redo in build and buy mode, as in The Sims 2: Ctrl+Z and Ctrl+Y, or the undo and redo console commands. Building, buying, selling, moving and the packs' own build tools, with the money given back. Not yet played: back up your saves first.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "Undo.dll"
+}
