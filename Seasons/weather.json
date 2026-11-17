@@ -1,0 +1,7 @@
+{
+  "_about": "How likely each kind of weather is in each season. Each number is a share of the time: in spring it is clear about 55 hours in 100. They need not add up to 100. Restart Simitone after changing this file. A season left out, or with a mistake, keeps the pack's own odds (these).",
+  "spring": { "clear": 55, "lightRain": 25, "heavyRain": 10, "storm": 8, "lightSnow": 2, "heavySnow": 0 },
+  "summer": { "clear": 72, "lightRain": 12, "heavyRain": 6, "storm": 10, "lightSnow": 0, "heavySnow": 0 },
+  "autumn": { "clear": 50, "lightRain": 26, "heavyRain": 14, "storm": 4, "lightSnow": 5, "heavySnow": 1 },
+  "winter": { "clear": 50, "lightRain": 5, "heavyRain": 0, "storm": 0, "lightSnow": 30, "heavySnow": 15 }
+}

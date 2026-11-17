@@ -92,6 +92,12 @@ jobs:
     - name: Test Life Stages' patches and rules
       run: dotnet run --project LifeStages/tests -c Release
 
+    - name: Build Seasons
+      run: dotnet build Seasons/Seasons.csproj -c Release
+
+    - name: Test Seasons' patches and rules
+      run: dotnet run --project Seasons/tests -c Release
+
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
 
@@ -191,6 +197,13 @@ jobs:
       with:
         name: LifeStages
         path: LifeStages/pack/
+        if-no-files-found: error
+
+    - name: Upload Seasons
+      uses: actions/upload-artifact@v4
+      with:
+        name: Seasons
+        path: Seasons/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube

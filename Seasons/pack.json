@@ -1,0 +1,10 @@
+{
+  "id": "sample.seasons",
+  "name": "Seasons",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Spring, summer, autumn and winter, after The Sims 2: Seasons. Each season has its own odds of rain, storms and snow, the grass turns in autumn and is snow in winter, and Sims who are wet or cold lose needs faster. Uses Simitone's weather. A first stage, not yet run against a game. Type season in the console.",
+  "minSimitoneVersion": "0.8.22",
+  "requires": ["simitone.weather"],
+  "assembly": "Seasons.dll"
+}
