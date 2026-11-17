@@ -59,8 +59,13 @@ namespace CutContent
             }
             else report.AppendLine("Behavior.iff has no table of primitives (one whose third line is \"expression\"): they are named as in 1.0.");
 
+            //the person data table begins "idle state" and marks traits and skills "p:" and "s:". Another table lists the same
+            //traits and skills as "personality ads" (None, Nice, Grouchy... Cleaning Skill...), numbered differently: not that one
             var person = tables
-                .Select(x => (x.text, x.lines, score: x.lines.Count(l => PersonWords.IsMatch(l)) + (Regex.IsMatch(x.text.ChunkLabel ?? "", @"person.*data", RegexOptions.IgnoreCase) ? 100 : 0)))
+                .Select(x => (x.text, x.lines, score: x.lines.Count(l => PersonWords.IsMatch(l)) + 3 * x.lines.Count(l => Regex.IsMatch(l, @"^\s*[psi]: ", RegexOptions.IgnoreCase))
+                    + (x.lines.Count > 0 && Regex.IsMatch(x.lines[0], @"idle state", RegexOptions.IgnoreCase) ? 100 : 0)
+                    + (Regex.IsMatch(x.text.ChunkLabel ?? "", @"person.*data", RegexOptions.IgnoreCase) ? 100 : 0)
+                    - (x.lines.Count > 0 && x.lines[0].Trim().Equals("None", StringComparison.OrdinalIgnoreCase) ? 50 : 0)))
                 .OrderByDescending(x => x.score).FirstOrDefault();
             if (person.text != null && person.score >= 5)
             {
@@ -94,21 +99,34 @@ namespace CutContent
                     Count(live, Iff10.Printable(chunk.Type));
                     if (chunk.Label != "") named++;
                     if (chunk.Type == "STR#" || chunk.Type == "TTAs" || chunk.Type == "CTSS") { Iff10.Strings(chunk.Data, out var form); Count(forms, form); }
-                    if (chunk.Type == "TTAB") { Iff10.Table(chunk.Data, out var v, out var problem); Count(tables, (v < 0 ? "empty" : v.ToString()) + (problem != null ? " (" + problem + ")" : "")); }
+                    if (chunk.Type == "TTAB") { Iff10.Table(chunk.Data, out var v, out var problem); Count(tables, (v < 0 ? "empty" : v.ToString()) + (problem != null && v < 4 ? " (" + problem + ")" : "")); }
                     if (chunk.Type == "BHAV" && chunk.Data.Length >= 2) Count(scripts, "0x" + Iff10.LE16(chunk.Data, 0).ToString("x4"));
                     if (chunk.Type == "OBJD" && chunk.Data.Length >= 4) Count(objects, BitConverter.ToUInt32(chunk.Data, 0).ToString());
                 }
                 if (file.Old.NamesFrom.Count == 0) Count(nameKinds, "no table of names");
-                foreach (var from in file.Old.NamesFrom) Count(nameKinds, Regex.Replace(from, @" \d+(?= \(|,)", "").Split(',')[0]);
+                foreach (var from in file.Old.NamesFrom) Count(nameKinds, Regex.Replace(from, @", naming \d+ chunks$", ""));
             }
             report.AppendLine($"{old.Count} files in the form used before release were read by the pack's own reader.");
             report.AppendLine("Chunks: " + string.Join(", ", live.OrderByDescending(x => x.Value).Select(x => $"{x.Value} {x.Key}")) + $"; and {deleted} deleted (\"XXXX\").");
-            report.AppendLine($"Names: {named} of {chunks} chunks have one. The tables of names: " + string.Join(", ", nameKinds.Select(x => $"{x.Key} in {x.Value} files")));
+            report.AppendLine($"Names: {named} of {chunks} chunks have one. The tables of names:");
+            foreach (var kind in nameKinds.OrderByDescending(x => x.Value)) report.AppendLine($"  {kind.Value} files: {kind.Key}");
             report.AppendLine("Text forms: " + string.Join(", ", forms.Select(x => $"{x.Key} ({x.Value})")));
             report.AppendLine("Menu table versions: " + string.Join(", ", tables.Select(x => $"{x.Key} ({x.Value})")));
             report.AppendLine("Script versions: " + string.Join(", ", scripts.Select(x => $"{x.Key} ({x.Value})")));
             report.AppendLine("Object definition versions: " + string.Join(", ", objects.Select(x => $"{x.Key} ({x.Value})")));
             foreach (var file in old.Where(x => x.Old.Problem != null)) report.AppendLine($"{file.Where}: {file.Old.Problem}");
+            var labelIds = old.SelectMany(f => f.Old.Chunks.Where(c => !c.IsNames && !c.Deleted)).Select(c => c.LabelId).ToList();
+            var numbered = labelIds.Where(x => x != uint.MaxValue).ToList();
+            report.AppendLine($"Name numbers in chunks: {labelIds.Count(x => x == uint.MaxValue)} have none (ff ff ff ff); the rest run from " +
+                (numbered.Count > 0 ? $"{numbered.Min()} to {numbered.Max()}" : "-") + $", {numbered.Distinct().Count()} different.");
+            var unread = old.SelectMany(f => f.Old.Live.Where(c => c.Type == "NAME").Select(c => (f, c))).Take(4).ToList();
+            foreach (var (f, c) in unread)
+            {
+                report.AppendLine($"{f.Where}: \"NAME\" {c.Id}, flags 0x{c.Flags:x4}, name number {c.LabelId:x8}, {c.Data.Length} bytes; the chunk from its 13th byte:");
+                Dump(report, c.Body, 0, 128);
+                var some = f.Old.Chunks.Where(x => x != c && !x.Deleted).Take(6).Select(x => $"{Iff10.Printable(x.Type)} {x.Id} -> {x.LabelId:x8}");
+                report.AppendLine("  name numbers of the file's first chunks: " + string.Join(", ", some));
+            }
             var links = old.Select(x => (x.Name, link: SemiGlobalName(x))).Where(x => x.link != null).GroupBy(x => x.link).Select(g => $"{g.Key}: {g.Count()} files");
             report.AppendLine("Shared script files the objects use: " + string.Join(", ", links));
             LearnNames(files, report);
@@ -263,7 +281,9 @@ namespace CutContent
             foreach (var group in uses.GroupBy(x => x.Slot).OrderBy(x => x.Key))
                 report.AppendLine($"  {Slot(group.Key)}: set in {group.Count(x => x.Sets)} steps, read in {group.Count(x => !x.Sets)}, in {group.Select(x => x.Script).Distinct().Count()} scripts");
 
-            var skills = (OldPersonData ?? new Dictionary<int, string>()).Where(x => SkillName.IsMatch(x.Value)).Select(x => x.Key).ToList();
+            var named = OldPersonData ?? new Dictionary<int, string>();
+            var marked = named.Where(x => Regex.IsMatch(x.Value, @"^\s*s: ", RegexOptions.IgnoreCase)).Select(x => x.Key).ToList();
+            var skills = marked.Count > 0 ? marked : named.Where(x => SkillName.IsMatch(x.Value)).Select(x => x.Key).ToList();
             if (skills.Count == 0)
             {
                 report.AppendLine("No slot is named for a skill.");
@@ -300,6 +320,21 @@ namespace CutContent
                 foreach (var chunk in file.Old.Of("TTAB").OrderBy(x => x.Id))
                 {
                     var entries = Iff10.Table(chunk.Data, out var version, out var problem);
+                    if (version >= 4)
+                    {
+                        TTAB later = null;
+                        try { later = file.Iff.Get<TTAB>(chunk.Id); } catch (Exception e) { problem = "the engine could not read it: " + e.Message; }
+                        if (later?.Interactions != null)
+                        {
+                            problem = null;
+                            entries = later.Interactions.Select(x => new Iff10.Entry
+                            {
+                                Action = x.ActionFunction, Test = x.TestFunction, Field = (ushort)x.TTAIndex, Attenuation = x.AttenuationValue,
+                                Ads = (x.MotiveEntries ?? new TTABMotiveEntry[0]).Select(m => m.EffectRangeDelta).ToArray(),
+                                Flags = (uint)x.Flags, Later = true,
+                            }).ToList();
+                        }
+                    }
                     var texts = file.Old.Live.FirstOrDefault(x => x.Type == "TTAs" && x.Id == chunk.Id) ?? file.Old.Live.FirstOrDefault(x => x.Type == "STR#" && x.Id == chunk.Id);
                     var names = texts != null ? Iff10.Strings(texts.Data, out _) : null;
                     var objects = List<OBJD>(file.Iff).Where(x => x.TreeTableID == chunk.Id).Select(x => $"\"{Survey.Clean(x.ChunkLabel)}\"").ToList();
@@ -318,9 +353,18 @@ namespace CutContent
                         var ads = e.Ads.Select((v, j) => (v, j)).Where(x => x.v != 0).Select(x => $"{(x.j < 16 ? ((VMMotive)x.j).ToString() : "need " + x.j)} {x.v}").ToList();
                         var name = (names != null && i < names.Count) ? Survey.Clean(names[i]) : "";
                         report.AppendLine($"  {i} \"{name}\": runs {e.Action} \"{ScriptName(files, file, e.Action)}\", test {(e.Test == 0 ? "none" : $"{e.Test} \"{ScriptName(files, file, e.Test)}\"")}" +
-                            (ads.Count > 0 ? ", advertises " + string.Join(", ", ads) : "") + $", attenuation {e.Attenuation:0.###}" + (e.Field != 0xa3a3 ? $", unknown field 0x{e.Field:x4}" : ""));
+                            (ads.Count > 0 ? ", advertises " + string.Join(", ", ads) : "") + $", attenuation {e.Attenuation:0.###}" +
+                            (e.Later ? $", text {e.Field}, flags 0x{e.Flags:x}" : (e.Field != 0xa3a3 ? $", unknown field 0x{e.Field:x4}" : "")));
                     }
                 }
+                //where the menu texts are kept is not known yet: every text list of the file, briefly
+                var lists = file.Old.Live.Where(x => x.Type == "STR#" || x.Type == "CATS" || x.Type == "TTAs" || x.Type == "CTSS").OrderBy(x => x.Type).ThenBy(x => x.Id).ToList();
+                if (file.Old.Of("TTAB").Any() && lists.Count > 0)
+                    report.AppendLine("  texts: " + string.Join("; ", lists.Select(x =>
+                    {
+                        var t = Iff10.Strings(x.Data, out _) ?? new List<string>();
+                        return $"{Iff10.Printable(x.Type)} {x.Id} ({t.Count}): " + string.Join(" | ", t.Take(6).Select(Survey.Clean)) + (t.Count > 6 ? " ..." : "");
+                    })));
             }
             report.AppendLine($"{total} entries. Needs are named in 1.0's order, which this copy may not share.");
         }

@@ -84,40 +84,122 @@ namespace CutContent
             }
             if (file.Problem == null && at < data.Length) file.Problem = $"the last {data.Length - at} bytes are not a whole chunk";
 
-            //the tables of names: deleted ones first, so that a live table's names win
+            //the tables of names: deleted ones first, so that a live table's names win. Each candidate is read in every
+            //layout below, and the layout that names the most chunks is kept.
             foreach (var deleted in new[] { true, false })
                 foreach (var chunk in file.Chunks.Where(x => x.Deleted == deleted && !ForEngine.Contains(x.Type)))
                 {
-                    var names = Names(chunk.Body);
-                    if (names == null) continue;
+                    var best = BestNames(file, chunk);
+                    if (best.names == null) continue;
                     chunk.IsNames = true;
-                    foreach (var name in names) file.Names[name.Key] = name.Value;
-                    file.NamesFrom.Add($"\"{Printable(chunk.Type)}\" {chunk.Id}{(deleted ? " (deleted)" : "")}, {names.Count} names");
+                    foreach (var name in best.names) file.Names[name.Key] = name.Value;
+                    file.NamesFrom.Add($"\"{Printable(chunk.Type)}\"{(deleted ? " (deleted)" : "")}: {best.layout}");
                 }
             foreach (var chunk in file.Chunks)
                 if (file.Names.TryGetValue(chunk.LabelId, out var label)) chunk.Label = label;
             return file;
         }
 
-        /// <summary>A table of names: (number, smallest byte first; a length byte; the letters), filling the chunk exactly.</summary>
-        private static Dictionary<uint, string> Names(byte[] body)
+        // ---- tables of names ----
+
+        private enum Text { Pascal, PascalEven, Terminated, TerminatedEven }
+
+        /// <summary>
+        /// Every layout a table of names might have: where it starts (from the chunk's 13th byte, its 17th, or after a count
+        /// of 2 or 4 bytes), how big each name's number is and which byte comes first, and how each name is kept (a length
+        /// byte first, or a zero byte after; padded to an even length or not). The deleted tables use the first.
+        /// </summary>
+        private static IEnumerable<(string layout, int start, int idSize, bool bigEndian, Text text)> Layouts()
+        {
+            foreach (var start in new[] { 0, 4, 6, 8 })
+                foreach (var (size, big) in new[] { (4, false), (4, true), (2, false), (2, true) })
+                    foreach (Text text in Enum.GetValues(typeof(Text)))
+                        yield return ($"from byte {12 + start + 1}, {size}-byte numbers {(big ? "largest" : "smallest")} byte first, names {text}", start, size, big, text);
+        }
+
+        /// <summary>The layout that reads this chunk as names and names the most other chunks of the file, if any does.</summary>
+        private static (string layout, Dictionary<uint, string> names) BestNames(File file, Chunk table)
+        {
+            var labels = file.Chunks.Where(x => x != table && x.LabelId != uint.MaxValue).Select(x => x.LabelId).ToList();
+            (string layout, Dictionary<uint, string> names, int score) best = (null, null, 0);
+            foreach (var l in Layouts())
+            {
+                var names = Pairs(table.Body, l.start, l.idSize, l.bigEndian, l.text);
+                if (names == null) continue;
+                var score = labels.Count(x => names.ContainsKey(x));
+                if (score > best.score) best = (l.layout, names, score);
+            }
+            //names kept in order, with no numbers: a chunk's name number is then its place in the list
+            if (best.names == null)
+                foreach (var start in new[] { 4, 6, 8 })
+                    foreach (Text text in Enum.GetValues(typeof(Text)))
+                    {
+                        var list = Sequence(table.Body, start, text);
+                        if (list == null || labels.Count == 0 || labels.Max() >= list.Count) continue;
+                        var names = list.Select((n, i) => (n, i)).ToDictionary(x => (uint)x.i, x => x.n);
+                        var score = labels.Count;
+                        if (score > best.score) best = ($"from byte {12 + start + 1}, names {text} in order, numbered by place", names, score);
+                    }
+            return (best.layout != null) ? (best.layout + $", naming {best.score} chunks", best.names) : (null, null);
+        }
+
+        private static string ReadText(byte[] b, ref int at, Text text)
+        {
+            string value;
+            if (text == Text.Pascal || text == Text.PascalEven)
+            {
+                if (at >= b.Length) return null;
+                var length = b[at];
+                if (at + 1 + length > b.Length) return null;
+                for (int i = at + 1; i < at + 1 + length; i++) if (b[i] < 32 || b[i] == 127) return null;
+                value = Latin1(b, at + 1, length);
+                at += 1 + length;
+                if (text == Text.PascalEven && ((1 + length) & 1) == 1) at++;
+            }
+            else
+            {
+                var end = at;
+                while (end < b.Length && b[end] != 0) { if (b[end] < 32 || b[end] == 127) return null; end++; }
+                if (end >= b.Length) return null;
+                value = Latin1(b, at, end - at);
+                var used = end - at + 1;
+                at = end + 1;
+                if (text == Text.TerminatedEven && (used & 1) == 1) at++;
+            }
+            return value;
+        }
+
+        /// <summary>Numbered names, filling the chunk to within 3 bytes; null if they don't, or most are empty.</summary>
+        private static Dictionary<uint, string> Pairs(byte[] b, int start, int idSize, bool big, Text text)
         {
             var names = new Dictionary<uint, string>();
-            int at = 0, empty = 0;
-            while (at < body.Length)
+            int at = start, empty = 0;
+            while (b.Length - at > 3)
             {
-                if (at + 5 > body.Length) return null;
-                var id = BitConverter.ToUInt32(body, at);
-                var length = body[at + 4];
-                at += 5;
-                if (at + length > body.Length) return null;
-                for (int i = at; i < at + length; i++) if (body[i] < 32 || body[i] == 127) return null;
-                if (length == 0) empty++;
-                names[id] = Latin1(body, at, length);
-                at += length;
+                if (at + idSize > b.Length) return null;
+                uint id = idSize == 4 ? (big ? BE32(b, at) : BitConverter.ToUInt32(b, at)) : (big ? BE16(b, at) : LE16(b, at));
+                at += idSize;
+                var value = ReadText(b, ref at, text);
+                if (value == null || at > b.Length) return null;
+                if (value.Length == 0) empty++;
+                names[id] = value;
             }
             if (names.Count < 2 || empty * 2 > names.Count) return null;
             return names;
+        }
+
+        private static List<string> Sequence(byte[] b, int start, Text text)
+        {
+            var list = new List<string>();
+            var at = start;
+            while (b.Length - at > 3)
+            {
+                var value = ReadText(b, ref at, text);
+                if (value == null || at > b.Length) return null;
+                list.Add(value);
+            }
+            if (list.Count < 2 || list.Count(x => x.Length == 0) * 2 > list.Count) return null;
+            return list;
         }
 
         // ---- texts ----
@@ -185,6 +267,8 @@ namespace CutContent
 
         public class Entry
         {
+            public bool Later; //read by the engine's reader (version 4 and later)
+            public uint Flags;
             public ushort Action, Test, Field;
             public float Attenuation;
             public short[] Ads;
