@@ -1,0 +1,9 @@
+{
+  "id": "sample.lotsbin",
+  "name": "Lots Bin",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "The Sims 2's lots bin: save a copy of a lot to the bin from the neighbourhood screen, and put it down on another lot of the same size. The copy has no Sims, and keeps what packs added to the lot. Not yet played: back up your UserData first.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "LotsBin.dll"
+}

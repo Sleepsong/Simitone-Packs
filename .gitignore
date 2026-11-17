@@ -16,6 +16,7 @@ dist/
 /FurnishedMoveIn/pack/
 /OpenForBusiness/pack/
 /Apartments/pack/
+/LotsBin/pack/
 /FamilyTree/pack/
 /LifeStages/pack/
 # (Driveways keeps its object file in its pack folder: only what the build adds is ignored)
