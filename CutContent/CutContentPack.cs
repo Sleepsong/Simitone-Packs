@@ -54,7 +54,7 @@ namespace CutContent
         public static void Log(string msg) => Console.WriteLine("[cut] " + msg);
 
         /// <summary>The version this code is, kept the same as pack.json's.</summary>
-        public const string Build = "0.9.1";
+        public const string Build = "0.9.2";
 
         /// <summary>Which version is running and from where, to tell an old copy of the pack from a new one.</summary>
         public static string Running = "Cut Content " + Build;
@@ -176,7 +176,7 @@ namespace CutContent
                     {
                         var which = args[1].ToLowerInvariant();
                         var focusedPath = Path.Combine(FSOEnvironment.UserDir, $"cutcontent-survey-{which}.txt");
-                        File.WriteAllText(focusedPath, which == "kiosk" ? FocusedSurveys.Kiosk() : FocusedSurveys.Pickpocket());
+                        File.WriteAllText(focusedPath, which == "kiosk" ? FocusedSurveys.Kiosk() : FocusedSurveys.Pickpocket(text => File.WriteAllText(focusedPath, text)));
                         Show("Cut Content", "The survey was written to:\n" + Path.GetFullPath(focusedPath));
                         return true;
                     }

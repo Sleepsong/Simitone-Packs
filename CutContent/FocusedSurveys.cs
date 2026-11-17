@@ -52,6 +52,7 @@ namespace CutContent
             var hits = new List<string>();
             var unlisted = new List<string>();
             var noObject = new List<string>();
+            var whole = new List<string>();
             int files = 0;
             var failed = ForEachGameFile(root, report, (where, name, iff) =>
             {
@@ -83,14 +84,48 @@ namespace CutContent
                         var value = text.GetString(i) ?? "";
                         if (KioskWords.IsMatch(value)) hits.Add($"{where}/{name}: catalog text {text.ChunkID} line {i}: {Survey.Clean(value)}");
                     }
+                if (Safe(() => iff.List<CTSS>()).Any(t => Regex.IsMatch(t.GetString(0) ?? "", "information kiosk", RegexOptions.IgnoreCase))) Whole(whole, where, name, iff, catalog);
                 foreach (var script in Safe(() => iff.List<BHAV>()))
                     if (KioskWords.IsMatch(script.ChunkLabel ?? "")) hits.Add($"{where}/{name}: script {script.ChunkID} \"{Survey.Clean(script.ChunkLabel)}\"");
             });
             report.AppendLine($"{files} files read{(failed > 0 ? $", {failed} could not be" : "")}.");
             Section(report, "Everything that mentions a kiosk, information, a directory, a guide or the like", hits.Take(400));
+            Section(report, "The file with the kiosk's catalog text, whole", whole);
             Section(report, "Superstar's objects that buy mode doesn't show (people and the extra tiles of large objects left out)", unlisted.Take(300));
             Section(report, "Superstar's files with no object definition (Simitone never loads these as objects)", noObject.Take(200));
             return report.ToString();
+        }
+
+        /// <summary>
+        /// Everything in the file that holds the kiosk's catalog text: each object with every field buy mode looks at, which
+        /// catalog text each uses, the catalog texts, pictures, menus and scripts. Buy mode shows an object only if it has a
+        /// category or build type, is not switched off, has graphics (or is a multi-tile object), and is the object itself,
+        /// not a tile of a larger one: whichever the kiosk lacks is the missing data.
+        /// </summary>
+        private static void Whole(List<string> lines, string where, string name, IffFile iff, TS1ObjectProvider catalog)
+        {
+            lines.Add($"{where}/{name}:");
+            var texts = Safe(() => iff.List<CTSS>());
+            foreach (var o in Safe(() => iff.List<OBJD>()).OrderBy(x => x.ChunkID))
+            {
+                var text = texts.FirstOrDefault(t => t.ChunkID == o.CatalogStringsID);
+                lines.Add($"  object {o.ChunkID} \"{Survey.Clean(o.ChunkLabel)}\" {o.GUID:x8}: catalog text {o.CatalogStringsID} (\"{Survey.Clean(text?.GetString(0))}\"), " +
+                    $"{(catalog?.GetItemByGUID(o.GUID) != null ? "in buy mode" : "not in buy mode")}, type {o.ObjectType}, version {o.Version}");
+                lines.Add($"    category {o.FunctionFlags:x}, build type {o.BuildModeType}, off {o.Disabled}, graphics {o.NumGraphics} from {o.BaseGraphicID}, multi-tile {o.IsMultiTile}, part {o.MasterID}/{o.SubIndex}, " +
+                    $"price {o.Price}, rooms {o.RoomFlags:x}, sorts: function {o.FunctionSubsort}, community {o.CommunitySubsort}, downtown {o.DTSubsort}, vacation {o.VacationSubsort}, studio town {o.STSubsort}, magic town {o.MTSubsort}");
+                lines.Add($"    menu {o.TreeTableID}, main {o.BHAV_MainID}, init {o.BHAV_Init}, slots {o.SlotID}, level offset {o.LevelOffset}, tile width {o.TileWidth}");
+            }
+            foreach (var t in texts.OrderBy(x => x.ChunkID)) lines.Add($"  catalog text {t.ChunkID}: \"{Survey.Clean(t.GetString(0))}\"");
+            var pictures = Safe(() => iff.List<DGRP>()).OrderBy(x => x.ChunkID).Select(x => $"{x.ChunkID} \"{Survey.Clean(x.ChunkLabel)}\"").ToList();
+            lines.Add($"  pictures ({pictures.Count}): {string.Join("; ", pictures)}");
+            lines.Add($"  sprites: {Safe(() => iff.List<SPR2>()).Count}");
+            foreach (var table in Safe(() => iff.List<TTAB>()))
+            {
+                TTAs names = null;
+                try { names = iff.Get<TTAs>(table.ChunkID); } catch { }
+                lines.Add($"  menu {table.ChunkID}: " + string.Join("; ", table.Interactions.Select(x => $"\"{Survey.Clean(names?.GetString((int)x.TTAIndex))}\" runs {x.ActionFunction}")));
+            }
+            lines.Add("  scripts: " + string.Join("; ", Safe(() => iff.List<BHAV>()).OrderBy(x => x.ChunkID).Select(x => $"{x.ChunkID} {Survey.Clean(x.ChunkLabel)}")));
         }
 
         // ---- the pickpocket ----
@@ -100,14 +135,22 @@ namespace CutContent
         private static readonly Regex VisitorWords = new Regex(@"npc|generat|controll|director|spawn|visitor|tourist|walk.?by|vacationer|townie|crowd", RegexOptions.IgnoreCase);
         private const uint ThiefGuid = 0xc7857d8a, TemplateGuid = 0x7FD96B54;
 
-        public static string Pickpocket()
+        /// <summary>The pickpocket survey. "save" is given the report after each part, so a part that hangs or closes the game still leaves what came before it.</summary>
+        public static string Pickpocket(Action<string> save)
         {
+            Saving = save;
             var report = new StringBuilder();
             report.AppendLine("Cut Content survey: the pickpocket");
             report.AppendLine(CutContentPack.Running);
             var catalog = Content.Get().WorldObjects as TS1ObjectProvider;
             if (catalog == null) { report.AppendLine("The game's objects are not loaded."); return report.ToString(); }
-            var all = AllObjects(catalog);
+            List<(string file, GameObject obj)> all = null;
+            Run(report, "Reading every object", r =>
+            {
+                all = AllObjects(catalog);
+                r.AppendLine($"{all.Count} objects.");
+            });
+            if (all == null) return report.ToString();
 
             Run(report, "The burglar (\"NPC Thief\") and the template every Sim is made from", r =>
             {
@@ -285,12 +328,16 @@ namespace CutContent
             if (!any) report.AppendLine("none");
         }
 
+        private static Action<string> Saving;
+
         private static void Run(StringBuilder report, string title, Action<StringBuilder> write)
         {
             report.AppendLine();
             report.AppendLine("== " + title + " ==");
+            CutContentPack.Log("survey: " + title);
             try { write(report); }
-            catch (Exception e) { report.AppendLine("This part failed: " + e.Message); }
+            catch (Exception e) { report.AppendLine("This part failed: " + e); }
+            try { Saving?.Invoke(report.ToString()); } catch { }
         }
     }
 }
