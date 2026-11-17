@@ -69,10 +69,16 @@ three unnamed skills ("min req 7, 8, 9"); script names that mention a skill, lea
 practising; menu entries whose pull is scaled by a cut skill; objects' skill flags; every text that
 mentions a skill; and every script step that reads or sets the hidden skill numbers, checked against the
 game being played. It reads `.far` archives and `.iff` files anywhere under the folder, skipping saved lots,
-families and neighbourhoods, and changes nothing. Files too old for the engine to open (a build from 1998
-begins its files with something other than "IFF FILE 2.5") are described instead: the text they begin
-with, a dump of their first bytes, and where the game's data tags are found in them, to work out how to
-read them.
+families and neighbourhoods, and changes nothing.
+
+Builds from before release keep their files in an older form ("IFF FILE 1.0 ... MAXIS 1996"), which the
+engine doesn't open. The pack reads it itself (`Iff10.cs`): the chunks, their names from the file's table
+of names, old text lists and version 2 menu tables. For such a copy the survey also lists what the files
+hold; person data by the copy's own names (its numbering is not 1.0's), how often each is read and set,
+the scripts that use each skill, and the scripts that use the skills that didn't ship, whole; every menu
+entry with the scripts it runs and what it advertises; the job and level files' constants and texts; and
+every script's name, file by file. Files neither reader can open are described instead: the text they
+begin with, a dump of their first bytes, and where the game's data tags are found in them.
 
 ## How it is made
 
@@ -87,7 +93,9 @@ read them.
 - `GhostSting.cs` runs before each spooky sting, and one time in three plays the third one instead.
 - `Limousine.cs` adds the question to the Go Downtown plugin when it is created, marks the car with a
   primitive of its own, and draws a marked taxi with the limousine's pictures.
-- `OldSurvey.cs` reads an older copy of the game from its folder with the engine's own file readers.
+- `OldSurvey.cs` reads an older copy of the game from its folder with the engine's own file readers;
+  `Iff10.cs` reads the form used before release and hands the engine what it can read in the later form,
+  and `OldSurvey10.cs` lists what such a copy holds.
 - `Cleaning.cs` adds a step to the global "clean inc" that teaches household Sims cleaning, and a bar to the
   skills panel.
 - `Investments.cs` finishes the phone's chance calls when a phone is created, records investments with a

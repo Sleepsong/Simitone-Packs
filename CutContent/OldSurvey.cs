@@ -33,7 +33,7 @@ namespace CutContent
     ///   - every text that mentions a skill, with the whole table where it is a table of names (such as Behavior.iff's).
     /// Only reads the old copy: nothing in it is changed or used by the game.
     /// </summary>
-    public static class OldSurvey
+    public static partial class OldSurvey
     {
         private static readonly (int index, string name)[] Slots = { (9, "cleaning"), (13, "gardening"), (14, "music"), (16, "literacy") };
         private static readonly Dictionary<int, string> Scopes = new Dictionary<int, string> { { 18, "my" }, { 19, "stack object's" }, { 32, "neighbour's" } };
@@ -45,6 +45,7 @@ namespace CutContent
             public string Name;   //the file's own name, as the game knows it
             public string Where;  //where it was found
             public IffFile Iff;
+            public Iff10.File Old; //when it is in the form used before release
         }
 
         /// <summary>The pack's own folder, where an older copy can be put and found without typing a path.</summary>
@@ -127,33 +128,45 @@ namespace CutContent
             if (folder == null) { report.AppendLine("The folder was not found."); return report.ToString(); }
 
             Unopened.Clear();
+            OldPrimitives = null;
+            OldPersonData = null;
             var files = Read(folder, report);
             report.AppendLine($"{files.Count} object and script files read.");
-            Section(report, "Files the engine would not open: what they look like", () => Describe(report));
-            Section(report, "What the files are made of, and what the engine could not read", () => Formats(report, files));
+            var old = files.Any(x => x.Old != null);
+            var current = files.Any(x => x.Old == null);
+            if (Unopened.Count > 0) Section(report, "Files neither reader could open: what they look like", () => Describe(report));
+            if (current) Section(report, "What the files are made of, and what the engine could not read", () => Formats(report, files));
+            if (old) Section(report, "Files in the form used before release (\"IFF FILE 1.0\"): what they hold", () => Old10Summary(report, files));
             Section(report, "Behavior.iff's tables of names, whole", () => Labels(report, files));
-            Section(report, "Career levels that ask for the three unnamed skills (min req 7, 8, 9)", () =>
+            if (old) Section(report, "Person data and the skills, by this copy's own names", () => PersonData(report, files));
+            if (old) Section(report, "Every menu entry (the old menu tables)", () => Menus(report, files));
+            if (old) Section(report, "Job and level files", () => CareerFiles(report, files));
+            if (current)
             {
-                int levels = 0, asking = 0;
-                foreach (var file in files) SkillLinks.Careers(report, file.Name, List<CARR>(file.Iff), ref levels, ref asking);
-                report.AppendLine($"{asking} of {levels} career levels ask for them.");
-            });
+                Section(report, "Career levels that ask for the three unnamed skills (min req 7, 8, 9)", () =>
+                {
+                    int levels = 0, asking = 0;
+                    foreach (var file in files) SkillLinks.Careers(report, file.Name, List<CARR>(file.Iff), ref levels, ref asking);
+                    report.AppendLine($"{asking} of {levels} career levels ask for them.");
+                });
+                Section(report, "Menu entries whose pull is scaled by a cut skill", () =>
+                {
+                    var found = 0;
+                    foreach (var file in files) SkillLinks.Ads(report, file.Name, List<TTAB>(file.Iff), id => file.Iff.Get<TTAs>(id), ref found);
+                    report.AppendLine($"{found} entries.");
+                });
+                Section(report, "Objects' skill flags (the skills buy mode says they build)", () =>
+                    SkillLinks.Flags(report, files.SelectMany(f => List<OBJD>(f.Iff).Select(o => (f.Name, o)))));
+            }
             Section(report, "Script names that mention a skill, learning, studying or practising", () =>
             {
                 foreach (var file in files)
                     foreach (var script in List<BHAV>(file.Iff).Where(x => ScriptWords.IsMatch(x.ChunkLabel ?? "")).OrderBy(x => x.ChunkID))
                         report.AppendLine($"{file.Name} script {script.ChunkID} \"{Survey.Clean(script.ChunkLabel)}\"");
             });
-            Section(report, "Menu entries whose pull is scaled by a cut skill", () =>
-            {
-                var found = 0;
-                foreach (var file in files) SkillLinks.Ads(report, file.Name, List<TTAB>(file.Iff), id => file.Iff.Get<TTAs>(id), ref found);
-                report.AppendLine($"{found} entries.");
-            });
-            Section(report, "Objects' skill flags (the skills buy mode says they build)", () =>
-                SkillLinks.Flags(report, files.SelectMany(f => List<OBJD>(f.Iff).Select(o => (f.Name, o)))));
             Section(report, "Texts that mention a skill", () => Texts(report, files));
-            Section(report, "Script steps that read or set person data 9, 13, 14 or 16", () => Steps(report, files));
+            if (current || OldPersonData == null) Section(report, "Script steps that read or set person data 9, 13, 14 or 16 (1.0's numbers)", () => Steps(report, files));
+            if (old) Section(report, "Every script in the older form, file by file", () => AllScripts(report, files));
             return report.ToString();
         }
 
@@ -190,9 +203,14 @@ namespace CutContent
                             var name = Path.GetFileName(entry.Filename.Replace('\\', '/'));
                             try
                             {
-                                var iff = new IffFile { RetainChunkData = true };
-                                using (var stream = new MemoryStream(far.GetEntry(entry))) iff.Read(stream);
-                                files.Add(new OldFile { Name = name, Where = shown, Iff = iff });
+                                var bytes = far.GetEntry(entry);
+                                if (Iff10.Is(bytes)) files.Add(ReadOld(bytes, name, shown + "/" + name, report));
+                                else
+                                {
+                                    var iff = new IffFile { RetainChunkData = true };
+                                    using (var stream = new MemoryStream(bytes)) iff.Read(stream);
+                                    files.Add(new OldFile { Name = name, Where = shown, Iff = iff });
+                                }
                                 count++;
                             }
                             catch (Exception e) { report.AppendLine($"{shown}/{name}: could not be read ({e.Message})"); }
@@ -204,11 +222,25 @@ namespace CutContent
                 }
                 else if (ext == ".iff")
                 {
-                    try { files.Add(new OldFile { Name = Path.GetFileName(path), Where = shown, Iff = new IffFile(path, true) }); }
+                    try
+                    {
+                        var bytes = File.ReadAllBytes(path);
+                        if (Iff10.Is(bytes)) files.Add(ReadOld(bytes, Path.GetFileName(path), shown, report));
+                        else files.Add(new OldFile { Name = Path.GetFileName(path), Where = shown, Iff = new IffFile(path, true) });
+                    }
                     catch (Exception e) { report.AppendLine($"{shown}: could not be read ({e.Message})"); Unopened.Add(path); }
                 }
             }
             return files;
+        }
+
+        /// <summary>A file in the form used before release, read by the pack's own reader and handed to the engine's in the later form.</summary>
+        private static OldFile ReadOld(byte[] bytes, string name, string shown, StringBuilder report)
+        {
+            var old = Iff10.Read(bytes);
+            var iff = new IffFile { RetainChunkData = true };
+            using (var stream = new MemoryStream(Iff10.ToIff25(old))) iff.Read(stream);
+            return new OldFile { Name = name, Where = shown, Iff = iff, Old = old };
         }
 
         private static bool Saved(string path)
@@ -294,7 +326,8 @@ namespace CutContent
             try { return iff.List<T>() ?? new List<T>(); } catch { return new List<T>(); }
         }
 
-        private static readonly Regex ScriptWords = new Regex(@"skill|garden|music|literac|learn|study|practi", RegexOptions.IgnoreCase);
+        private static readonly Regex ScriptWords = new Regex(@"skill|garden|music|literac|learn|study|practi|piano|guitar|plant|flower|book|\bread", RegexOptions.IgnoreCase);
+        private static readonly Regex OldWords = new Regex(@"skill|literac|garden|music|practi|stud(y|ies)|learn|clean|piano|guitar|plant|flower|weed|book|\bread(ing)?\b|cook|mechanic|repair|charisma|creativ|logic|\bbody\b", RegexOptions.IgnoreCase);
 
         /// <summary>
         /// A copy from before the game came out may keep its data in older forms than the engine reads: menu tables before
@@ -350,6 +383,7 @@ namespace CutContent
         {
             var behavior = files.FirstOrDefault(x => x.Name.Equals("Behavior.iff", StringComparison.OrdinalIgnoreCase));
             if (behavior == null) { report.AppendLine("Behavior.iff was not found in the folder."); return; }
+            if (behavior.Old != null) { AllTables(report, behavior); return; }
             foreach (var id in LabelTables)
             {
                 STR text = null;
@@ -373,7 +407,7 @@ namespace CutContent
                 foreach (var text in List<STR>(file.Iff))
                 {
                     var lines = Enumerable.Range(0, text.Length).Select(i => (i, value: text.GetString(i) ?? "")).ToList();
-                    var hits = lines.Where(x => SkillText.IsMatch(x.value)).ToList();
+                    var hits = lines.Where(x => (file.Old != null ? OldWords : SkillText).IsMatch(x.value)).ToList();
                     if (hits.Count == 0) continue;
                     //a table of names, such as the labels a modding tool shows: worth seeing whole, with each line's number
                     var whole = hits.Count >= 3 && lines.Count <= 200;
