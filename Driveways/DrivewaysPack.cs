@@ -37,6 +37,15 @@ namespace Driveways
     /// </summary>
     public class DrivewaysPack : ISimitonePack
     {
+        /// <summary>
+        /// The lot has been put back to an earlier moment (the Undo pack): the drives under way find their cars again.
+        /// Nothing else of the pack's is kept for a lot: a driveway is an object, and its floor the lot's own.
+        /// </summary>
+        public void OnLotRestore(VM vm, byte[] data)
+        {
+            VMDrive.Restored(vm);
+        }
+
         public void OnLoad(Pack pack)
         {
             var harmony = new Harmony("pack." + pack.Id);

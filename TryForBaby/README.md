@@ -29,6 +29,9 @@ question by chance, as in The Sims 1.
   cannot answer the question.
 - With the desktop `-jit` option, compiled scripts do not go through the steered dice rolls.
 - There is no pregnancy. A successful try goes straight to the baby, as The Sims 1's own babies do.
+- With the [Undo](../Undo) pack (0.2): a try under way when build mode is opened finds its couple
+  again after an undo. If it cannot, it is dropped without a word, and the WooHoo ends as the game's
+  own.
 
 ## How it works
 

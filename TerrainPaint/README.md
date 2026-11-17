@@ -31,6 +31,9 @@ Painted ground is saved when the lot is saved, in this pack's own file beside Si
 the lot loads with its unpainted ground, and Simitone warns that the pack is missing; switch the
 pack back on and the paint is there again.
 
+With the [Undo](../Undo) pack, painting is undone and redone like any other change in build mode
+(0.2). The paint is kept with each moment of the lot that Undo keeps, and put back with it.
+
 ## How it is made
 
 This is a port of the `terrain-paint` branches of Simitone and FreeSO, where the feature is an engine

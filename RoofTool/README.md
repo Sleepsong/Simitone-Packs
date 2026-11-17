@@ -33,6 +33,10 @@ Drawn roofs are saved when the lot is saved, in this pack's own file beside Simi
 lot loads with its automatic roof, and Simitone warns that the pack is missing; switch the pack
 back on and the drawn roofs are there again.
 
+With the [Undo](../Undo) pack, drawing and taking away roofs is undone and redone like any other
+change in build mode (0.2). The roofs are kept with each moment of the lot that Undo keeps, and put
+back with it.
+
 ## How it is made
 
 This is a port of the `roof-tool` branches of Simitone and FreeSO, where the feature is an engine

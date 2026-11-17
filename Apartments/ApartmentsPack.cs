@@ -133,6 +133,42 @@ namespace Apartments
             if (!Neighbours.IsShared(vm)) Guard("looking at the lot that loaded", () => Neighbours.Reconcile(vm, "lot loaded"));
         }
 
+        // ---- putting the lot back (the Undo pack) ----
+
+        public byte[] OnLotSnapshot(VM vm)
+        {
+            byte[] data = null;
+            Guard("keeping the apartments for undo", () => data = Neighbours.Snapshot(vm));
+            return data;
+        }
+
+        public void OnLotRestore(VM vm, byte[] data)
+        {
+            Guard("putting the apartments back with the lot", () =>
+            {
+                UIRoomPicker.Stop(); //it was choosing rooms of an apartment that is a new one now
+                Neighbours.Restore(vm, data);
+                UIApartmentsSubpanel.Current?.Refresh();
+                if (LotOverlay.On) Neighbours.Show(vm, true);
+            });
+        }
+
+        private static readonly MethodInfo LotChangedCall = typeof(PackManager).GetMethod("LotChanged", new[] { typeof(VM), typeof(string) });
+
+        /// <summary>
+        /// Change the apartments from build mode, and if they did change, say so (PackManager.LotChanged), so that the
+        /// Undo pack keeps it as a change of its own. Nothing is said on a Simitone without LotChanged.
+        /// </summary>
+        public static void Changing(VM vm, string what, Action edit)
+        {
+            var before = (LotChangedCall == null) ? null : Neighbours.Snapshot(vm);
+            edit();
+            if (LotChangedCall == null || vm == null) return;
+            var after = Neighbours.Snapshot(vm);
+            if ((before == null) ? after == null : (after != null && before.SequenceEqual(after))) return;
+            Guard("telling the packs the apartments changed", () => LotChangedCall.Invoke(null, new object[] { vm, what }));
+        }
+
         /// <summary>
         /// Nothing this pack does may take the game down with it. Whatever goes wrong is written to the log, in full,
         /// and the game carries on.

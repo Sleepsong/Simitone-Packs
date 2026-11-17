@@ -51,6 +51,11 @@ namespace CreateAStyle
         /// <summary>The slider being dragged: the part's number times 3, plus 0 for hue, 1 for strength, 2 for lightness. Or -1.</summary>
         private int Dragging = -1;
         private bool Unapplied;
+        /// <summary>
+        /// The panel has given its object a style that has not been said to be a change yet (for the Undo pack). Each
+        /// edit is one change, said when the mouse lets go; one still in hand is said when the panel closes.
+        /// </summary>
+        private bool Unsaid;
         private long LastApplied;
 
         public static void Open(VM vm, VMEntity entity)
@@ -69,10 +74,20 @@ namespace CreateAStyle
             panel.ApplyNow();
             UIStyleBrush.Remember(panel.Entity, panel.Working.IsDefault ? null : panel.Working);
             UIScreen.RemoveDialog(panel);
+            panel.SayChanged();
         }
 
         /// <summary>The lot the panel was for is gone, and the panel with it.</summary>
         public static void Drop() { Current = null; }
+
+        /// <summary>The lot has been put back to an earlier moment (the Undo pack), and the object is gone: close, giving nothing.</summary>
+        public static void Dismiss()
+        {
+            var panel = Current;
+            if (panel == null) return;
+            Current = null;
+            UIScreen.RemoveDialog(panel);
+        }
 
         public bool IsFor(VMEntity entity) => CreateAStylePack.Whole(Entity).Contains(entity);
 
@@ -246,6 +261,14 @@ namespace CreateAStyle
 
             //the object follows the sliders, but not on every twitch: each change makes its textures again
             if (Unapplied && (!down || Environment.TickCount64 - LastApplied > 80)) ApplyNow();
+            if (!down) SayChanged();
+        }
+
+        private void SayChanged()
+        {
+            if (!Unsaid) return;
+            Unsaid = false;
+            if (!Entity.Dead) CreateAStylePack.SayChanged(vm, "Style " + CreateAStylePack.NameOf(Entity));
         }
 
         private void Changed()
@@ -259,7 +282,9 @@ namespace CreateAStyle
             if (!Unapplied) return;
             Unapplied = false;
             LastApplied = Environment.TickCount64;
-            if (!Entity.Dead) CreateAStylePack.SetStyle(vm, Entity, Working.Clone());
+            if (Entity.Dead) return;
+            CreateAStylePack.SetStyle(vm, Entity, Working.Clone());
+            Unsaid = true;
         }
 
         // ---- drawing ----

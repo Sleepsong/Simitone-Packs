@@ -34,6 +34,8 @@ Stage 1, "the foundation exists and everything stands on it":
 - routing: Sims cannot cross a foundation's edge except by its steps;
 - heights: the ground, and so floors, objects and Sims, are as high as the foundation under them;
 - walls (2D and 3D) and roofs stand on the foundation.
+- undo and redo with the [Undo](../Undo) pack (0.4): the foundations are kept with each moment of
+  the lot that Undo keeps, and put back with it.
 
 Stage 2, "what a foundation looks like":
 

@@ -54,6 +54,14 @@ namespace Apartments
             Build();
         }
 
+        /// <summary>The lot has been put back to an earlier moment (the Undo pack): its apartments are new ones. Choose none, and lay out again.</summary>
+        public void Refresh()
+        {
+            Choosing = null;
+            TakingOut = false;
+            Build();
+        }
+
         /// <summary>Lay the tab out again (after anything has changed).</summary>
         private void Build()
         {
@@ -68,7 +76,7 @@ namespace Apartments
             else if (file == null)
             {
                 text = "This is an ordinary house. Make it an apartment building to divide it into apartments, each rented by a household. Nothing about the house itself changes.";
-                slots.Add(Tuple.Create("Make building", "cat_build_arch.png", (Color?)null, false, (Action)(() => After(Actions.MakeBuilding()))));
+                slots.Add(Tuple.Create("Make building", "cat_build_arch.png", (Color?)null, false, (Action)(() => ApartmentsPack.Changing(vm, "Make an apartment building", () => After(Actions.MakeBuilding())))));
             }
             else
             {
@@ -156,7 +164,7 @@ namespace Apartments
                     UIRoomPicker.Stop();
                     Choosing = null;
                     TakingOut = false;
-                    Message = Actions.DeleteApartment(apartment);
+                    ApartmentsPack.Changing(vm, "Delete " + apartment.Name, () => Message = Actions.DeleteApartment(apartment));
                     if (LotOverlay.On) Neighbours.Show(vm, true);
                     if (Current == this) Build();
                 }));
@@ -164,7 +172,9 @@ namespace Apartments
 
         private void NewApartment()
         {
-            var made = Actions.AddApartment(out var result);
+            Apartment made = null;
+            string result = null;
+            ApartmentsPack.Changing(vm, "Add an apartment", () => made = Actions.AddApartment(out result));
             Message = result;
             if (made == null) Build();
             else Choose(made, false);
@@ -182,7 +192,8 @@ namespace Apartments
             var started = UIRoomPicker.Begin(
                 pos =>
                 {
-                    Message = takeOut ? Actions.RemoveRoom(pos) : Actions.AddRoom(apartment, pos);
+                    ApartmentsPack.Changing(lot, takeOut ? "Take a room out of " + apartment.Name : "Add a room to " + apartment.Name,
+                        () => Message = takeOut ? Actions.RemoveRoom(pos) : Actions.AddRoom(apartment, pos));
                     if (LotOverlay.On) Neighbours.Show(lot, true, apartment); //drawn again, with the room in its colour
                     Build();
                 },

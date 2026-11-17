@@ -175,6 +175,22 @@ namespace FoundationsPack
             if (saved != null) Loaded.Add(vm, saved);
         }
 
+        // putting the lot back (the Undo pack). the foundations belong to the lot's terrain, and after VM.Load that is a
+        // new one: the foundations kept go on it at the architecture's next tick, as when the lot loads from its file,
+        // and everything standing on them is raised again then
+
+        public byte[] OnLotSnapshot(VM vm)
+        {
+            var arch = vm.Context?.Architecture;
+            return (arch?.Terrain == null) ? null : Save(Lots.For(arch.Terrain).Foundations);
+        }
+
+        public void OnLotRestore(VM vm, byte[] data)
+        {
+            Loaded.Remove(vm);
+            if (data != null) Loaded.Add(vm, data);
+        }
+
         /// <summary>
         /// Before the engine's tick. The engine change did this inside the tick, between its own steps; before it is near
         /// enough, since the tick goes on to rebuild rooms and redraw from what is set here.

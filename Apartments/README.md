@@ -302,6 +302,10 @@ misbehaves, switch it off: the rest of the pack carries on without it.
   on the Settings page or is only used when you ask for it, and each fails on its own: the log says
   if one could not be added.
 - Away from home (downtown, on holiday) nothing here applies. The other households stay on the lot.
+- **Undo** (the [Undo](../Undo) pack, 0.23): the apartments are kept with each moment of the lot that
+  Undo keeps, and put back with it. A change on the Apartments tab (making the building, adding or
+  deleting an apartment, a room in or out) is a change of its own, to undo and redo. Not yet tried in
+  the game.
 
 ## How it works
 

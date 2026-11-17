@@ -150,6 +150,21 @@ namespace TerrainPaint
             if (saved != null) Loaded.Add(vm, saved);
         }
 
+        // putting the lot back (the Undo pack). the paint belongs to the lot's terrain, and after VM.Load that is a new
+        // one: the paint kept goes on it at the architecture's next tick, as when the lot loads from its file
+
+        public byte[] OnLotSnapshot(VM vm)
+        {
+            var terrain = vm.Context?.Architecture?.Terrain;
+            return (terrain == null) ? null : PaintLayer.For(terrain).Save(terrain.Width, terrain.Height);
+        }
+
+        public void OnLotRestore(VM vm, byte[] data)
+        {
+            Loaded.Remove(vm);
+            if (data != null) Loaded.Add(vm, data);
+        }
+
         [ThreadStatic] private static VMArchitecture Ticking;
 
         public static void BeforeArchitectureTick(VMArchitecture __instance)

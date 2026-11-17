@@ -326,13 +326,15 @@ namespace CreateAStyle
 
         public void OnLotSaved(VM vm, string lotPath)
         {
+            LotPackData.Write(PackId, lotPath, StylesOf(vm));
+        }
+
+        /// <summary>The styles of the lot's objects, as saved, or null if none has one.</summary>
+        private static byte[] StylesOf(VM vm)
+        {
             ReleaseGone(vm);
             var styled = vm.Entities.Where(x => !x.Dead && x.Object?.OBJ != null && StyleOf(x) != null).ToList();
-            if (styled.Count == 0)
-            {
-                LotPackData.Write(PackId, lotPath, null);
-                return;
-            }
+            if (styled.Count == 0) return null;
             using (var mem = new MemoryStream())
             using (var io = new BinaryWriter(mem))
             {
@@ -347,8 +349,46 @@ namespace CreateAStyle
                     StyleOf(entity).Write(io);
                 }
                 io.Flush();
-                LotPackData.Write(PackId, lotPath, mem.ToArray());
+                return mem.ToArray();
             }
+        }
+
+        // putting the lot back (the Undo pack). a style belongs to an object, and after VM.Load every object is a new
+        // one with the same number: the styles kept go on them at the next update, as when the lot loads from its file
+
+        public byte[] OnLotSnapshot(VM vm) => StylesOf(vm);
+
+        public void OnLotRestore(VM vm, byte[] data)
+        {
+            UIStylePanel.Dismiss(); //it was for an object that is gone
+            ReleaseGone(vm);        //the textures of the objects styled until now
+            Loaded.Remove(vm);
+            if (data != null) Loaded.Add(vm, data);
+        }
+
+        private static readonly MethodInfo LotChangedCall = typeof(PackManager).GetMethod("LotChanged", new[] { typeof(VM), typeof(string) });
+
+        /// <summary>
+        /// Say the style brush has changed the lot, so that the Undo pack keeps the change: styles are not made with the
+        /// engine's own commands, which it sees by itself. Nothing on a Simitone without PackManager.LotChanged.
+        /// </summary>
+        public static void SayChanged(VM vm, string what)
+        {
+            try
+            {
+                LotChangedCall?.Invoke(null, new object[] { vm, what });
+            }
+            catch (TargetInvocationException e)
+            {
+                Console.WriteLine("Create a Style: telling the packs of a change failed: " + e.InnerException?.Message);
+            }
+        }
+
+        /// <summary>An object's name, for saying what was done to it.</summary>
+        public static string NameOf(VMEntity entity)
+        {
+            var name = entity?.MultitileGroup?.Name;
+            return string.IsNullOrWhiteSpace(name) ? "an object" : name.Trim();
         }
 
         public void OnLotLoaded(VM vm, string lotPath)

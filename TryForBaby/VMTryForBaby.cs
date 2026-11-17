@@ -542,6 +542,50 @@ namespace TryForBaby
             return true;
         }
 
+        // ---- putting the lot back (the Undo pack) ----
+
+        /// <summary>
+        /// The lot has been put back to an earlier moment (the Undo pack, in build mode): every Sim and object on it is a
+        /// new one with the number it had, and so is every interaction in their queues. A try under way finds its couple,
+        /// its bed and its interactions again, by number; one that cannot is dropped without a word, rather than being
+        /// reported as ended.
+        /// </summary>
+        public static void Restored(VM vm)
+        {
+            for (int i = 0; i < Attempts.Count; i++)
+            {
+                var attempt = Attempts[i];
+                if (attempt.VM != vm) continue;
+                var initiator = Again(vm, attempt.Initiator) as VMAvatar;
+                var action = ActionAgain(initiator, attempt.Action);
+                if (action == null)
+                {
+                    Attempts.RemoveAt(i--);
+                    Log("a try for a baby was dropped: the lot was put back to before it");
+                    continue;
+                }
+                attempt.Initiator = initiator;
+                attempt.Action = action;
+                attempt.Partner = Again(vm, attempt.Partner) as VMAvatar;
+                attempt.Bed = Again(vm, attempt.Bed);
+                attempt.TwinOwner = Again(vm, attempt.TwinOwner);
+                attempt.TwinAction = ActionAgain(attempt.TwinOwner, attempt.TwinAction);
+            }
+        }
+
+        private static VMEntity Again(VM vm, VMEntity old)
+        {
+            if (old == null) return null;
+            var found = vm.GetObjectById(old.ObjectID);
+            return (found != null && !found.Dead && found.Object.OBJ.GUID == old.Object.OBJ.GUID) ? found : null;
+        }
+
+        private static VMQueuedAction ActionAgain(VMEntity owner, VMQueuedAction old)
+        {
+            if (old == null || owner?.Thread?.Queue == null) return null;
+            return owner.Thread.Queue.FirstOrDefault(x => x.UID == old.UID && x.InteractionNumber == old.InteractionNumber && x.Callee?.ObjectID == old.Callee?.ObjectID);
+        }
+
         /// <summary>Each tick: tries whose interactions (and second twin) have ended are reported.</summary>
         public static void Tick(VM vm)
         {

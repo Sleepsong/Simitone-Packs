@@ -42,6 +42,8 @@ what it is: the microwave goes, a sink set into the counter stays.
 - Magic Town's houses also cost MagiCoins. The choice is offered there, but a family without the
   MagiCoins still cannot move in.
 - The furniture is taken out as the lot opens. As with any move, nothing is final until you save.
+- With the [Undo](../Undo) pack (0.2): the pack keeps nothing for a lot being played, and says so,
+  so that undo can be used with it on.
 
 ## How it works
 

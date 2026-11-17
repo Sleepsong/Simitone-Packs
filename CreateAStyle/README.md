@@ -70,6 +70,11 @@ A style is kept against the object's number on the lot, with its kind. If the lo
 the pack and the number passes to another kind of object, the style is dropped rather than put on
 the wrong thing.
 
+With the [Undo](../Undo) pack, styling is undone and redone like any other change in build mode
+(0.2). A click of the brush with Ctrl or Shift is one change, and so is each edit in the style panel,
+once the mouse lets go of it. Undoing closes the panel. The styles are kept with each moment of the lot that Undo keeps,
+and put back with it.
+
 ## Not done yet
 
 - **Sims' clothes.** Skins are textures like any other, and the same recolouring would work on them,

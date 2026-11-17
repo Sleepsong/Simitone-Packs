@@ -42,6 +42,12 @@ namespace TryForBaby
     /// </summary>
     public class TryForBabyPack : ISimitonePack
     {
+        /// <summary>The lot has been put back to an earlier moment (the Undo pack): a try under way finds its couple again.</summary>
+        public void OnLotRestore(VM vm, byte[] data)
+        {
+            VMTryForBaby.Restored(vm);
+        }
+
         public void OnLoad(Pack pack)
         {
             var harmony = new Harmony("pack." + pack.Id);

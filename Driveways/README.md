@@ -83,6 +83,9 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 
 ## Changes
 
+- **0.15**: works with the [Undo](../Undo) pack. Undo puts the lot back by loading it again, which
+  makes every object a new one; a drive, a commute or a hidden car under way finds its car again by
+  its number.
 - **0.14**: fixed Drive to Work not being offered. The pack read the time and the day from a copy the
   game only fills in when a lot is loaded, so it worked out the wrong time of day, and after one day at
   work could think the Sim had already been that day, every day. It now reads them from the lot's

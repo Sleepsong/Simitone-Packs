@@ -151,6 +151,11 @@ only code. The `business` command and the till's menu say how many there are.
 
 The terminal shows each sale, lost customer and restock in a line starting with `[business]`.
 
+With the [Undo](../Undo) pack (0.5): undo puts the lot back by loading it again, which makes every
+object a new one, so a shopper on the way to something finds it again by its number. Nothing in the
+books changes in build or buy mode, so there is nothing of them for Undo to keep: an object's price is
+its own, and comes back with it.
+
 ## How it works
 
 `Shop.cs` is the business and changes nothing in the engine. What is for sale is a field the engine

@@ -242,6 +242,14 @@ namespace FurnishedMoveIn
         }
 
         /// <summary>
+        /// The lot has been put back to an earlier moment (the Undo pack). Nothing of this pack's is kept for a lot being
+        /// played: the move is over once the lot has loaded. Here only to say so, so that undo can be used with the pack on.
+        /// </summary>
+        public void OnLotRestore(VM vm, byte[] data)
+        {
+        }
+
+        /// <summary>
         /// Take the furniture out of the lot, once the lot's objects are there to take.
         /// </summary>
         private static void TakeFurniture(VM vm, int tries)

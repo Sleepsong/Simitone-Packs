@@ -1083,6 +1083,23 @@ namespace OpenForBusiness
             For(vm).Fresh = true;
         }
 
+        /// <summary>
+        /// The lot has been put back to an earlier moment (the Undo pack, in build mode): every object on it is a new one
+        /// with the number it had. Shoppers on their way to something find it again by its number; one whose object is
+        /// not there gives up. The book is left as it is: nothing in build mode changes it, and prices are the objects'.
+        /// </summary>
+        public static void Restored(VM vm)
+        {
+            if (!Shops.TryGetValue(vm, out var shop)) return;
+            foreach (var shopper in shop.Shoppers.Values.ToList())
+            {
+                var old = shopper.Item?.BaseObject;
+                var found = (old == null) ? null : vm.GetObjectById(old.ObjectID);
+                if (found == null || found.Dead || found.Object.OBJ.GUID != old.Object.OBJ.GUID) shop.Shoppers.Remove(shopper.AvatarID);
+                else shopper.Item = found.MultitileGroup;
+            }
+        }
+
         /// <summary>The book to write beside a lot's save, or null if it has no business to speak of.</summary>
         public static byte[] ToSave(VM vm)
         {

@@ -524,6 +524,62 @@ namespace Driveways
         /// </summary>
         private static ConditionalWeakTable<VM, HashSet<VMMultitileGroup>> AllHiddenCars = new ConditionalWeakTable<VM, HashSet<VMMultitileGroup>>();
 
+        // ---- putting the lot back (the Undo pack) ----
+
+        /// <summary>The same object once the lot has been loaded again (VM.Load), found by its number: null if it is not there.</summary>
+        private static VMEntity Again(VM vm, VMEntity old)
+        {
+            if (old == null) return null;
+            var found = vm.GetObjectById(old.ObjectID);
+            return (found != null && !found.Dead && GUIDOf(found) == GUIDOf(old)) ? found : null;
+        }
+
+        private static VMMultitileGroup Again(VM vm, VMMultitileGroup old) => (old == null) ? null : Again(vm, old.BaseObject)?.MultitileGroup;
+
+        private static Carpool Again(VM vm, Carpool old)
+        {
+            if (old == null) return null;
+            var car = Again(vm, old.Car);
+            var tile = Again(vm, old.Tile);
+            return (car == null || tile == null) ? null : new Carpool { Car = car, Tile = tile, Interaction = old.Interaction };
+        }
+
+        /// <summary>
+        /// The lot has been put back to an earlier moment (the Undo pack, in build mode): every object on it is a new one
+        /// with the number it had. The trips, commutes and hidden cars under way find their cars again by number. One
+        /// whose car is not there is dropped, as when the car is sold; with the game paused in build mode, and the lot
+        /// put back to a moment of that same pause, that should not happen.
+        /// </summary>
+        public static void Restored(VM vm)
+        {
+            if (AllTrips.TryGetValue(vm, out var trips))
+            {
+                foreach (var id in trips.Keys.ToList())
+                {
+                    var trip = trips[id];
+                    trip.Car = Again(vm, trip.Car);
+                    trip.Carpool = Again(vm, trip.Carpool);
+                    if (trip.Car == null) trips.Remove(id);
+                }
+            }
+            if (AllCommutes.TryGetValue(vm, out var commutes))
+            {
+                foreach (var commute in commutes)
+                {
+                    commute.Car = Again(vm, commute.Car);
+                    commute.Carpool = Again(vm, commute.Carpool);
+                    if (commute.CarsWhenGone != null)
+                        commute.CarsWhenGone = new HashSet<VMMultitileGroup>(commute.CarsWhenGone.Select(x => Again(vm, x)).Where(x => x != null));
+                }
+            }
+            if (AllHiddenCars.TryGetValue(vm, out var hidden))
+            {
+                var again = hidden.Select(x => Again(vm, x)).Where(x => x != null).ToList();
+                hidden.Clear();
+                foreach (var car in again) HideCar(vm, car);
+            }
+        }
+
         private static void HideCar(VM vm, VMMultitileGroup car)
         {
             if (car == null) return;

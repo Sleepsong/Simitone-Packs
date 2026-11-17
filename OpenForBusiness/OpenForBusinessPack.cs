@@ -370,6 +370,15 @@ namespace OpenForBusiness
             Shop.Loaded(vm, LotPackData.Read(PackId, lotPath));
         }
 
+        /// <summary>
+        /// The lot has been put back to an earlier moment (the Undo pack): shoppers find what they were going to buy
+        /// again. Nothing is kept for it (OnLotSnapshot): build and buy mode change nothing in the book.
+        /// </summary>
+        public void OnLotRestore(VM vm, byte[] data)
+        {
+            Shop.Restored(vm);
+        }
+
         // ---- the "business" command ----
 
         private static bool ShowBusiness(string[] args)

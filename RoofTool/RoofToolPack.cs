@@ -188,6 +188,21 @@ namespace RoofTool
             if (saved != null) Loaded.Add(vm, saved);
         }
 
+        // putting the lot back (the Undo pack). the roofs belong to the lot's terrain, and after VM.Load that is a new
+        // one: the roofs kept go on it at the architecture's next tick, as when the lot loads from its file
+
+        public byte[] OnLotSnapshot(VM vm)
+        {
+            var arch = vm.Context?.Architecture;
+            return (arch?.Terrain == null) ? null : For(arch).Roofs.Save();
+        }
+
+        public void OnLotRestore(VM vm, byte[] data)
+        {
+            Loaded.Remove(vm);
+            if (data != null) Loaded.Add(vm, data);
+        }
+
         public static void BeforeArchitectureTick(VMArchitecture __instance)
         {
             var vm = __instance.Context?.VM;

@@ -80,6 +80,7 @@ namespace CreateAStyle
             {
                 if (UIStylePanel.Current != null && UIStylePanel.Current.IsFor(entity)) UIStylePanel.Close();
                 CreateAStylePack.SetStyle(vm, entity, null);
+                CreateAStylePack.SayChanged(vm, "Take the style off " + CreateAStylePack.NameOf(entity));
                 HITVM.Get().PlaySoundEvent(UISounds.BuildDragToolPlace);
             }
             else if (Modifiers.IsSet(UILotControlModifiers.SHIFT))
@@ -91,6 +92,7 @@ namespace CreateAStyle
                 }
                 if (UIStylePanel.Current != null && UIStylePanel.Current.IsFor(entity)) UIStylePanel.Close();
                 CreateAStylePack.SetStyle(vm, entity, LastStyle.Clone());
+                CreateAStylePack.SayChanged(vm, "Style " + CreateAStylePack.NameOf(entity));
                 HITVM.Get().PlaySoundEvent(UISounds.BuildDragToolPlace);
             }
             else

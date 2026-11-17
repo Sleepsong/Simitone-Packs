@@ -201,6 +201,33 @@ namespace Apartments
             Residency.Save(house, file);
         }
 
+        // ---- putting the lot back (the Undo pack) ----
+
+        /// <summary>The pack's file for the lot being played, as it would be written now: null if the lot is not shared.</summary>
+        public static byte[] Snapshot(VM vm) => FileOf(vm)?.ToBytes();
+
+        /// <summary>
+        /// The lot has been put back to an earlier moment (the Undo pack, in build mode): its apartments are put back as
+        /// they were then, or it is an ordinary house again if it was one, and who is where is looked at again. The
+        /// file is written with the lot's save, as it always is.
+        /// </summary>
+        public static void Restore(VM vm, byte[] data)
+        {
+            var file = (data == null) ? null : LotFile.Parse(data);
+            if (file == null || !file.Building)
+            {
+                if (IsShared(vm)) SetBuilding(vm, false);
+                return;
+            }
+            var house = HomeHouse(vm);
+            if (house == 0) return; //not a home being played or built: the pack has no business with it
+            var state = Lots.GetValue(vm, x => new LotState());
+            state.House = house;
+            state.File = file;
+            Reconcile(vm, "lot put back");
+            Relight(vm);
+        }
+
         /// <summary>
         /// Make the lot being played or built an apartment building (or an ordinary house again). Returns its file.
         /// </summary>
