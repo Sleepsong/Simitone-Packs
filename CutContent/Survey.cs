@@ -70,6 +70,7 @@ namespace CutContent
             ListedScripts.Clear();
             var report = new StringBuilder();
             report.AppendLine("Cut Content survey, version 8");
+            report.AppendLine(CutContentPack.Running);
             report.AppendLine();
             report.AppendLine("== What the pack has done ==");
             report.AppendLine("Ghost sting: " + GhostSting.Status);

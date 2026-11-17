@@ -51,8 +51,17 @@ namespace CutContent
     {
         public static void Log(string msg) => Console.WriteLine("[cut] " + msg);
 
+        /// <summary>The version this code is, kept the same as pack.json's.</summary>
+        public const string Build = "0.8.4";
+
+        /// <summary>Which version is running and from where, to tell an old copy of the pack from a new one.</summary>
+        public static string Running = "Cut Content " + Build;
+
         public void OnLoad(Pack pack)
         {
+            var listed = pack.Manifest?.Version;
+            Running = $"Cut Content {Build}" + (listed != null && listed != Build ? $" (but its pack.json says {listed})" : "") + $", loaded from {pack.Folder}";
+            Log(Running);
             Investments.PackId = pack.Id;
             OldSurvey.PackFolder = pack.Folder;
             var harmony = new Harmony("pack." + pack.Id);
@@ -177,6 +186,8 @@ namespace CutContent
         private static string StatusText()
         {
             var text = new StringBuilder();
+            text.AppendLine(Running);
+            text.AppendLine();
             text.AppendLine("Ghost sting: " + GhostSting.Status);
             text.AppendLine("Information Kiosk: " + Kiosk.Status);
             text.AppendLine();

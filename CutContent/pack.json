@@ -1,7 +1,7 @@
 {
   "id": "sample.cutcontent",
   "name": "Cut Content",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "author": "Simitone",
   "description": "Restores features Maxis left unfinished in The Sims and its expansions: hugging trees, locking doors, investment offers by telephone, hiring a limousine, the cleaning skill, selling a litter, children kissing toads and the unused ghost sting. Work in progress. Type cutcontent in the console to see what it found in your game.",
   "minSimitoneVersion": "0.8.22",

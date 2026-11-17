@@ -122,6 +122,7 @@ namespace CutContent
         {
             var report = new StringBuilder();
             report.AppendLine("Cut Content survey of an older copy");
+            report.AppendLine(CutContentPack.Running);
             var folder = Find(typed, out var explained);
             report.Append(explained);
             if (!explained.EndsWith("\n")) report.AppendLine();
