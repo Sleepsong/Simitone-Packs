@@ -118,6 +118,18 @@ Check("lot file: bad lines are skipped, good ones kept", bad.Played == 9 && bad.
 Check("lot file: a household named for two apartments lives in the first", bad.Find(6).Tenant == 4 && bad.Find(7).Vacant);
 Check("lot file: nothing reads as empty", LotFile.Parse(null).Played == 0 && !LotFile.Parse(null).Building);
 
+// ---- a copy of the lot (the Lots Bin) takes the building, not the households ----
+var exported = new ApartmentsPack().OnLotExport("House20.iff", lf.ToBytes());
+var copied = LotFile.Parse(exported);
+Check("copy: still a building, at the same rent", copied.Building && copied.Rate == 3);
+Check("copy: the same apartments, names, rooms and sizes", copied.Apartments.Count == 3 && copied.Find(2).Name == "The / Penthouse"
+    && copied.Find(1).Tiles.Count == 2 && copied.Find(1).Tiles[1].Equals(new Tile(2, 14, 12)) && copied.Find(1).Rooms == 2 && copied.Find(1).Area == 62);
+Check("copy: every apartment vacant, so all with rooms are to let", copied.Apartments.All(x => x.Vacant) && copied.ToLet.Count == 2);
+Check("copy: nobody played, nothing owed, no needs or bills", copied.Played == 0 && copied.Rent.Count == 0 && copied.Needs.Count == 0 && copied.BillNotes.Count == 0);
+Check("copy: the lot copied from is unchanged", lf.Find(1).Tenant == 4 && lf.Rent.Count == 1);
+Check("copy: an ordinary house carries nothing", new ApartmentsPack().OnLotExport("House21.iff", new LotFile() { Played = 4 }.ToBytes()) == null
+    && new ApartmentsPack().OnLotExport("House22.iff", null) == null);
+
 // ---- a building laid out with nobody in it, then filled from the neighbourhood screen ----
 var plan = new LotFile() { Building = true, Rate = 2 };
 var flat1 = plan.Add(); flat1.Tiles.Add(new Tile(1, 5, 5)); flat1.Rooms = 1; flat1.Area = 20;

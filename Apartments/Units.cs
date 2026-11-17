@@ -145,6 +145,28 @@ namespace Apartments
             foreach (var gone in Rent.Keys.Where(x => !keep.Contains(x)).ToList()) Rent.Remove(gone);
         }
 
+        /// <summary>
+        /// The building without its households, for a copy of the lot (the Lots Bin): whether it is a building, its rent
+        /// per tile, and its apartments with their names, rooms and sizes, all vacant. Not who is played, what anyone
+        /// owes, the needs Sims went home with, or the bills written on: those are the households', who stay behind.
+        /// </summary>
+        public LotFile ForCopy()
+        {
+            var copy = new LotFile() { Building = Building, Rate = Rate };
+            foreach (var apartment in Apartments)
+            {
+                copy.Apartments.Add(new Apartment()
+                {
+                    Id = apartment.Id,
+                    Name = apartment.Name,
+                    Tiles = new List<Tile>(apartment.Tiles),
+                    Rooms = apartment.Rooms,
+                    Area = apartment.Area,
+                });
+            }
+            return copy;
+        }
+
         private static string Clean(string name) => (name ?? "").Replace('|', '/').Replace('\n', ' ').Replace('\r', ' ').Trim();
 
         public byte[] ToBytes()

@@ -134,6 +134,26 @@ namespace Apartments
         }
 
         /// <summary>
+        /// A copy of the lot is being made, to be put down as another lot (the Lots Bin pack does this). The building
+        /// goes with it, its apartments vacant; the households, their rent and their needs stay behind (LotFile.ForCopy).
+        /// If that fails the copy is an ordinary house, rather than one with tenants who do not live there.
+        ///
+        /// (A Simitone without this call never makes it, and the pack runs as before: it is a method like any other, and
+        /// uses nothing from Simitone that its first pack builds lacked.)
+        /// </summary>
+        public byte[] OnLotExport(string lotPath, byte[] saved)
+        {
+            byte[] copy = null;
+            Guard("keeping the apartments with a copy of the lot", () =>
+            {
+                var file = LotFile.Parse(saved);
+                if (file.Building) copy = file.ForCopy().ToBytes();
+                AptLog.Write("A copy of " + lotPath + " was made: " + (copy == null ? "not a building." : "a building of " + file.Apartments.Count + " apartments, all vacant in the copy."));
+            });
+            return copy;
+        }
+
+        /// <summary>
         /// Nothing this pack does may take the game down with it. Whatever goes wrong is written to the log, in full,
         /// and the game carries on.
         /// </summary>

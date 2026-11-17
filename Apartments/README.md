@@ -320,6 +320,10 @@ change whenever a wall is built or knocked down. Whatever room the tile is in no
 The file also notes each apartment's size when the lot is saved: only a loaded lot knows its rooms,
 and the neighbourhood screen needs the sizes to offer the apartments.
 
+A copy of the lot made with the [Lots Bin](../LotsBin) pack takes the building with it: its
+apartments, their names and rooms, and the rent per tile, all vacant. Who lives there, who is played,
+what anyone owes and the needs Sims went home with stay behind.
+
 Without the pack, a shared house shows as lived in by one of its families. The others are untouched,
 but cannot be reached until the pack is on again.
 
