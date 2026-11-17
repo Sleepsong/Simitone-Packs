@@ -69,7 +69,7 @@ namespace CutContent
             Listed = 0;
             ListedScripts.Clear();
             var report = new StringBuilder();
-            report.AppendLine("Cut Content survey, version 8");
+            report.AppendLine("Cut Content survey, version 9");
             report.AppendLine(CutContentPack.Running);
             report.AppendLine();
             report.AppendLine("== What the pack has done ==");
@@ -104,6 +104,7 @@ namespace CutContent
             });
             Section(report, "Objects' skill flags (the skills buy mode says they build)", report2 =>
                 SkillLinks.Flags(report2, AllFiles().SelectMany(f => { List<OBJD> o = null; try { o = f.Item2.List<OBJD>(); } catch { } return (o ?? new List<OBJD>()).Select(x => (f.Item1, x)); })));
+            Section(report, "Person data slots a restored skill could be kept in", FreeSlots);
             Section(report, "Sounds", Sounds);
             return report.ToString();
         }
@@ -215,6 +216,63 @@ namespace CutContent
             }
             report.AppendLine("Totals: " + string.Join(", ", CutSkills.Select(x => $"{x.name} {(counts.TryGetValue(x.index, out var c) ? c : 0)}")) +
                 $". Steps that pick person data by a temp, which may be any of them: {byTemp}.");
+        }
+
+        /// <summary>Slots the engine itself answers or writes, whatever scripts do with them.</summary>
+        private static readonly Dictionary<int, string> EngineSlots = new Dictionary<int, string>
+        {
+            { 21, "the engine answers it with a housemate permission level" },
+            { 26, "the engine sets it whenever a Sim has a speech balloon" },
+            { 54, "the engine uses it for direct control" },
+        };
+
+        /// <summary>
+        /// Hot Date took gardening's, music's and literacy's old slots (13, 14, 16) for interests, so a restored skill needs a
+        /// slot of its own. A Sim's record in the neighbourhood keeps slots 0 to 87, so it must be one of those, and one that no
+        /// script in any installed pack reads or sets. This counts every step that reads or sets each, and lists the free ones.
+        /// </summary>
+        private static void FreeSlots(StringBuilder report)
+        {
+            var scopes = new Dictionary<int, string> { { 18, "my" }, { 19, "stack object's" }, { 32, "neighbour's" } };
+            var uses = new Dictionary<int, List<string>>();
+            int byTemp = 0, scriptsRead = 0;
+            foreach (var (fileName, res) in AllFiles())
+            {
+                List<BHAV> scripts = null;
+                try { scripts = res.List<BHAV>(); } catch { }
+                if (scripts == null) continue;
+                foreach (var script in scripts)
+                {
+                    scriptsRead++;
+                    for (int i = 0; i < script.Instructions.Length; i++)
+                    {
+                        var inst = script.Instructions[i];
+                        if (inst.Opcode != 2 || inst.Operand == null || inst.Operand.Length < 8) continue;
+                        var e = new FSO.SimAntics.Engine.Primitives.VMExpressionOperand();
+                        try { e.Read(inst.Operand); } catch { continue; }
+                        if ((int)e.LhsOwner == 30 || (int)e.LhsOwner == 31 || (int)e.RhsOwner == 30 || (int)e.RhsOwner == 31) byTemp++;
+                        foreach (var (owner, data, left) in new[] { ((int)e.LhsOwner, (int)e.LhsData, true), ((int)e.RhsOwner, (int)e.RhsData, false) })
+                        {
+                            if (!scopes.ContainsKey(owner) || data < 0 || data > 87) continue;
+                            if (!uses.TryGetValue(data, out var list)) uses[data] = list = new List<string>();
+                            var sets = left && e.Operator != FSO.SimAntics.Engine.Primitives.VMExpressionOperator.GreaterThan && e.Operator != FSO.SimAntics.Engine.Primitives.VMExpressionOperator.LessThan
+                                && e.Operator != FSO.SimAntics.Engine.Primitives.VMExpressionOperator.Equals && e.Operator != FSO.SimAntics.Engine.Primitives.VMExpressionOperator.IsFlagSet
+                                && e.Operator != FSO.SimAntics.Engine.Primitives.VMExpressionOperator.GreaterThanOrEqualTo && e.Operator != FSO.SimAntics.Engine.Primitives.VMExpressionOperator.LessThanOrEqualTo
+                                && e.Operator != FSO.SimAntics.Engine.Primitives.VMExpressionOperator.NotEqualTo;
+                            list.Add($"{fileName} {script.ChunkID} \"{Clean(script.ChunkLabel)}\" step {i} ({scopes[owner]}, {(sets ? "sets" : "reads")})");
+                        }
+                    }
+                }
+            }
+            report.AppendLine($"{scriptsRead} scripts read. Steps that pick a slot by a temp, which could be any slot: {byTemp}.");
+            var free = Enumerable.Range(0, 88).Where(x => !uses.ContainsKey(x)).ToList();
+            report.AppendLine("Slots 0-87 no step reads or sets: " + (free.Count == 0 ? "none" : string.Join(", ", free.Select(x => EngineSlots.ContainsKey(x) ? $"{x} (but {EngineSlots[x]})" : x.ToString()))));
+            report.AppendLine();
+            report.AppendLine("Slots used by 6 steps or fewer, and where:");
+            foreach (var slot in uses.Where(x => x.Value.Count <= 6).OrderBy(x => x.Key))
+                report.AppendLine($"  {slot.Key}{(EngineSlots.TryGetValue(slot.Key, out var note) ? $" ({note})" : "")}: {string.Join("; ", slot.Value)}");
+            report.AppendLine();
+            report.AppendLine("Every slot's count: " + string.Join(", ", Enumerable.Range(0, 88).Select(x => $"{x}:{(uses.TryGetValue(x, out var l) ? l.Count : 0)}")));
         }
 
         /// <summary>Every object file, its shared script file and the global file, once each.</summary>
