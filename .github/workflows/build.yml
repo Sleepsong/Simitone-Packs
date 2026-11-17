@@ -92,6 +92,15 @@ jobs:
     - name: Test Life Stages' patches and rules
       run: dotnet run --project LifeStages/tests -c Release
 
+    - name: Build Memories
+      run: dotnet build Memories/Memories.csproj -c Release
+
+    - name: Test Memories' patches and rules
+      run: dotnet run --project Memories/tests -c Release
+
+    - name: Test that other packs can use Memories
+      run: dotnet run --project Memories/tests/crosspack -c Release
+
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
 
@@ -191,6 +200,13 @@ jobs:
       with:
         name: LifeStages
         path: LifeStages/pack/
+        if-no-files-found: error
+
+    - name: Upload Memories
+      uses: actions/upload-artifact@v4
+      with:
+        name: Memories
+        path: Memories/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube

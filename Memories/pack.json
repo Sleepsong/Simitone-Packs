@@ -1,0 +1,9 @@
+{
+  "id": "sample.memories",
+  "name": "Memories",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "A timeline for each Sim, after The Sims 2: first kiss, wedding, a new job and promotions, babies, birthdays, the death of a relative, fires and burglaries. In a lot: Options > Memories, or F7. Under it is a layer that watches play for these events, for other packs to build on. A first stage, not yet run in the game.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "Memories.dll"
+}

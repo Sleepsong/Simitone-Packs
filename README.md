@@ -28,6 +28,7 @@ These packs need a build of Simitone with add-on pack support, which at the mome
 | [Family Tree](FamilyTree) | Code, patches the engine | The Sims 2's family tree. In Create a Family, drag one Sim's portrait onto another to say who is married to whom and whose child is whose, as in The Sims 2, and the family starts out getting on as family does. In a lot, a Sim's tree drawn as The Sims 2 draws it, portraits joined by lines (Options > Family Tree, or F8), and what each Sim is to yours in the relationship panel. After that the tree changes only as the family does: babies are given their parents, and a proposal is a marriage. Kept for each neighbourhood, in the pack's own file. The tree has been played; the drag-and-drop window is new and not yet tried in the game. |
 | [Driveways](Driveways) | Content and code, patches the engine | A driveway that joins your garden to the road, and six of the game's own cars to park on it and take for a drive or to work, as in The Sims 2 Nightlife. In buy mode under Decorative > Other. A first stage. |
 | [Life Stages](LifeStages) | Code, patches the engine | Ageing, after The Sims 2: the Sims you play grow from child to teen to adult to elder as the days pass, a day at each midnight on their own lot. A teen is a large child, an elder chooses a head from those you list as elders' (`looks.json`, which lists elders' clothes too), and nobody dies of old age yet. A Sim's age, with a Sims 2 style bar of life stages and the days left, is in the Personality panel, and Create a Sim makes Sims of all four ages. A first stage, not yet run in the game: back up your saves first. |
+| [Memories](Memories) | Code, patches the engine | The Sims 2's memories: a timeline for each Sim of their first kiss, wedding, new jobs and promotions, babies, birthdays, a relative's death, fires and burglaries (Options > Memories, or F7). Under it is a layer that watches play for life events, which other packs can build on: Wants and Fears is meant to be next. Works alongside Family Tree and Life Stages, and needs neither. A first stage, not yet run in the game. |
 | [Test Cube](TestCube) | Content | One object, a plain grey cube with no behaviour, under Decorative > Other. For checking that content packs load. |
 
 ## Installing a pack
@@ -64,6 +65,7 @@ dotnet build Apartments/Apartments.csproj -c Release
 dotnet build Driveways/Driveways.csproj -c Release
 dotnet build FamilyTree/FamilyTree.csproj -c Release
 dotnet build LifeStages/LifeStages.csproj -c Release
+dotnet build Memories/Memories.csproj -c Release
 ```
 
 Each build leaves the finished pack in the project's `pack/` folder, for example
@@ -90,8 +92,8 @@ dotnet run --project Driveways/generator -- Driveways/pack/driveways/content/Dow
 packs here are meant to be copied from: Test Cube for content, Build Cheats for code that uses
 Simitone's own hooks, Half Walls for code that patches the engine with Harmony, Terrain Paint for
 a larger feature with its own build tool, drawing and saved data, Roof Tool for one that takes
-over part of what the engine does, and Driveways for objects whose scripts call a primitive the pack
-adds.
+over part of what the engine does, Driveways for objects whose scripts call a primitive the pack
+adds, and Memories for a pack whose code other packs use.
 
 ## License
 

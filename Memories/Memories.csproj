@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>Memories</AssemblyName>
+    <RootNamespace>Memories</RootNamespace>
+    <DebugType>none</DebugType>
+    <!-- the tests are a project of their own, in a folder under this one -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**;pack/**</DefaultItemExcludes>
+    <!-- other packs build on this one's public types (see README): keep their documentation with them -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- compile against Simitone. the pack must not ship Simitone's files: the game shares its own with it -->
+    <ProjectReference Include="$(SimitonePath)\Client\Simitone\Simitone.Client\Simitone.Client.csproj" Private="false" />
+  </ItemGroup>
+
+  <!-- after building, put just the pack's own files in pack/memories/, ready to copy into Simitone's Packs folder -->
+  <Target Name="MakePackFolder" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath);pack.json" DestinationFolder="$(MSBuildProjectDirectory)\pack\memories" />
+  </Target>
+
+</Project>

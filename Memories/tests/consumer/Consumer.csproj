@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- A stand-in for a pack that builds on Memories (Wants, one day): it hears the life events.
+       It refers to Memories without shipping it (Private="false"), as such a pack must. -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>MemoriesConsumer</AssemblyName>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="$(SimitonePath)\Client\Simitone\Simitone.Client\Simitone.Client.csproj" Private="false" />
+    <ProjectReference Include="..\..\Memories.csproj" Private="false" />
+  </ItemGroup>
+
+</Project>
