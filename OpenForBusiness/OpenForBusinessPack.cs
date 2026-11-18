@@ -8,10 +8,9 @@ using FSO.Client;
 using FSO.Client.UI.Controls;
 using FSO.Client.UI.Framework;
 using FSO.Client.UI.Model;
-using FSO.Common;
+using FSO.Common.Rendering.Framework.Model;
 using FSO.Common.Utils;
 using FSO.Content;
-using FSO.Common.Rendering.Framework.Model;
 using FSO.HIT;
 using FSO.SimAntics;
 using FSO.SimAntics.NetPlay.Model.Commands;
@@ -22,31 +21,31 @@ using Simitone.Client.UI.Panels;
 using Simitone.Client.UI.Screens;
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 
 namespace OpenForBusiness
 {
     /// <summary>
-    /// A home business, after The Sims 2: Open for Business.
-    ///   Stage 1: objects in the family's home can be put up for sale at a price the player chooses, and visiting
-    ///            Sims buy them.
-    ///   Stage 2: what sells can be restocked, and an object can be made the till, where customers pay one of the
-    ///            family instead of leaving the money.
+    /// A business, after The Sims 2: Open for Business.
+    ///   Stage 1: objects in the family's home can be put up for sale, and visiting Sims buy them.
+    ///   Stage 2: what sells can be restocked, and an object can be made the till.
     ///   Stage 3: the family can buy a lot it is visiting and run the same business there.
-    ///   Stage 4: visitors can be hired to tend the till; customers come to like or dislike the business, which
-    ///            gives it a rank, and each rank a perk.
+    ///   Stage 4: visitors can be hired; customers come to like or dislike the business, which gives it a rank.
+    ///   0.5:     Open for Business's own rules: its rank table and five perk trees, talent badges, sales pitches,
+    ///            employee jobs and asking wages, restocking as work, open and closed, and price presets.
     ///
-    /// The business itself is in Shop.cs and touches nothing in the engine. This file is where it meets the game:
+    /// The business itself is in Shop.cs, with its rules in Reputation.cs, Badges.cs and Sales.cs and its saved book
+    /// in Book.cs; none of it touches the engine. This file is where it meets the game:
     ///
     ///  1. A pie menu has been built: add the business's entries to it.
     ///  2. An interaction is asked for: if it is one of those, it is this pack's to carry out.
-    ///  3. The lot ticks: visitors look at what is for sale, walk over and buy.
-    ///  4. The lot screen updates: hovering over something for sale, or the till, says so.
-    ///  5. Saving: the business's book is this pack's own data for the lot.
+    ///  3. The lot ticks: the business runs.
+    ///  4. The lot screen updates: pointing at something for sale, the till or a Sim says what the business knows.
+    ///  5. Saving: the business's book is this pack's own data for the lot, and the badges its data for the neighbourhood.
     ///
-    /// Also the "business" console command, which shows the book, restocks, forgets the empty shelves, buys and
-    /// sells a business lot, and chooses perks.
+    /// Also the "business" console command: the ledger, perks, staff, badges, and buying and selling a business lot.
     /// </summary>
     public class OpenForBusinessPack : ISimitonePack
     {
@@ -57,7 +56,15 @@ namespace OpenForBusiness
         /// one no object has (a tree table would need 255 interactions), with a parameter that says which they are.
         /// </summary>
         private const byte MenuID = 254;
-        private const short ParamPrice = 0x4F42, ParamStop = 0x4F43, ParamTill = 0x4F44, ParamTillOff = 0x4F45, ParamTend = 0x4F46, ParamRestock = 0x4F47, ParamHire = 0x4F48, ParamDismiss = 0x4F49;
+        private const short ParamPrice = 0x4F42, ParamStop = 0x4F43, ParamTill = 0x4F44, ParamTillOff = 0x4F45, ParamTend = 0x4F46,
+            ParamRestock = 0x4F47, ParamHire = 0x4F48, ParamDismiss = 0x4F49, ParamHireRestocker = 0x4F4A, ParamHireSales = 0x4F4B,
+            ParamJob = 0x4F4C, //+ Job: 0x4F4C to 0x4F4E
+            ParamRaise = 0x4F4F, ParamCut = 0x4F50, ParamPayAsked = 0x4F51,
+            ParamPerkUp = 0x4F52, ParamSpeech = 0x4F53, ParamRally = 0x4F54, ParamMark = 0x4F55,
+            ParamOpen = 0x4F56, ParamClose = 0x4F57,
+            ParamPitch = 0x4F58, //+ Pitch: 0x4F58 to 0x4F5C
+            ParamPreset = 0x4F60, //+ preset: 0x4F60 to 0x4F64
+            ParamLast = 0x4F6F;
 
         private static string PackId;
 
@@ -76,10 +83,14 @@ namespace OpenForBusiness
             }
             Shop.OnSale = Sold;
             Shop.OnLost = Lost;
-            Shop.OnRankUp = RankUp;
+            Shop.OnRankChange = RankChanged;
+            Shop.OnBadge = BadgeEarned;
+            Shop.OnPitch = Pitched;
+            Shop.OnStaff = StaffNews;
             Shop.VisitingFamily = VisitingFamily;
             Shop.SaveVisitedBook = SaveVisitedBook;
-            PackManager.RegisterCommand("business", ShowBusiness);
+            Shop.SaveBadges = SaveBadges;
+            PackManager.RegisterCommand("business", Command);
         }
 
         private static HarmonyMethod Mine(string name) => new HarmonyMethod(typeof(OpenForBusinessPack), name);
@@ -123,18 +134,83 @@ namespace OpenForBusiness
             if (!string.IsNullOrEmpty(path)) LotPackData.Write(PackId, path, data);
         }
 
+        // ---- badges: one file for each neighbourhood, kept as this pack's data for its Neighborhood.iff ----
+
+        private static string BadgesPath;
+
+        private static string NeighbourhoodPath()
+        {
+            var userPath = Content.Get().Neighborhood?.UserPath;
+            return string.IsNullOrEmpty(userPath) ? null : Path.Combine(userPath, "Neighborhood.iff");
+        }
+
+        private static void LoadBadges()
+        {
+            var path = NeighbourhoodPath();
+            if (path == null || path == BadgesPath) return;
+            if (BadgesPath != null && Shop.Badges.Dirty) SaveBadges();
+            BadgesPath = path;
+            Shop.Badges = BadgeBook.Load(LotPackData.Read(PackId, path));
+        }
+
+        private static void SaveBadges()
+        {
+            if (BadgesPath == null) return;
+            LotPackData.Write(PackId, BadgesPath, (Shop.Badges.Count == 0) ? null : Shop.Badges.Save());
+            Shop.Badges.Dirty = false;
+        }
+
         // ---- 1. the menu ----
 
         public static void AfterPieMenu(VMEntity __instance, VM vm, VMEntity caller, List<VMPieMenuInteraction> __result)
         {
             if (__result == null || !Shop.IsShop(vm) || !Shop.InFamily(vm, caller)) return;
-            void Add(string name, short param) => __result.Add(new VMPieMenuInteraction() { Name = name, ID = MenuID, Param0 = param, Callee = __instance });
+            void Add(string name, int param) => __result.Add(new VMPieMenuInteraction() { Name = name, ID = MenuID, Param0 = (short)param, Callee = __instance });
+            var book = Shop.BookOf(vm);
+            var actor = caller as VMAvatar;
 
             if (__instance is VMAvatar sim)
             {
-                //a visiting Sim can be hired, and an employee let go
-                if (Shop.IsEmployee(vm, sim)) Add("Business/Dismiss", ParamDismiss);
-                else if (Shop.IsCustomer(vm, sim)) Add("Business/Hire (" + Money(Shop.Wage) + " an hour)", ParamHire);
+                if (sim == caller)
+                {
+                    //the Sim's own menu: the business as a whole
+                    Add(book.Closed ? "Business/Open for Business" : "Business/Close for Business", book.Closed ? ParamOpen : ParamClose);
+                    if (book.Shelves.Count > 0) Add($"Business/Restock ({book.Shelves.Count} sold out)", ParamRestock);
+                    if (book.Has(PerkTree.Perception, 3)) Add("Business/Look for Mark", ParamMark);
+                    if (book.Has(PerkTree.Motivation, 5)) Add("Business/Rally Forth!", ParamRally);
+                    return;
+                }
+                var employee = Shop.EmployeeOf(vm, sim);
+                if (employee != null)
+                {
+                    foreach (Job job in Enum.GetValues(typeof(Job)))
+                        if (job != employee.Job) Add("Business/Job/Make " + Shop.JobName(job), ParamJob + (int)job);
+                    var asks = Shop.AskingWage(vm, sim);
+                    if (employee.Wage < asks) Add($"Business/Pay/Pay What They Ask ({Money(asks)} an hour)", ParamPayAsked);
+                    Add($"Business/Pay/Raise ({Money(employee.Wage)} to {Money(employee.Wage + Reputation.WageStep)})", ParamRaise);
+                    if (employee.Wage > 0) Add($"Business/Pay/Cut ({Money(employee.Wage)} to {Money(Math.Max(0, employee.Wage - Reputation.WageStep))})", ParamCut);
+                    Add("Business/Dismiss", ParamDismiss);
+                    if (book.Has(PerkTree.Motivation, 2)) Add("Business/Perk Up", ParamPerkUp);
+                    if (book.Has(PerkTree.Motivation, 3)) Add("Business/Motivational Speech", ParamSpeech);
+                }
+                else if (Shop.InFamily(vm, sim))
+                {
+                    if (book.Has(PerkTree.Motivation, 2)) Add("Business/Perk Up", ParamPerkUp);
+                    if (book.Has(PerkTree.Motivation, 3)) Add("Business/Motivational Speech", ParamSpeech);
+                }
+                else if (Shop.IsCustomer(vm, sim))
+                {
+                    if (!Shop.IsBuying(vm, sim))
+                    {
+                        foreach (Pitch pitch in Enum.GetValues(typeof(Pitch)))
+                            if (Shop.CanPitch(vm, actor, pitch)) Add("Sales/" + Sales.Name(pitch), ParamPitch + (int)pitch);
+                    }
+                    var wage = Shop.AskingWage(vm, sim);
+                    Add($"Business/Hire/As Cashier ({Money(wage)} an hour)", ParamHire);
+                    Add($"Business/Hire/As Restocker ({Money(wage)} an hour)", ParamHireRestocker);
+                    Add($"Business/Hire/As Salesperson ({Money(wage)} an hour)", ParamHireSales);
+                    if (book.Has(PerkTree.Motivation, 2)) Add("Business/Perk Up", ParamPerkUp);
+                }
                 return;
             }
             if (!(__instance is VMGameObject)) return;
@@ -144,28 +220,30 @@ namespace OpenForBusiness
                 Add("Till/Tend", ParamTend);
                 var cost = Shop.RestockCost(vm);
                 if (cost > 0) Add("Till/Restock (" + Money(cost) + ")", ParamRestock);
+                Add(book.Closed ? "Till/Open for Business" : "Till/Close for Business", book.Closed ? ParamOpen : ParamClose);
                 Add("Till/Stop Using as Till", ParamTillOff);
                 return;
             }
-            if (Shop.CatalogItem(__instance) == null) return;
-            if (Shop.IsForSale(__instance))
+            var catalog = Shop.CatalogItem(__instance);
+            if (catalog == null) return;
+            var catalogPrice = (int)catalog.Value.Price;
+            var current = Shop.IsForSale(__instance) ? __instance.MultitileGroup.SalePrice : -1;
+            var under = (current > 0) ? "For Sale (" + Money(current) + ")/Change Price/" : "Business/Sell/";
+            for (int i = 0; i < Shop.PricePresets.Length; i++)
             {
-                var under = "For Sale (" + Money(__instance.MultitileGroup.SalePrice) + ")/";
-                Add(under + "Change Price...", ParamPrice);
-                Add(under + "Take Off Sale", ParamStop);
+                var price = (int)Math.Max(1, (long)catalogPrice * Shop.PricePresets[i].Percent / 100);
+                if (price != current) Add(under + Shop.PricePresets[i].Name + " (" + Money(price) + ")", ParamPreset + i);
             }
-            else
-            {
-                Add("Business/Sell...", ParamPrice);
-                Add("Business/Use as Till", ParamTill);
-            }
+            Add(under + "Custom Price...", ParamPrice);
+            if (current > 0) Add("For Sale (" + Money(current) + ")/Take Off Sale", ParamStop);
+            else Add("Business/Use as Till", ParamTill);
         }
 
         // ---- 2. choosing from it. the engine would look the number up in the object's own interactions and find nothing ----
 
         private static bool IsMine(VMNetInteractionCmd cmd)
         {
-            return cmd.Interaction == MenuID && !cmd.Global && cmd.Param0 >= ParamPrice && cmd.Param0 <= ParamDismiss;
+            return cmd.Interaction == MenuID && !cmd.Global && cmd.Param0 >= ParamPrice && cmd.Param0 <= ParamLast;
         }
 
         public static bool BeforeVerify(VMNetInteractionCmd __instance, VM vm, ref bool __result)
@@ -181,8 +259,26 @@ namespace OpenForBusiness
             __result = false;
             var obj = vm.GetObjectById(__instance.CalleeID);
             if (obj == null || !Shop.IsShop(vm)) return false;
+            var actor = caller ?? vm.GetObjectById(__instance.CallerID) as VMAvatar;
+            var sim = obj as VMAvatar;
             var isTill = Shop.IsTill(vm, obj);
-            switch (__instance.Param0)
+            var param = __instance.Param0;
+            string problem = null, hint = null;
+
+            if (param >= ParamPreset && param < ParamPreset + Shop.PricePresets.Length)
+            {
+                if (isTill) return false;
+                problem = Shop.SetPricePercent(vm, obj, Shop.PricePresets[param - ParamPreset].Percent);
+            }
+            else if (param >= ParamPitch && param <= ParamPitch + (int)Pitch.Manipulate)
+            {
+                problem = Shop.StartPitch(vm, actor, sim, (Pitch)(param - ParamPitch));
+            }
+            else if (param >= ParamJob && param <= ParamJob + (int)Job.Salesperson)
+            {
+                Shop.SetJob(vm, sim, (Job)(param - ParamJob));
+            }
+            else switch (param)
             {
                 case ParamPrice:
                     if (isTill || Shop.CatalogItem(obj) == null) return false;
@@ -192,7 +288,8 @@ namespace OpenForBusiness
                     Shop.TakeOffSale(vm, obj);
                     break;
                 case ParamTill:
-                    if (Shop.CatalogItem(obj) == null || Shop.SetTill(vm, obj) != null) return false;
+                    if (Shop.CatalogItem(obj) == null) return false;
+                    problem = Shop.SetTill(vm, obj);
                     break;
                 case ParamTillOff:
                     if (!isTill) return false;
@@ -200,25 +297,68 @@ namespace OpenForBusiness
                     break;
                 case ParamTend:
                     if (!isTill) return false;
-                    Shop.Tend(vm, caller ?? vm.GetObjectById(__instance.CallerID) as VMAvatar);
+                    Shop.Tend(vm, actor);
                     break;
                 case ParamRestock:
-                    if (!isTill) return false;
-                    Restock(vm);
+                    problem = Shop.StartRestock(vm, actor);
+                    break;
+                case ParamOpen:
+                case ParamClose:
+                    Shop.SetOpen(vm, param == ParamOpen);
+                    GameThread.NextUpdate(x => { if (Playing(vm)) HITVM.Get().PlaySoundEvent(UISounds.Click); });
                     break;
                 case ParamHire:
+                case ParamHireRestocker:
+                case ParamHireSales:
                     {
-                        var problem = Shop.Hire(vm, obj as VMAvatar);
-                        if (problem != null) GameThread.NextUpdate(x => { if (Playing(vm)) Tell(problem); });
-                        else if (Shop.Till(vm) == null) GameThread.NextUpdate(x => { if (Playing(vm)) Tell("Hired. An employee tends the till, and this business has none yet: choose Business, Use as Till on an object. Wages are only paid while there is a till."); });
+                        var job = (param == ParamHire) ? Job.Cashier : (param == ParamHireRestocker) ? Job.Restocker : Job.Salesperson;
+                        problem = Shop.Hire(vm, sim, job);
+                        if (problem == null && job == Job.Cashier && Shop.Till(vm) == null)
+                            hint = "Hired. A cashier works the till, and this business has none yet: choose Business, Use as Till on an object.";
                         break;
                     }
                 case ParamDismiss:
-                    Shop.Dismiss(vm, obj as VMAvatar);
+                    Shop.Dismiss(vm, sim);
                     break;
+                case ParamRaise:
+                    Shop.ChangeWage(vm, sim, Reputation.WageStep);
+                    break;
+                case ParamCut:
+                    Shop.ChangeWage(vm, sim, -Reputation.WageStep);
+                    break;
+                case ParamPayAsked:
+                    if (sim != null && Shop.EmployeeOf(vm, sim) != null) Shop.ChangeWage(vm, sim, Shop.AskingWage(vm, sim) - Shop.EmployeeOf(vm, sim).Wage);
+                    break;
+                case ParamPerkUp:
+                    problem = Shop.PerkUp(vm, actor, sim);
+                    break;
+                case ParamSpeech:
+                    problem = Shop.Speech(vm, actor, sim);
+                    break;
+                case ParamRally:
+                    problem = Shop.Rally(vm, actor);
+                    break;
+                case ParamMark:
+                    problem = Shop.LookForMark(vm, actor);
+                    break;
+                default:
+                    return false;
             }
+            if (problem != null) Later(vm, problem, true);
+            else if (hint != null) Later(vm, hint, false);
             __result = true;
             return false;
+        }
+
+        /// <summary>A message for the player, after this tick, if they are still playing this lot.</summary>
+        private static void Later(VM vm, string message, bool error)
+        {
+            GameThread.NextUpdate(x =>
+            {
+                if (!Playing(vm)) return;
+                if (error) HITVM.Get().PlaySoundEvent(UISounds.Error);
+                Tell(message);
+            });
         }
 
         private static void Restock(VM vm)
@@ -296,41 +436,82 @@ namespace OpenForBusiness
             return (GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm == vm;
         }
 
-        private static void Sold(VM vm, string item, string buyer, int price)
+        private static void Sound(VM vm, string sound)
         {
             GameThread.NextUpdate(x =>
             {
-                if (Playing(vm)) HITVM.Get().PlaySoundEvent(UISounds.BuyPlace); //ca-ching
+                if (Playing(vm)) HITVM.Get().PlaySoundEvent(sound);
             });
         }
 
-        private static void Lost(VM vm, string customer)
+        private static void Sold(VM vm, string item, string buyer, int price) => Sound(vm, UISounds.BuyPlace); //ca-ching
+
+        private static void Lost(VM vm, string customer) => Sound(vm, UISounds.Error);
+
+        private static void Pitched(VM vm, Pitch pitch, bool worked, int meter, bool buying)
         {
-            GameThread.NextUpdate(x =>
-            {
-                if (Playing(vm)) HITVM.Get().PlaySoundEvent(UISounds.Error);
-            });
+            Sound(vm, buying ? UISounds.BuyPlace : worked ? UISounds.PieMenuSelect : UISounds.Error);
         }
 
-        private static void RankUp(VM vm, int rank)
+        private static void StaffNews(VM vm, string news) => Later(vm, news, true);
+
+        private static void BadgeEarned(VM vm, string sim, Talent talent, BadgeLevel level, bool family)
         {
+            var message = $"{sim} has earned a {level} badge in {talent}.";
+            if (talent == Talent.Sales && level > BadgeLevel.None) message += $"\n\nThey can now use {Sales.Name((Pitch)(int)level)} on customers.";
+            if (!family) message += "\n\nEmployees ask for more pay with each badge. Pay them what they ask, or they will quit.";
             GameThread.NextUpdate(x =>
             {
                 if (!Playing(vm)) return;
                 HITVM.Get().PlaySoundEvent(UISounds.BuyPlace);
-                Tell($"The business has reached rank {rank} of {Reputation.MaxRank}.\n\nEach rank brings a perk. In the console, \"business perks\" lists them.");
+                Tell(message);
             });
         }
 
-        // ---- 4. the engine has decided what the tooltip is. if it left it empty over something for sale, show the price ----
+        private static void RankChanged(VM vm, int rank, bool newHigh)
+        {
+            var book = Shop.BookOf(vm);
+            string message;
+            if (newHigh)
+            {
+                message = $"The business has risen to rank {rank}: {Reputation.RankName(rank)}.";
+                if (book.PerkPoints > 0) message += $"\n\nIt has {book.PerkPoints} perk point{(book.PerkPoints == 1 ? "" : "s")} to spend. Spend them before the rank falls, or they wait until it rises again. In the console: business perks";
+            }
+            else if (rank < book.HighestRank) message = $"The business has fallen to rank {rank}: {Reputation.RankName(rank)}. Fair prices, good service and a tended till win customers back.";
+            else message = $"The business is back to rank {rank}: {Reputation.RankName(rank)}.";
+            GameThread.NextUpdate(x =>
+            {
+                if (!Playing(vm)) return;
+                HITVM.Get().PlaySoundEvent(newHigh ? UISounds.BuyPlace : UISounds.Error);
+                Tell(message);
+            });
+        }
+
+        // ---- 4. the engine has decided what the tooltip is. add what the business knows ----
+
+        /// <summary>What was last added to a Sim's tooltip, to take off again before adding the next: the engine sets it only when the mouse moves.</summary>
+        private static string LastNote;
 
         public static void AfterLotControlUpdate(UILotControl __instance, UpdateState state)
         {
             var vm = __instance.vm;
             if (state?.UIState == null || vm == null || !vm.Ready || __instance.ObjectHover <= 0) return;
-            if (PieMenuOf(__instance) != null || state.UIState.TooltipProperties.Show) return;
+            if (PieMenuOf(__instance) != null || !Shop.IsShop(vm)) return;
             var obj = vm.GetObjectById(__instance.ObjectHover);
-            if (obj == null || !Shop.IsShop(vm)) return;
+            if (obj == null) return;
+
+            if (obj is VMAvatar sim)
+            {
+                var props = state.UIState.TooltipProperties;
+                if (!props.Show || state.UIState.Tooltip == null) return;
+                var tip = state.UIState.Tooltip;
+                if (LastNote != null && tip.EndsWith(LastNote)) tip = tip.Substring(0, tip.Length - LastNote.Length);
+                var note = SimNote(vm, sim);
+                LastNote = string.IsNullOrEmpty(note) ? null : "\n" + note;
+                state.UIState.Tooltip = tip + (LastNote ?? "");
+                return;
+            }
+            if (state.UIState.TooltipProperties.Show) return;
 
             string text;
             if (Shop.IsForSale(obj))
@@ -342,7 +523,7 @@ namespace OpenForBusiness
             else if (Shop.IsTill(vm, obj))
             {
                 var waiting = Shop.For(vm).Shoppers.Count;
-                text = "The till";
+                text = Shop.IsOpen(vm) ? "The till" : "The till (closed)";
                 if (waiting > 0) text += ": " + waiting + ((waiting == 1) ? " customer" : " customers");
             }
             else return;
@@ -354,6 +535,60 @@ namespace OpenForBusiness
             state.UIState.Tooltip = text;
         }
 
+        private static string Badges(VM vm, VMAvatar sim)
+        {
+            var held = new List<string>();
+            foreach (Talent talent in Enum.GetValues(typeof(Talent)))
+            {
+                var level = Shop.BadgeOf(vm, sim, talent);
+                if (level > BadgeLevel.None) held.Add(talent + " " + level);
+            }
+            var text = string.Join(", ", held);
+            if (Shop.Badges.IsBoosted(Shop.SimNumber(sim), Shop.GameHour(vm))) text += " (inspired)";
+            return text;
+        }
+
+        /// <summary>What the business knows about a Sim, for their tooltip.</summary>
+        private static string SimNote(VM vm, VMAvatar sim)
+        {
+            var book = Shop.BookOf(vm);
+            var employee = Shop.EmployeeOf(vm, sim);
+            if (employee != null)
+            {
+                var asks = Shop.AskingWage(vm, sim);
+                var text = $"{Shop.JobName(employee.Job)}, {Money(employee.Wage)} an hour";
+                if (employee.Wage < asks) text += $" (asks {Money(asks)})";
+                var badges = Badges(vm, sim);
+                return (badges == "") ? text : text + "\n" + badges;
+            }
+            if (Shop.InFamily(vm, sim)) return Badges(vm, sim);
+            if (!Shop.IsCustomer(vm, sim)) return null;
+
+            var parts = new List<string>();
+            var number = Shop.SimNumber(sim);
+            if (book.Knows(number)) parts.Add(Stars(book.StarsOf(number)));
+            if (book.Has(PerkTree.Perception, 1)) parts.Add("mood " + Sales.MoodWord(Shop.Mood(sim)));
+            var shopper = Shop.IsBuying(vm, sim) ? Shop.For(vm).Shoppers[sim.ObjectID] : null;
+            if (shopper != null) parts.Add("buying " + Shop.NameOf(shopper.Item.BaseObject));
+            else
+            {
+                var meter = Shop.MeterOf(vm, sim);
+                if (meter != null && meter.Item?.BaseObject != null && !meter.Item.BaseObject.Dead)
+                {
+                    if (book.Has(PerkTree.Perception, 2)) parts.Add("wants " + Shop.NameOf(meter.Item.BaseObject) + $" ({meter.Meter}%)");
+                    else if (meter.Meter > 0) parts.Add($"buy meter {meter.Meter}%");
+                }
+            }
+            return string.Join(", ", parts);
+        }
+
+        private static string Stars(int stars)
+        {
+            if (stars == 0) return "no stars";
+            return (stars > 0) ? new string('*', stars) + " " + stars + (stars == 1 ? " star" : " stars")
+                : stars + (stars == -1 ? " star" : " stars");
+        }
+
         // ---- 5. saving ----
 
         public void OnLotSaved(VM vm, string lotPath)
@@ -362,17 +597,41 @@ namespace OpenForBusiness
             //this is also called when a lot is saved from the neighbourhood's lot editor, with no family in it.
             if (lotPath == null || !Shop.IsHomeLot(vm)) return;
             LotPackData.Write(PackId, lotPath, Shop.ToSave(vm));
+            if (Shop.Badges.Dirty) SaveBadges();
         }
 
         public void OnLotLoaded(VM vm, string lotPath)
         {
-            if (lotPath == null) return; //handed back after a visit: its totals are still here from before
+            LoadBadges();
+            if (lotPath == null) return; //handed back after a visit: its book is still here from before
             Shop.Loaded(vm, LotPackData.Read(PackId, lotPath));
         }
 
         // ---- the "business" command ----
 
-        private static bool ShowBusiness(string[] args)
+        private static string NameOfSim(VM vm, uint number)
+        {
+            var onLot = vm.Context.ObjectQueries.Avatars.OfType<VMAvatar>().FirstOrDefault(x => Shop.SimNumber(x) == number);
+            if (onLot != null) return onLot.Name;
+            var neighbourhood = Content.Get().Neighborhood;
+            var id = neighbourhood?.GetNeighborIDForGUID(number);
+            return (id == null) ? "Sim " + number.ToString("x8") : neighbourhood.GetNeighborByID(id.Value)?.Name ?? "Sim " + number.ToString("x8");
+        }
+
+        private static string BadgeLine(VM vm, uint number)
+        {
+            var held = new List<string>();
+            foreach (Talent talent in Enum.GetValues(typeof(Talent)))
+            {
+                var points = Shop.Badges.PointsOf(number, talent);
+                var level = Shop.Badges.Earned(number, talent);
+                var toNext = BadgeBook.ToNext(points);
+                held.Add($"{talent} {BadgeBook.Describe(level)}" + ((toNext > 0) ? $" ({toNext} to go)" : ""));
+            }
+            return string.Join(", ", held);
+        }
+
+        private static bool Command(string[] args)
         {
             var vm = (GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm;
             if (vm == null || args.Length > 2) return false;
@@ -411,59 +670,101 @@ namespace OpenForBusiness
                 GameThread.NextUpdate(x => Tell(why));
                 return true;
             }
-            if (word == "perks" || (word == "perk" && args.Length == 1))
-            {
-                var mine = Shop.BookOf(vm);
-                var perks = new List<string>();
-                perks.Add($"Rank {mine.Rank} of {Reputation.MaxRank}. Perks to choose: {mine.PerkPoints}.");
-                perks.Add("");
-                foreach (var perk in Reputation.Perks)
-                {
-                    perks.Add((mine.Has(perk.Perk) ? "[chosen] " : "") + perk.Name + ": " + perk.Does);
-                    if (!mine.Has(perk.Perk)) perks.Add("    business perk " + perk.Word);
-                }
-                var list = string.Join("\n", perks);
-                GameThread.NextUpdate(x => Tell(list));
-                return true;
-            }
-            if (word == "perk")
-            {
-                var perk = Reputation.Find(args[1]);
-                if (perk == null) return false;
-                var problem = Shop.TakePerk(vm, perk.Perk);
-                GameThread.NextUpdate(x =>
-                {
-                    HITVM.Get().PlaySoundEvent((problem == null) ? UISounds.BuyPlace : UISounds.Error);
-                    Tell(problem ?? (perk.Name + ": " + perk.Does));
-                });
-                return true;
-            }
-            if (word == "restock")
-            {
-                Restock(vm);
-                return true;
-            }
-            if (word == "forget")
-            {
-                if (!Shop.ForgetShelves(vm)) GameThread.NextUpdate(x => Tell("On a business lot what has sold stays sold until it is restocked. Selling the lot puts everything back."));
-                return true;
-            }
-            if (word != "") return false;
-
-            var stock = Shop.ForSale(vm);
             var book = Shop.BookOf(vm);
-            var till = Shop.Till(vm);
             var lines = new List<string>();
+            switch (word)
+            {
+                case "perks":
+                    lines.Add($"Rank {book.Rank}: {Reputation.RankName(book.Rank)}. Perk points to spend: {book.PerkPoints}.");
+                    lines.Add("");
+                    foreach (PerkTree tree in Enum.GetValues(typeof(PerkTree)))
+                    {
+                        var level = book.PerkLevel(tree);
+                        var line = $"{tree}: {level} of 5";
+                        if (level > 0) line += ", " + Reputation.Perk(tree, level).Name;
+                        lines.Add(line);
+                        if (level < 5)
+                        {
+                            var next = Reputation.Perk(tree, level + 1);
+                            lines.Add($"    next: {next.Name}. {next.Does}  (business perk {tree.ToString().ToLowerInvariant()})");
+                        }
+                    }
+                    break;
+                case "perk":
+                    {
+                        if (args.Length < 2) return false;
+                        var tree = Reputation.FindTree(args[1]);
+                        if (tree == null) return false;
+                        var problem = Shop.TakePerk(vm, tree.Value, out var perk);
+                        GameThread.NextUpdate(x =>
+                        {
+                            HITVM.Get().PlaySoundEvent((problem == null) ? UISounds.BuyPlace : UISounds.Error);
+                            Tell(problem ?? (perk.Name + ": " + perk.Does));
+                        });
+                        return true;
+                    }
+                case "staff":
+                    if (book.Employees.Count == 0) lines.Add("Nobody works here. Click a visiting Sim and choose Business, Hire.");
+                    foreach (var employee in book.Employees)
+                    {
+                        var onLot = vm.Context.ObjectQueries.Avatars.OfType<VMAvatar>().FirstOrDefault(x => Shop.SimNumber(x) == employee.Sim);
+                        var asks = Reputation.AskingWage(Shop.Badges.TotalLevels(employee.Sim), book.Has(PerkTree.Motivation, 1));
+                        lines.Add($"{NameOfSim(vm, employee.Sim)}: {Shop.JobName(employee.Job)}, {Money(employee.Wage)} an hour (asks {Money(asks)})" + ((onLot == null) ? ", not here" : ""));
+                        lines.Add("    " + BadgeLine(vm, employee.Sim) + ((employee.Underpaid > 0) ? $", underpaid {employee.Underpaid} hours" : ""));
+                    }
+                    lines.Add("");
+                    lines.Add($"Wages paid so far: {Money(book.Wages)}");
+                    break;
+                case "badges":
+                    foreach (var sim in vm.Context.ObjectQueries.Avatars.OfType<VMAvatar>())
+                    {
+                        if (!Shop.InFamily(vm, sim) && !Shop.IsEmployee(vm, sim)) continue;
+                        lines.Add(sim.Name + ": " + BadgeLine(vm, Shop.SimNumber(sim)));
+                    }
+                    if (lines.Count == 0) lines.Add("Nobody of the family or staff is here.");
+                    lines.Add("");
+                    lines.Add($"Badges come with practice: Bronze at {BadgeBook.Thresholds[0]}, Silver at {BadgeBook.Thresholds[1]}, Gold at {BadgeBook.Thresholds[2]}. A point for each customer rung up, object restocked or sales pitch made.");
+                    break;
+                case "open":
+                case "close":
+                    Shop.SetOpen(vm, word == "open");
+                    return true;
+                case "restock":
+                    Restock(vm);
+                    return true;
+                case "forget":
+                    if (!Shop.ForgetShelves(vm)) GameThread.NextUpdate(x => Tell("On a business lot what has sold stays sold until it is restocked. Selling the lot puts everything back."));
+                    return true;
+                case "":
+                    Ledger(vm, book, lines);
+                    break;
+                default:
+                    return false;
+            }
+            var message = string.Join("\n", lines);
+            GameThread.NextUpdate(x => Tell(message));
+            return true;
+        }
+
+        private static void Ledger(VM vm, ShopBook book, List<string> lines)
+        {
+            var stock = Shop.ForSale(vm);
+            var till = Shop.Till(vm);
             if (Shop.IsBusinessLot(vm)) lines.Add($"The family's business lot, bought for {Money(book.PricePaid)}.");
-            lines.Add($"Sold so far: {book.Sold} for {Money(book.Takings)}");
-            var rankLine = $"Rank {book.Rank} of {Reputation.MaxRank}, with {book.Stars} stars from {book.Loyalty.Count} customers";
+            lines.Add(book.Closed ? "Closed for business." : "Open for business.");
+            var rankLine = $"Rank {book.Rank}: {Reputation.RankName(book.Rank)}, with {book.Stars} stars from {book.Loyalty.Count} customers";
             if (book.Rank < Reputation.MaxRank) rankLine += $" (rank {book.Rank + 1} at {Reputation.StarsForRank(book.Rank + 1)})";
             lines.Add(rankLine);
-            if (book.PerkPoints > 0) lines.Add($"Perks to choose: {book.PerkPoints}. Type: business perks");
-            if (book.Employees.Count > 0) lines.Add($"Employees: {book.Employees.Count}, paid {Money(book.Wages)} so far");
+            if (book.PerkPoints > 0) lines.Add($"Perk points to spend: {book.PerkPoints}. Type: business perks");
+            lines.Add($"Sold so far: {book.Sold} for {Money(book.Takings)}");
             if (book.Lost > 0) lines.Add($"Customers who gave up waiting: {book.Lost}");
+            if (book.Employees.Count > 0) lines.Add($"Employees: {book.Employees.Count}, paid {Money(book.Wages)} so far. Type: business staff");
             if (till == null) lines.Add("No till: customers leave the money.");
-            else lines.Add("Till: " + Shop.NameOf(till) + (Shop.Tended(vm, till) ? " (tended)" : " (nobody at it)"));
+            else
+            {
+                var tenders = Shop.Tenders(vm, till);
+                lines.Add("Till: " + Shop.NameOf(till) + ((tenders.Count > 0) ? " (tended by " + string.Join(", ", tenders.Select(x => x.Name)) + ")" : " (nobody at it)"));
+            }
             lines.Add("");
             if (stock.Count == 0) lines.Add("Nothing is for sale. Click an object and choose Business, Sell.");
             else
@@ -484,9 +785,8 @@ namespace OpenForBusiness
                 lines.Add("Lately:");
                 lines.AddRange(recent);
             }
-            var message = string.Join("\n", lines);
-            GameThread.NextUpdate(x => Tell(message));
-            return true;
+            lines.Add("");
+            lines.Add("Also: business perks, business staff, business badges, business open, business close");
         }
     }
 }

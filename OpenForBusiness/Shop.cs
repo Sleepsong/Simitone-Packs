@@ -7,206 +7,18 @@ http://mozilla.org/MPL/2.0/.
 using FSO.Content;
 using FSO.Content.Interfaces;
 using FSO.Files.Formats.IFF.Chunks;
-using FSO.SimAntics.Entities;
 using FSO.LotView.Model;
 using FSO.SimAntics;
+using FSO.SimAntics.Entities;
 using FSO.SimAntics.Model;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace OpenForBusiness
 {
-    /// <summary>Somewhere an object stood until it sold: what it was, where, and what it was priced at.</summary>
-    public class Shelf
-    {
-        public uint GUID;
-        public LotTilePos Position;
-        public Direction Direction;
-        public int Price;
-        /// <summary>
-        /// On a business lot: the number, in the lot's file, of the object that stood here. 0 at home.
-        /// A lot being visited is never saved, so the object is still in the file and is taken out again on each visit.
-        /// </summary>
-        public short SourceID;
-    }
-
-    /// <summary>On a business lot: the price of an object in the lot's file, put on it again on each visit.</summary>
-    public class PriceTag
-    {
-        public short ObjectID;
-        public uint GUID;
-        public int Price;
-    }
-
-    /// <summary>
-    /// A home business's books: what it has taken, its till, and the shelves that have sold out.
-    /// Kept for each lot, in this pack's own file.
-    /// </summary>
-    public class ShopBook
-    {
-        public const int MaxShelves = 200;
-
-        public int Sold;
-        public long Takings;
-        /// <summary>Customers who came to the till and left without being served.</summary>
-        public int Lost;
-        /// <summary>The object that is the till, or 0 for none. Objects keep their numbers in a lot's save.</summary>
-        public short TillID;
-        public List<Shelf> Shelves = new List<Shelf>();
-        /// <summary>The family that owns this lot as a business (its number in the neighbourhood), or 0. Never set for a home.</summary>
-        public ushort Owner;
-        /// <summary>What the family paid for the lot, which is what selling it gives back.</summary>
-        public int PricePaid;
-        /// <summary>On a business lot: what is for sale. At home the prices are in the lot's own save.</summary>
-        public List<PriceTag> Prices = new List<PriceTag>();
-
-        /// <summary>How each customer feels about the business, by the Sim's own number: -5 to 5 stars.</summary>
-        public Dictionary<uint, sbyte> Loyalty = new Dictionary<uint, sbyte>();
-        /// <summary>The highest rank the business has reached, 0 to 5.</summary>
-        public byte Rank;
-        public Perk Perks;
-        /// <summary>The Sims who work here, by their own numbers.</summary>
-        public List<uint> Employees = new List<uint>();
-        /// <summary>Wages paid so far.</summary>
-        public long Wages;
-
-        public const int MaxCustomers = 2000;
-
-        public bool Empty => Sold == 0 && Takings == 0 && Lost == 0 && TillID == 0 && Shelves.Count == 0 && Owner == 0 && Prices.Count == 0
-            && Loyalty.Count == 0 && Rank == 0 && Perks == Perk.None && Employees.Count == 0 && Wages == 0;
-
-        /// <summary>The business's standing: all its customers' stars together.</summary>
-        public int Stars => Loyalty.Values.Sum(x => (int)x);
-        /// <summary>Perks still to choose: one for each rank.</summary>
-        public int PerkPoints => Math.Max(0, Rank - Reputation.Count(Perks));
-        public bool Has(Perk perk) => (Perks & perk) != 0;
-        public int StarsOf(uint customer) => Loyalty.TryGetValue(customer, out var stars) ? stars : 0;
-
-        /// <summary>A customer gains or loses stars. Returns whether that raised the business's rank.</summary>
-        public bool AddStars(uint customer, int change)
-        {
-            if (change == 0 || customer == 0) return false;
-            if (!Loyalty.ContainsKey(customer) && Loyalty.Count >= MaxCustomers) return false;
-            var stars = Math.Max(-Reputation.MaxStars, Math.Min(Reputation.MaxStars, StarsOf(customer) + change));
-            if (stars == 0) Loyalty.Remove(customer);
-            else Loyalty[customer] = (sbyte)stars;
-            var rank = Reputation.RankFor(Stars);
-            if (rank <= Rank) return false;
-            Rank = (byte)rank;
-            return true;
-        }
-
-        public byte[] Save()
-        {
-            using (var mem = new MemoryStream())
-            using (var writer = new BinaryWriter(mem))
-            {
-                writer.Write((byte)4); //version
-                writer.Write(Sold);
-                writer.Write(Takings);
-                writer.Write(Lost);
-                writer.Write(TillID);
-                writer.Write(Shelves.Count);
-                foreach (var shelf in Shelves)
-                {
-                    writer.Write(shelf.GUID);
-                    writer.Write(shelf.Position.x);
-                    writer.Write(shelf.Position.y);
-                    writer.Write(shelf.Position.Level);
-                    writer.Write((byte)shelf.Direction);
-                    writer.Write(shelf.Price);
-                    writer.Write(shelf.SourceID);
-                }
-                writer.Write(Owner);
-                writer.Write(PricePaid);
-                writer.Write(Prices.Count);
-                foreach (var tag in Prices)
-                {
-                    writer.Write(tag.ObjectID);
-                    writer.Write(tag.GUID);
-                    writer.Write(tag.Price);
-                }
-                writer.Write(Rank);
-                writer.Write((byte)Perks);
-                writer.Write(Wages);
-                writer.Write(Employees.Count);
-                foreach (var employee in Employees) writer.Write(employee);
-                writer.Write(Loyalty.Count);
-                foreach (var customer in Loyalty)
-                {
-                    writer.Write(customer.Key);
-                    writer.Write(customer.Value);
-                }
-                return mem.ToArray();
-            }
-        }
-
-        public static ShopBook Load(byte[] data)
-        {
-            var result = new ShopBook();
-            if (data == null || data.Length < 13 || data[0] < 1 || data[0] > 4) return result;
-            try
-            {
-                using (var reader = new BinaryReader(new MemoryStream(data)))
-                {
-                    var version = reader.ReadByte();
-                    result.Sold = Math.Max(0, reader.ReadInt32());
-                    result.Takings = Math.Max(0, reader.ReadInt64());
-                    if (version < 2) return result; //stage 1 kept only the totals
-                    result.Lost = Math.Max(0, reader.ReadInt32());
-                    result.TillID = reader.ReadInt16();
-                    var count = Math.Min(MaxShelves, reader.ReadInt32());
-                    for (int i = 0; i < count; i++)
-                    {
-                        var shelf = new Shelf();
-                        shelf.GUID = reader.ReadUInt32();
-                        var x = reader.ReadInt16();
-                        var y = reader.ReadInt16();
-                        shelf.Position = new LotTilePos(x, y, reader.ReadSByte());
-                        shelf.Direction = (Direction)reader.ReadByte();
-                        shelf.Price = reader.ReadInt32();
-                        if (version >= 3) shelf.SourceID = reader.ReadInt16();
-                        if (shelf.Price > 0) result.Shelves.Add(shelf);
-                    }
-                    if (version < 3) return result; //stage 2 had no business lots
-                    result.Owner = reader.ReadUInt16();
-                    result.PricePaid = Math.Max(0, reader.ReadInt32());
-                    var tags = Math.Min(4096, reader.ReadInt32());
-                    for (int i = 0; i < tags; i++)
-                    {
-                        var tag = new PriceTag();
-                        tag.ObjectID = reader.ReadInt16();
-                        tag.GUID = reader.ReadUInt32();
-                        tag.Price = reader.ReadInt32();
-                        if (tag.Price > 0) result.Prices.Add(tag);
-                    }
-                    if (version < 4) return result; //stage 3 had no rank, perks or employees
-                    result.Rank = (byte)Math.Min(Reputation.MaxRank, (int)reader.ReadByte());
-                    result.Perks = (Perk)reader.ReadByte();
-                    result.Wages = Math.Max(0, reader.ReadInt64());
-                    var employees = Math.Min(64, reader.ReadInt32());
-                    for (int i = 0; i < employees; i++) result.Employees.Add(reader.ReadUInt32());
-                    var customers = Math.Min(MaxCustomers, reader.ReadInt32());
-                    for (int i = 0; i < customers; i++)
-                    {
-                        var customer = reader.ReadUInt32();
-                        var stars = reader.ReadSByte();
-                        if (stars != 0) result.Loyalty[customer] = (sbyte)Math.Max(-Reputation.MaxStars, Math.Min(Reputation.MaxStars, (int)stars));
-                    }
-                }
-            }
-            catch (EndOfStreamException)
-            {
-                //cut short: keep what was read
-            }
-            return result;
-        }
-    }
-
-    /// <summary>A visitor who has decided to buy something and is on their way to it.</summary>
+    /// <summary>A visitor who has decided to buy something and is on their way to it, or to the till.</summary>
     public class Shopper
     {
         public short AvatarID;
@@ -215,14 +27,56 @@ namespace OpenForBusiness
         public int Waited;
         /// <summary>With a till: how many checks someone has been ringing this shopper up.</summary>
         public int Served;
+        /// <summary>What they agreed to pay, if a discount was offered; 0 for the price on it.</summary>
+        public int Price;
     }
 
-    /// <summary>The business on one loaded lot: who is shopping, and what happened lately.</summary>
+    /// <summary>What a customer has in mind, and how near a sales pitch has brought them to buying it.</summary>
+    public class BuyMeter
+    {
+        public VMMultitileGroup Item;
+        public int Meter;
+        /// <summary>Assess Desire's push has been given.</summary>
+        public bool DesireUsed;
+        /// <summary>They accepted a discount: they pay 10% less.</summary>
+        public bool Discount;
+    }
+
+    /// <summary>A Sim on their way to a customer to make a sales pitch.</summary>
+    public class PendingPitch
+    {
+        public short Customer;
+        public Pitch Pitch;
+        public int Waited;
+        public bool ByEmployee;
+    }
+
+    /// <summary>A Sim putting sold objects back, one shelf at a time.</summary>
+    public class RestockTask
+    {
+        public Shelf Shelf;
+        public int Progress;
+        public int Waited;
+        public bool ByEmployee;
+        /// <summary>Shelves this Sim could not fill (something in the way), not tried again by them.</summary>
+        public HashSet<Shelf> Skipped = new HashSet<Shelf>();
+    }
+
+    /// <summary>The business on one loaded lot: who is shopping, selling and restocking, and what happened lately.</summary>
     public class LotShop
     {
         public Dictionary<short, Shopper> Shoppers = new Dictionary<short, Shopper>();
         /// <summary>Visitors who looked and did not buy, and the check at which they may look again.</summary>
         public Dictionary<short, int> LookAgainAt = new Dictionary<short, int>();
+        public Dictionary<short, BuyMeter> Meters = new Dictionary<short, BuyMeter>();
+        /// <summary>Pitches on their way, by the seller.</summary>
+        public Dictionary<short, PendingPitch> Pitches = new Dictionary<short, PendingPitch>();
+        /// <summary>Customers a salesperson has pitched to, and the check they did so: they are given a moment before the next.</summary>
+        public Dictionary<short, int> PitchedAt = new Dictionary<short, int>();
+        public Dictionary<short, RestockTask> Restockers = new Dictionary<short, RestockTask>();
+        /// <summary>When each Sim was last perked up (game hour).</summary>
+        public Dictionary<uint, long> PerkUpAt = new Dictionary<uint, long>();
+        public long RallyAt = long.MinValue;
         public List<string> Recent = new List<string>();
         public int Ticks;
         public int Checks;
@@ -232,12 +86,12 @@ namespace OpenForBusiness
         public bool Fresh;
         /// <summary>On a business lot: objects restocked during this visit, and the object in the lot's file each stands in for.</summary>
         public Dictionary<short, short> StandsInFor = new Dictionary<short, short>();
-        /// <summary>The hour of the game's clock at the last check, for paying wages as each hour passes (-1 before).</summary>
-        public int LastHour = -1;
+        /// <summary>The game hour at the last check, for paying wages as each hour passes (-1 before).</summary>
+        public long LastHour = -1;
     }
 
     /// <summary>
-    /// The home business itself. Nothing here patches the engine: OpenForBusinessPack.cs calls in from its patches.
+    /// The business itself. Nothing here patches the engine: OpenForBusinessPack.cs calls in from its patches.
     ///
     /// What is for sale is the engine's own field, VMMultitileGroup.SalePrice, which FreeSO added for its player shops
     /// and which is already written into a lot's save. The Sims 1 never sets it, so anything with a price was priced
@@ -258,20 +112,23 @@ namespace OpenForBusiness
         public const int BuyAnywayAfter = 45;
         /// <summary>A shopper gives up after this many checks (nobody came to the till, or the object stayed in use).</summary>
         public const int GiveUpAfter = 120;
-        /// <summary>Ringing a customer up at the till takes this many checks.</summary>
-        public const int RingUpChecks = 3;
-        /// <summary>While someone tends the till, visitors look at things this many times as often...</summary>
-        public const int TendedBrowseTimes = 2;
-        /// <summary>...and are this much more likely (in percent) to buy what they look at.</summary>
-        public const int TendedChanceBonus = 15;
-        /// <summary>A shopper this close to the object (in tiles) has reached it.</summary>
+        /// <summary>A Sim this close (in tiles) to what they were sent to has reached it.</summary>
         public const int ReachTiles = 2;
+        /// <summary>A restocker who has not reached a shelf after this many checks restocks it from where they are.</summary>
+        public const int RestockAnywayAfter = 20;
         public const int MaxPrice = 999999;
-        /// <summary>What an employee is paid for each hour of the game's clock they are on the lot while it has a till.</summary>
-        public const int Wage = 20;
-        public const int MaxEmployees = 3;
-        /// <summary>An employee who has wandered from the till is sent back this often, in checks.</summary>
+        /// <summary>A cashier who has wandered from the till is sent back this often, in checks.</summary>
         public const int SendBackEvery = 30;
+        /// <summary>A salesperson leaves a customer this many checks between pitches.</summary>
+        public const int PitchAgainAfter = 15;
+        /// <summary>Motivational Speech lasts this many hours; Rally Forth! can be used this often.</summary>
+        public const int SpeechHours = 3, RallyEveryHours = 3;
+
+        /// <summary>Price presets, as a percentage of the catalog's price. "Ridiculously Cheap", "Average" and "Expensive" are Open for Business's names; the percentages are this pack's.</summary>
+        public static readonly (string Name, int Percent)[] PricePresets =
+        {
+            ("Ridiculously Cheap", 50), ("Cheap", 75), ("Average", 100), ("Expensive", 125), ("Very Expensive", 150)
+        };
 
         private const uint GOTO_GUID = 0x000007C4; //the engine's "go here" marker (VMNetGotoCmd)
 
@@ -283,12 +140,23 @@ namespace OpenForBusiness
         /// <summary>Lots loaded from a file, with the book read for them, until their house number is known.</summary>
         private static readonly ConditionalWeakTable<VM, ShopBook> LoadedBooks = new ConditionalWeakTable<VM, ShopBook>();
 
+        /// <summary>Every Sim's badges in the neighbourhood being played. The pack loads and saves it.</summary>
+        public static BadgeBook Badges = new BadgeBook();
+        /// <summary>Writes Badges to its file.</summary>
+        public static Action SaveBadges;
+
         /// <summary>Called when something sells, on the game thread: the object's name, the buyer's and the price.</summary>
         public static Action<VM, string, string, int> OnSale;
-        /// <summary>Called when a customer leaves the till without being served, on the game thread.</summary>
+        /// <summary>Called when a customer leaves the till without being served.</summary>
         public static Action<VM, string> OnLost;
-        /// <summary>Called when the business rises a rank, on the game thread.</summary>
-        public static Action<VM, int> OnRankUp;
+        /// <summary>Called when the business's rank changes: the new rank, and whether it is the highest yet (which brings a perk point).</summary>
+        public static Action<VM, int, bool> OnRankChange;
+        /// <summary>Called when a Sim earns a badge: their name, the badge, and whether they are one of the family.</summary>
+        public static Action<VM, string, Talent, BadgeLevel, bool> OnBadge;
+        /// <summary>Called when one of the family has made a pitch: whether it worked, the meter after it, and whether the customer is now buying.</summary>
+        public static Action<VM, Pitch, bool, int, bool> OnPitch;
+        /// <summary>Called with news of the staff, such as an employee quitting.</summary>
+        public static Action<VM, string> OnStaff;
 
         /// <summary>
         /// The family whose Sim is visiting this lot, or null if the lot is not being visited (it is a home being played,
@@ -349,7 +217,7 @@ namespace OpenForBusiness
                 && family.FamilyGUIDs.Contains(avatar.Object.OBJ.GUID);
         }
 
-        /// <summary>A customer is a visiting neighbour: not one of the family, not a pet, and not a maid, burglar or other NPC.</summary>
+        /// <summary>A visiting neighbour: not one of the family, not a pet, and not a maid, burglar or other NPC. Customers and employees both are.</summary>
         public static bool IsCustomer(VM vm, VMAvatar avatar)
         {
             return avatar != null && !avatar.Dead && !avatar.IsPet
@@ -357,6 +225,14 @@ namespace OpenForBusiness
                 && avatar.GetPersonData(VMPersonDataVariable.PersonType) == 1
                 && !InFamily(vm, avatar);
         }
+
+        /// <summary>A visiting neighbour who is not working here.</summary>
+        private static bool IsShopper(VM vm, ShopBook book, VMAvatar avatar)
+        {
+            return IsCustomer(vm, avatar) && book.EmployeeOf(SimNumber(avatar)) == null;
+        }
+
+        public static uint SimNumber(VMAvatar avatar) => avatar.Object.OBJ.GUID;
 
         public static uint GuidOf(VMEntity obj)
         {
@@ -387,6 +263,27 @@ namespace OpenForBusiness
             return vm.Entities.Where(x => IsForSale(x) && !x.Dead && x.MultitileGroup.BaseObject == x).Select(x => x.MultitileGroup).ToList();
         }
 
+        /// <summary>The price as a percentage of the catalog's (100 if it has none).</summary>
+        public static int PricePercent(VMMultitileGroup item, int price)
+        {
+            var catalog = (int?)CatalogItem(item.BaseObject)?.Price ?? 0;
+            return (catalog <= 0) ? 100 : (int)Math.Min(10000, (long)price * 100 / catalog);
+        }
+
+        /// <summary>The game's clock in hours, for things that last or happen by the hour.</summary>
+        public static long GameHour(VM vm)
+        {
+            var clock = vm.Context.Clock;
+            return (((long)clock.Year * 12 + clock.Month) * 31 + clock.DayOfMonth) * 24 + clock.Hours;
+        }
+
+        public static int Mood(VMAvatar avatar) => avatar.GetMotiveData(VMMotive.Mood);
+
+        private static void AddMotive(VMAvatar avatar, VMMotive motive, int change)
+        {
+            avatar.SetMotiveData(motive, (short)Math.Max(-100, Math.Min(100, avatar.GetMotiveData(motive) + change)));
+        }
+
         // ---- pricing ----
 
         /// <summary>Puts an object up for sale. Returns null, or why not.</summary>
@@ -401,6 +298,14 @@ namespace OpenForBusiness
             return null;
         }
 
+        /// <summary>Puts an object up for sale at a percentage of its catalog price.</summary>
+        public static string SetPricePercent(VM vm, VMEntity obj, int percent)
+        {
+            var catalog = CatalogItem(obj);
+            if (catalog == null) return "Only objects from the buy catalog can be sold.";
+            return SetPrice(vm, obj, (int)Math.Max(1, Math.Min(MaxPrice, (long)catalog.Value.Price * percent / 100)));
+        }
+
         public static void TakeOffSale(VM vm, VMEntity obj)
         {
             if (obj?.MultitileGroup == null) return;
@@ -410,124 +315,254 @@ namespace OpenForBusiness
             foreach (var gone in shop.Shoppers.Values.Where(x => x.Item == obj.MultitileGroup).ToList()) shop.Shoppers.Remove(gone.AvatarID);
         }
 
-        /// <summary>
-        /// How likely a customer who looks at an object is to buy it, in percent, from its price against the catalog's.
-        /// A bargain nearly always sells; the catalog price sells half the time; at twice the catalog price nobody buys.
-        /// </summary>
-        public static int ChanceToBuy(int salePrice, int catalogPrice)
+        // ---- open and closed ----
+
+        public static bool IsOpen(VM vm) => IsShop(vm) && !BookOf(vm).Closed;
+
+        /// <summary>Opens or closes the business. Closed, nobody new shops and employees are not paid; customers already buying are still served.</summary>
+        public static void SetOpen(VM vm, bool open)
         {
-            if (catalogPrice <= 0) return 0;
-            var percent = (long)salePrice * 100 / catalogPrice; //the price as a percentage of the catalog's
-            if (percent <= 50) return 95;
-            if (percent <= 100) return (int)(95 - (percent - 50) * 45 / 50); //95 down to 50
-            if (percent < 200) return (int)(50 - (percent - 100) * 50 / 100); //50 down to 0
-            return 0;
+            if (!IsShop(vm)) return;
+            var book = BookOf(vm);
+            if (book.Closed != !open)
+            {
+                book.Closed = !open;
+                Note(For(vm), open ? "Opened for business" : "Closed for business");
+            }
+            Changed(vm);
         }
 
-        /// <summary>The same, when someone is tending the till. What nobody would buy, they still will not.</summary>
-        public static int ChanceToBuy(int salePrice, int catalogPrice, bool tended)
-        {
-            var chance = ChanceToBuy(salePrice, catalogPrice);
-            return (tended && chance > 0) ? Math.Min(95, chance + TendedChanceBonus) : chance;
-        }
+        // ---- badges ----
 
-        /// <summary>
-        /// The same, for a customer with that many stars for the business, and with or without the Salesmanship perk.
-        /// Never more than 95% or, for something anyone might buy, less than 1%.
-        /// </summary>
-        public static int ChanceToBuy(int salePrice, int catalogPrice, bool tended, int stars, bool salesmanship)
+        public static BadgeLevel BadgeOf(VM vm, VMAvatar sim, Talent talent) => Badges.Level(SimNumber(sim), talent, GameHour(vm));
+
+        private static void Practice(VM vm, LotShop shop, VMAvatar sim, Talent talent)
         {
-            var chance = ChanceToBuy(salePrice, catalogPrice);
-            if (chance <= 0) return 0;
-            if (tended) chance += TendedChanceBonus;
-            chance += stars * Reputation.ChancePerStar;
-            if (salesmanship) chance += Reputation.SalesmanshipBonus;
-            return Math.Max(1, Math.Min(95, chance));
+            if (sim == null) return;
+            var earned = Badges.Practice(SimNumber(sim), talent);
+            if (earned == null) return;
+            Note(shop, $"{sim.Name} earned a {earned} {talent} badge");
+            Console.WriteLine($"[business] {sim.Name}: {earned} {talent}");
+            OnBadge?.Invoke(vm, sim.Name, talent, earned.Value, InFamily(vm, sim));
         }
 
         // ---- employees ----
 
-        public static uint SimNumber(VMAvatar avatar) => avatar.Object.OBJ.GUID;
-
-        public static bool IsEmployee(VM vm, VMEntity sim)
+        public static Employee EmployeeOf(VM vm, VMEntity sim)
         {
-            return sim is VMAvatar avatar && IsShop(vm) && BookOf(vm).Employees.Contains(SimNumber(avatar));
+            return (sim is VMAvatar avatar && IsShop(vm)) ? BookOf(vm).EmployeeOf(SimNumber(avatar)) : null;
         }
 
-        /// <summary>Takes a visiting Sim on to tend the till. Returns null, or why not.</summary>
-        public static string Hire(VM vm, VMAvatar sim)
+        public static bool IsEmployee(VM vm, VMEntity sim) => EmployeeOf(vm, sim) != null;
+
+        /// <summary>What a Sim asks to be paid an hour: more for every badge level they hold.</summary>
+        public static int AskingWage(VM vm, VMAvatar sim)
+        {
+            return Reputation.AskingWage(Badges.TotalLevels(SimNumber(sim)), BookOf(vm).Has(PerkTree.Motivation, 1));
+        }
+
+        public static string JobName(Job job) => (job == Job.Salesperson) ? "Salesperson" : job.ToString();
+
+        /// <summary>Takes a visiting Sim on, at the pay they ask. Returns null, or why not.</summary>
+        public static string Hire(VM vm, VMAvatar sim, Job job)
         {
             if (!IsShop(vm)) return NotAShop;
             if (!IsCustomer(vm, sim)) return "Only a visiting neighbour can be hired.";
             var book = BookOf(vm);
-            if (book.Employees.Contains(SimNumber(sim))) return sim.Name + " already works here.";
-            if (book.Employees.Count >= MaxEmployees) return "A business can have " + MaxEmployees + " employees.";
-            book.Employees.Add(SimNumber(sim));
-            For(vm).Shoppers.Remove(sim.ObjectID);
+            if (book.EmployeeOf(SimNumber(sim)) != null) return sim.Name + " already works here.";
+            if (book.Employees.Count >= Reputation.MaxEmployees) return "A business can have " + Reputation.MaxEmployees + " employees.";
+            book.Employees.Add(new Employee() { Sim = SimNumber(sim), Job = job, Wage = AskingWage(vm, sim) });
+            var shop = For(vm);
+            shop.Shoppers.Remove(sim.ObjectID);
+            shop.Meters.Remove(sim.ObjectID);
+            Note(shop, $"Hired {sim.Name} as {JobName(job).ToLowerInvariant()}");
             Changed(vm);
+            StartJob(vm, sim, job);
+            return null;
+        }
+
+        public static void SetJob(VM vm, VMAvatar sim, Job job)
+        {
+            var employee = EmployeeOf(vm, sim);
+            if (employee == null || employee.Job == job) return;
+            employee.Job = job;
+            var shop = For(vm);
+            shop.Pitches.Remove(sim.ObjectID);
+            shop.Restockers.Remove(sim.ObjectID);
+            Changed(vm);
+            StartJob(vm, sim, job);
+        }
+
+        private static void StartJob(VM vm, VMAvatar sim, Job job)
+        {
+            if (job != Job.Cashier) return; //the others start on the next check
             var till = Till(vm);
             if (till != null) WalkTo(vm, sim, till.MultitileGroup);
-            return null;
+        }
+
+        /// <summary>A raise (or, below 0, a cut). Returns the new wage.</summary>
+        public static int ChangeWage(VM vm, VMAvatar sim, int change)
+        {
+            var employee = EmployeeOf(vm, sim);
+            if (employee == null) return 0;
+            employee.Wage = Math.Max(0, Math.Min(Reputation.MaxWage, employee.Wage + change));
+            if (employee.Wage >= AskingWage(vm, sim)) employee.Underpaid = 0;
+            Changed(vm);
+            return employee.Wage;
         }
 
         public static void Dismiss(VM vm, VMAvatar sim)
         {
             if (sim == null || !IsShop(vm)) return;
-            if (BookOf(vm).Employees.Remove(SimNumber(sim))) Changed(vm);
+            if (BookOf(vm).Employees.RemoveAll(x => x.Sim == SimNumber(sim)) == 0) return;
+            var shop = For(vm);
+            shop.Pitches.Remove(sim.ObjectID);
+            shop.Restockers.Remove(sim.ObjectID);
+            Note(shop, $"Let {sim.Name} go");
+            Changed(vm);
+        }
+
+        private static List<(VMAvatar Sim, Employee Record)> StaffOnLot(VM vm, ShopBook book)
+        {
+            var result = new List<(VMAvatar, Employee)>();
+            if (book.Employees.Count == 0) return result;
+            foreach (var avatar in vm.Context.ObjectQueries.Avatars.OfType<VMAvatar>())
+            {
+                if (!IsCustomer(vm, avatar)) continue;
+                var record = book.EmployeeOf(SimNumber(avatar));
+                if (record != null) result.Add((avatar, record));
+            }
+            return result;
         }
 
         /// <summary>
-        /// Each hour of the game's clock, the employees on the lot are paid, if there is a till for them to tend.
-        /// One the family cannot pay leaves the business.
+        /// Each hour of the game's clock while the business is open, the employees on the lot are paid. One the family
+        /// cannot pay leaves; one paid less than they ask for too many hours in a row quits, as in Open for Business.
         /// </summary>
-        private static void PayWages(VM vm, LotShop shop, ShopBook book, VMEntity till, List<VMAvatar> staff)
+        private static void PayWages(VM vm, LotShop shop, ShopBook book, List<(VMAvatar Sim, Employee Record)> staff)
         {
-            var hour = vm.Context.Clock.Hours;
-            if (shop.LastHour == hour) return;
-            var first = shop.LastHour < 0;
-            shop.LastHour = hour;
-            if (first || till == null || staff.Count == 0) return;
             var family = Family(vm);
-            foreach (var employee in staff)
+            var quitAfter = Reputation.HoursToQuit(book.Has(PerkTree.Motivation, 4));
+            foreach (var (sim, record) in staff)
             {
-                if (family.Budget >= Wage)
+                if (family.Budget < record.Wage)
                 {
-                    family.Budget -= Wage;
-                    book.Wages += Wage;
+                    book.Employees.Remove(record);
+                    Quit(vm, shop, sim, $"{sim.Name} left: the family could not pay the wage");
+                    continue;
                 }
-                else
+                family.Budget -= record.Wage;
+                book.Wages += record.Wage;
+                if (record.Wage >= AskingWage(vm, sim)) record.Underpaid = 0;
+                else if (++record.Underpaid >= quitAfter)
                 {
-                    book.Employees.Remove(SimNumber(employee));
-                    Note(shop, $"{employee.Name} left: the family could not pay the wage");
-                    Console.WriteLine($"[business] {employee.Name} left unpaid");
+                    book.Employees.Remove(record);
+                    Quit(vm, shop, sim, $"{sim.Name} quit: paid {record.Wage} an hour and asking {AskingWage(vm, sim)}");
                 }
             }
             Changed(vm);
+        }
+
+        private static void Quit(VM vm, LotShop shop, VMAvatar sim, string why)
+        {
+            shop.Pitches.Remove(sim.ObjectID);
+            shop.Restockers.Remove(sim.ObjectID);
+            Note(shop, why);
+            Console.WriteLine("[business] " + why);
+            OnStaff?.Invoke(vm, why);
         }
 
         // ---- rank and perks ----
 
         private static void AddStars(VM vm, LotShop shop, ShopBook book, VMAvatar customer, int change)
         {
-            if (!book.AddStars(SimNumber(customer), change)) return;
-            Note(shop, $"The business reached rank {book.Rank}");
-            Console.WriteLine($"[business] rank {book.Rank}");
-            OnRankUp?.Invoke(vm, book.Rank);
+            var highest = book.HighestRank;
+            var moved = book.AddStars(SimNumber(customer), change);
+            RankMoved(vm, shop, book, moved, highest);
         }
 
-        /// <summary>Chooses a perk with one of the ranks the business has earned. Returns null, or why not.</summary>
-        public static string TakePerk(VM vm, Perk perk)
+        private static void Meet(VM vm, LotShop shop, ShopBook book, VMAvatar customer)
         {
+            var highest = book.HighestRank;
+            var before = book.Rank;
+            if (book.Meet(SimNumber(customer))) RankMoved(vm, shop, book, book.Rank - before, highest);
+        }
+
+        private static void RankMoved(VM vm, LotShop shop, ShopBook book, int moved, sbyte highestBefore)
+        {
+            if (moved == 0) return;
+            var rank = book.Rank;
+            var newHigh = book.HighestRank > highestBefore;
+            Note(shop, $"The business is now rank {rank}, {Reputation.RankName(rank)}");
+            Console.WriteLine($"[business] rank {rank}");
+            OnRankChange?.Invoke(vm, rank, newHigh);
+        }
+
+        /// <summary>Takes the next perk of a tree. Returns null, or why not. A Cash perk pays out at once.</summary>
+        public static string TakePerk(VM vm, PerkTree tree, out PerkInfo perk)
+        {
+            perk = null;
             if (!IsShop(vm)) return NotAShop;
             var book = BookOf(vm);
-            if (book.Has(perk)) return "The business already has that perk.";
-            if (book.PerkPoints <= 0)
-            {
-                if (book.Rank >= Reputation.MaxRank) return "The business has chosen all the perks its rank allows.";
-                return $"A perk comes with each rank. The next rank needs {Reputation.StarsForRank(book.Rank + 1)} stars; the business has {book.Stars}.";
-            }
-            book.Perks |= perk;
+            perk = book.TakePerk(tree, out var problem);
+            if (perk == null) return problem;
+            if (tree == PerkTree.Cash) Family(vm).Budget += Reputation.CashPrizes[perk.Level - 1];
+            Note(For(vm), "Took the perk " + perk.Name);
             Changed(vm);
+            return null;
+        }
+
+        /// <summary>Perk Up: +30 Fun and Social, once an hour for each Sim. An employee forgets being underpaid.</summary>
+        public static string PerkUp(VM vm, VMAvatar actor, VMAvatar target)
+        {
+            if (!IsShop(vm) || !BookOf(vm).Has(PerkTree.Motivation, 2)) return "That needs the Perk Up perk.";
+            if (target == null || target.Dead) return null;
+            var shop = For(vm);
+            var hour = GameHour(vm);
+            if (shop.PerkUpAt.TryGetValue(SimNumber(target), out var last) && hour - last < 1) return target.Name + " has been perked up this hour already.";
+            shop.PerkUpAt[SimNumber(target)] = hour;
+            AddMotive(target, VMMotive.Fun, 30);
+            AddMotive(target, VMMotive.Social, 30);
+            var employee = EmployeeOf(vm, target);
+            if (employee != null) employee.Underpaid = 0;
+            Note(shop, $"{actor?.Name ?? "The owner"} perked up {target.Name}");
+            Changed(vm);
+            return null;
+        }
+
+        /// <summary>Motivational Speech: an employee's or one of the family's badges are a level higher for 3 hours. It tires the speaker.</summary>
+        public static string Speech(VM vm, VMAvatar actor, VMAvatar target)
+        {
+            if (!IsShop(vm) || !BookOf(vm).Has(PerkTree.Motivation, 3)) return "That needs the Motivational Speech perk.";
+            if (target == null || target.Dead) return null;
+            if (!InFamily(vm, target) && !IsEmployee(vm, target)) return "A speech is for employees and the family.";
+            if (Badges.TotalLevels(SimNumber(target)) == 0) return target.Name + " has no badges for a speech to raise.";
+            Badges.Boost(SimNumber(target), GameHour(vm) + SpeechHours);
+            if (actor != null) AddMotive(actor, VMMotive.Energy, -20);
+            Note(For(vm), $"{actor?.Name ?? "The owner"} gave {target.Name} a motivational speech");
+            return null;
+        }
+
+        /// <summary>Rally Forth!: the family and employees on the lot are refreshed, at the rallying Sim's cost.</summary>
+        public static string Rally(VM vm, VMAvatar actor)
+        {
+            if (!IsShop(vm) || !BookOf(vm).Has(PerkTree.Motivation, 5)) return "That needs the Rally Forth! perk.";
+            if (actor == null) return null;
+            var shop = For(vm);
+            var hour = GameHour(vm);
+            if (hour - shop.RallyAt < RallyEveryHours) return $"Rally Forth! can be used once every {RallyEveryHours} hours.";
+            shop.RallyAt = hour;
+            var rallied = 0;
+            foreach (var sim in vm.Context.ObjectQueries.Avatars.OfType<VMAvatar>().ToList())
+            {
+                if (sim == actor || sim.Dead || sim.Position == LotTilePos.OUT_OF_WORLD) continue;
+                if (!InFamily(vm, sim) && !IsEmployee(vm, sim)) continue;
+                foreach (var motive in new[] { VMMotive.Energy, VMMotive.Comfort, VMMotive.Fun, VMMotive.Social }) AddMotive(sim, motive, 40);
+                rallied++;
+            }
+            AddMotive(actor, VMMotive.Energy, -50);
+            AddMotive(actor, VMMotive.Comfort, -50);
+            Note(shop, $"{actor.Name} rallied {rallied}");
             return null;
         }
 
@@ -570,15 +605,17 @@ namespace OpenForBusiness
             Changed(vm);
         }
 
-        /// <summary>Someone tends the till while one of the family, or an employee, stands by it.</summary>
-        public static bool Tended(VM vm, VMEntity till)
+        /// <summary>The Sims at the till who can ring customers up: the family, and employees whose job it is.</summary>
+        public static List<VMAvatar> Tenders(VM vm, VMEntity till)
         {
-            if (till == null) return false;
-            return vm.Context.ObjectQueries.Avatars.OfType<VMAvatar>().Any(x => !x.Dead && x.Position != LotTilePos.OUT_OF_WORLD
-                && (InFamily(vm, x) || IsEmployee(vm, x)) && Reached(x, till.MultitileGroup));
+            if (till == null) return new List<VMAvatar>();
+            return vm.Context.ObjectQueries.Avatars.OfType<VMAvatar>().Where(x => !x.Dead && x.Position != LotTilePos.OUT_OF_WORLD
+                && (InFamily(vm, x) || EmployeeOf(vm, x)?.Job == Job.Cashier) && Reached(x, till.MultitileGroup)).ToList();
         }
 
-        /// <summary>Sends one of the family to stand by the till.</summary>
+        public static bool Tended(VM vm, VMEntity till) => Tenders(vm, till).Count > 0;
+
+        /// <summary>Sends a Sim to stand by the till.</summary>
         public static void Tend(VM vm, VMAvatar sim)
         {
             var till = Till(vm);
@@ -594,12 +631,8 @@ namespace OpenForBusiness
             return (item == null) ? 0 : (int)item.Value.Price;
         }
 
-        /// <summary>The same for this business, which may have the Wholesale perk.</summary>
-        public static int RestockCost(ShopBook book, Shelf shelf)
-        {
-            var cost = RestockCost(shelf);
-            return book.Has(Perk.Wholesale) ? (int)((long)cost * (100 - Reputation.WholesalePercentOff) / 100) : cost;
-        }
+        /// <summary>The same for this business, with its Wholesale perks.</summary>
+        public static int RestockCost(ShopBook book, Shelf shelf) => Reputation.Wholesale(RestockCost(shelf), book.PerkLevel(PerkTree.Wholesale));
 
         public static long RestockCost(VM vm)
         {
@@ -615,9 +648,8 @@ namespace OpenForBusiness
         }
 
         /// <summary>
-        /// Buys the sold objects again at the catalog's price and puts each back where it stood, at the price it sold
-        /// for. A shelf stays empty if the family cannot afford it or something is in the way; it is forgotten if the
-        /// object is not in the catalog any more.
+        /// Puts every sold object back at once, as stage 2 did: no Sim does the work, and nobody's Restocking badge
+        /// improves. Used by the console. In the game, a Sim does it one shelf at a time (StartRestock).
         /// </summary>
         public static RestockResult Restock(VM vm)
         {
@@ -628,29 +660,33 @@ namespace OpenForBusiness
             var book = BookOf(vm);
             foreach (var shelf in book.Shelves.ToList())
             {
-                var cost = RestockCost(book, shelf);
-                if (RestockCost(shelf) <= 0)
+                switch (Fill(vm, shop, book, family, shelf, out var cost))
                 {
-                    book.Shelves.Remove(shelf);
-                    continue;
+                    case FillResult.Gone: break;
+                    case FillResult.CannotAfford: result.CannotAfford++; break;
+                    case FillResult.Blocked: result.Blocked++; break;
+                    default: result.Restocked++; result.Spent += cost; break;
                 }
-                if (family.Budget < cost)
-                {
-                    result.CannotAfford++;
-                    continue;
-                }
-                if (!Place(vm, shop, book, shelf, cost))
-                {
-                    result.Blocked++;
-                    continue;
-                }
-                family.Budget -= cost;
-                book.Shelves.Remove(shelf);
-                result.Restocked++;
-                result.Spent += cost;
             }
             Changed(vm);
             return result;
+        }
+
+        private enum FillResult { Filled, Gone, CannotAfford, Blocked }
+
+        private static FillResult Fill(VM vm, LotShop shop, ShopBook book, FAMI family, Shelf shelf, out int cost)
+        {
+            cost = RestockCost(book, shelf);
+            if (RestockCost(shelf) <= 0)
+            {
+                book.Shelves.Remove(shelf);
+                return FillResult.Gone;
+            }
+            if (family.Budget < cost) return FillResult.CannotAfford;
+            if (!Place(vm, shop, book, shelf, cost)) return FillResult.Blocked;
+            family.Budget -= cost;
+            book.Shelves.Remove(shelf);
+            return FillResult.Filled;
         }
 
         /// <summary>Puts a new object on a shelf, the way buying one from the catalog does (VMNetBuyObjectCmd).</summary>
@@ -694,6 +730,19 @@ namespace OpenForBusiness
             }
         }
 
+        /// <summary>Sets a Sim to restocking: they go from empty shelf to empty shelf, as fast as their Restocking badge allows. Returns null, or why not.</summary>
+        public static string StartRestock(VM vm, VMAvatar sim) => StartRestock(vm, sim, false);
+
+        private static string StartRestock(VM vm, VMAvatar sim, bool byEmployee)
+        {
+            if (!IsShop(vm)) return NotAShop;
+            if (sim == null) return null;
+            if (BookOf(vm).Shelves.Count == 0) return "Nothing has sold out.";
+            var shop = For(vm);
+            if (!shop.Restockers.ContainsKey(sim.ObjectID)) shop.Restockers[sim.ObjectID] = new RestockTask() { ByEmployee = byEmployee };
+            return null;
+        }
+
         /// <summary>
         /// Forgets the empty shelves. Not on a business lot: there the sold objects are still in the lot's file, and
         /// forgetting them would bring them back for nothing on the next visit.
@@ -702,7 +751,193 @@ namespace OpenForBusiness
         {
             if (!IsHomeLot(vm)) return false;
             BookOf(vm).Shelves.Clear();
+            For(vm).Restockers.Clear();
             return true;
+        }
+
+        private static void RestockWork(VM vm, LotShop shop, ShopBook book)
+        {
+            if (shop.Restockers.Count == 0) return;
+            var family = Family(vm);
+            var claimed = new HashSet<Shelf>(shop.Restockers.Values.Where(x => x.Shelf != null).Select(x => x.Shelf));
+            foreach (var pair in shop.Restockers.ToList())
+            {
+                var sim = vm.GetObjectById(pair.Key) as VMAvatar;
+                var task = pair.Value;
+                if (sim == null || sim.Dead || sim.Position == LotTilePos.OUT_OF_WORLD || (task.ByEmployee && EmployeeOf(vm, sim)?.Job != Job.Restocker))
+                {
+                    shop.Restockers.Remove(pair.Key);
+                    continue;
+                }
+                if (task.Shelf != null && !book.Shelves.Contains(task.Shelf)) task.Shelf = null; //filled another way
+                if (task.Shelf == null)
+                {
+                    task.Shelf = book.Shelves.FirstOrDefault(x => !claimed.Contains(x) && !task.Skipped.Contains(x));
+                    if (task.Shelf == null)
+                    {
+                        shop.Restockers.Remove(pair.Key);
+                        if (!task.ByEmployee) Note(shop, $"{sim.Name} has finished restocking");
+                        continue;
+                    }
+                    if (family.Budget < RestockCost(book, task.Shelf))
+                    {
+                        shop.Restockers.Remove(pair.Key);
+                        Note(shop, $"{sim.Name} stopped restocking: the family cannot afford it");
+                        continue;
+                    }
+                    claimed.Add(task.Shelf);
+                    task.Progress = 0;
+                    task.Waited = 0;
+                    WalkToSpot(vm, sim, task.Shelf.Position);
+                }
+                if (!Near(sim, task.Shelf.Position) && ++task.Waited < RestockAnywayAfter) continue;
+                if (++task.Progress < BadgeBook.RestockChecks(BadgeOf(vm, sim, Talent.Restocking))) continue;
+
+                var shelf = task.Shelf;
+                task.Shelf = null;
+                switch (Fill(vm, shop, book, family, shelf, out var cost))
+                {
+                    case FillResult.Filled:
+                        Practice(vm, shop, sim, Talent.Restocking);
+                        Changed(vm);
+                        break;
+                    case FillResult.CannotAfford:
+                        shop.Restockers.Remove(pair.Key);
+                        Note(shop, $"{sim.Name} stopped restocking: the family cannot afford it");
+                        break;
+                    case FillResult.Blocked:
+                        task.Skipped.Add(shelf);
+                        break;
+                }
+            }
+        }
+
+        // ---- sales pitches ----
+
+        /// <summary>Whether a Sim may make a pitch: their Sales badge, or the Manipulation perk.</summary>
+        public static bool CanPitch(VM vm, VMAvatar seller, Pitch pitch)
+        {
+            if (seller == null || !IsShop(vm)) return false;
+            if (pitch == Pitch.Manipulate) return BookOf(vm).Has(PerkTree.Perception, 5);
+            return BadgeOf(vm, seller, Talent.Sales) >= Sales.BadgeNeeded(pitch);
+        }
+
+        public static BuyMeter MeterOf(VM vm, VMAvatar customer)
+        {
+            return (customer != null && For(vm).Meters.TryGetValue(customer.ObjectID, out var meter)) ? meter : null;
+        }
+
+        public static bool IsBuying(VM vm, VMAvatar customer) => customer != null && For(vm).Shoppers.ContainsKey(customer.ObjectID);
+
+        /// <summary>Sends a Sim to make a pitch to a customer. Returns null, or why not.</summary>
+        public static string StartPitch(VM vm, VMAvatar seller, VMAvatar customer, Pitch pitch) => StartPitch(vm, seller, customer, pitch, false);
+
+        private static string StartPitch(VM vm, VMAvatar seller, VMAvatar customer, Pitch pitch, bool byEmployee)
+        {
+            if (!IsShop(vm)) return NotAShop;
+            var book = BookOf(vm);
+            if (seller == null || !IsShopper(vm, book, customer)) return "Pitches are for customers.";
+            if (!CanPitch(vm, seller, pitch)) return $"{Sales.Name(pitch)} needs a {Sales.BadgeNeeded(pitch)} Sales badge.";
+            var shop = For(vm);
+            if (shop.Shoppers.ContainsKey(customer.ObjectID)) return customer.Name + " is already buying something.";
+            if (ForSale(vm).Count == 0) return "Nothing is for sale.";
+            shop.Pitches[seller.ObjectID] = new PendingPitch() { Customer = customer.ObjectID, Pitch = pitch, ByEmployee = byEmployee };
+            WalkTo(vm, seller, customer.MultitileGroup);
+            return null;
+        }
+
+        /// <summary>Look for Mark: sends a Sim to pitch to the customer most likely to buy. Returns null, or why not.</summary>
+        public static string LookForMark(VM vm, VMAvatar seller)
+        {
+            if (!IsShop(vm) || !BookOf(vm).Has(PerkTree.Perception, 3)) return "That needs the Look for Mark perk.";
+            var book = BookOf(vm);
+            var shop = For(vm);
+            VMAvatar best = null;
+            var bestScore = int.MinValue;
+            foreach (var customer in vm.Context.ObjectQueries.Avatars.OfType<VMAvatar>())
+            {
+                if (!IsShopper(vm, book, customer) || shop.Shoppers.ContainsKey(customer.ObjectID)) continue;
+                var score = book.StarsOf(SimNumber(customer)) * 10 + Mood(customer) / 5 + (MeterOf(vm, customer)?.Meter ?? 0);
+                if (score > bestScore)
+                {
+                    best = customer;
+                    bestScore = score;
+                }
+            }
+            if (best == null) return "There is nobody here to sell to.";
+            var pitch = Sales.EmployeePitch(BadgeOf(vm, seller, Talent.Sales), book.StarsOf(SimNumber(best)), MeterOf(vm, best)?.Meter ?? 0);
+            return StartPitch(vm, seller, best, pitch);
+        }
+
+        /// <summary>What a customer has in mind: what they last looked at, if it is still for sale and nobody else is buying it, or else what suits them best.</summary>
+        private static VMMultitileGroup WantedItem(VM vm, LotShop shop, ShopBook book, VMAvatar customer)
+        {
+            var taken = new HashSet<VMMultitileGroup>(shop.Shoppers.Values.Select(x => x.Item));
+            if (shop.Meters.TryGetValue(customer.ObjectID, out var meter) && meter.Item?.BaseObject != null && !meter.Item.BaseObject.Dead
+                && meter.Item.SalePrice > 0 && !taken.Contains(meter.Item)) return meter.Item;
+            var stars = book.StarsOf(SimNumber(customer));
+            return ForSale(vm).Where(x => !taken.Contains(x))
+                .OrderByDescending(x => Reputation.ChanceToBuy(x.SalePrice, (int?)CatalogItem(x.BaseObject)?.Price ?? 0, false, stars, 0))
+                .FirstOrDefault();
+        }
+
+        private static void PitchWork(VM vm, LotShop shop, ShopBook book, VMEntity till)
+        {
+            foreach (var pair in shop.Pitches.ToList())
+            {
+                var seller = vm.GetObjectById(pair.Key) as VMAvatar;
+                var pending = pair.Value;
+                var customer = vm.GetObjectById(pending.Customer) as VMAvatar;
+                if (seller == null || seller.Dead || !IsShopper(vm, book, customer) || shop.Shoppers.ContainsKey(pending.Customer)
+                    || (pending.ByEmployee && EmployeeOf(vm, seller)?.Job != Job.Salesperson))
+                {
+                    shop.Pitches.Remove(pair.Key);
+                    continue;
+                }
+                if (!NearSim(seller, customer) && ++pending.Waited < Sales.PitchAnywayAfter) continue;
+                shop.Pitches.Remove(pair.Key);
+                MakePitch(vm, shop, book, till, seller, customer, pending);
+            }
+        }
+
+        private static void MakePitch(VM vm, LotShop shop, ShopBook book, VMEntity till, VMAvatar seller, VMAvatar customer, PendingPitch pending)
+        {
+            var item = WantedItem(vm, shop, book, customer);
+            if (item == null) return;
+            if (!shop.Meters.TryGetValue(customer.ObjectID, out var meter) || meter.Item != item)
+            {
+                shop.Meters[customer.ObjectID] = meter = new BuyMeter() { Item = item };
+            }
+            Meet(vm, shop, book, customer);
+            var stars = book.StarsOf(SimNumber(customer));
+            var pitch = pending.Pitch;
+            var chance = Sales.Chance(pitch, BadgeOf(vm, seller, Talent.Sales), stars, Mood(customer), PricePercent(item, item.SalePrice), book.Has(PerkTree.Perception, 4));
+            var worked = Dice.Next(100) < chance;
+            var desire = worked && !meter.DesireUsed && book.Has(PerkTree.Perception, 2);
+            if (desire) meter.DesireUsed = true;
+            meter.Meter = Sales.Meter(meter.Meter, pitch, worked, desire);
+            if (worked && pitch == Pitch.OfferDiscount) meter.Discount = true;
+            var lost = Sales.StarsLost(pitch, worked);
+            if (lost > 0) AddStars(vm, shop, book, customer, -lost);
+            shop.PitchedAt[customer.ObjectID] = shop.Checks;
+            Practice(vm, shop, seller, Talent.Sales);
+
+            var buying = meter.Meter >= Sales.FullMeter;
+            if (buying)
+            {
+                shop.Meters.Remove(customer.ObjectID);
+                shop.LookAgainAt.Remove(customer.ObjectID);
+                shop.Shoppers[customer.ObjectID] = new Shopper()
+                {
+                    AvatarID = customer.ObjectID,
+                    Item = item,
+                    Price = meter.Discount ? Sales.Discounted(item.SalePrice) : 0
+                };
+                WalkTo(vm, customer, (till != null) ? till.MultitileGroup : item);
+            }
+            Note(shop, $"{seller.Name}: {Sales.Name(pitch)} to {customer.Name} " + (worked ? "worked" : "failed") + (buying ? $", buying {NameOf(item.BaseObject)}" : $" ({meter.Meter}%)"));
+            Changed(vm);
+            if (!pending.ByEmployee) OnPitch?.Invoke(vm, pitch, worked, meter.Meter, buying);
         }
 
         // ---- a business lot ----
@@ -725,12 +960,16 @@ namespace OpenForBusiness
             Changed(vm);
         }
 
-        /// <summary>A business lot's book has changed: write it now, since the lot itself will not be saved.</summary>
+        /// <summary>
+        /// The book has changed. A business lot's is written now, since the lot itself will not be saved; and so are
+        /// the badges, for the same reason. At home both are written when the lot is saved.
+        /// </summary>
         private static void Changed(VM vm)
         {
             if (!IsVisiting(vm)) return;
             var book = BookOf(vm);
             SaveVisitedBook?.Invoke(vm, book.Empty ? null : book.Save());
+            if (Badges.Dirty) SaveBadges?.Invoke();
         }
 
         /// <summary>
@@ -808,7 +1047,7 @@ namespace OpenForBusiness
 
         /// <summary>
         /// The family sells its business lot for what it paid. The lot goes back to how it was built: next visit,
-        /// everything that sold is back and nothing has a price. The totals are kept.
+        /// everything that sold is back and nothing has a price. The totals, customers and rank are kept.
         /// </summary>
         public static string SellLot(VM vm, out int refund)
         {
@@ -820,6 +1059,9 @@ namespace OpenForBusiness
             foreach (var item in ForSale(vm)) item.SalePrice = -1;
             shop.Shoppers.Clear();
             shop.StandsInFor.Clear();
+            shop.Pitches.Clear();
+            shop.Restockers.Clear();
+            shop.Meters.Clear();
             refund = book.PricePaid;
             family.Budget += refund;
             book.Owner = 0;
@@ -850,36 +1092,59 @@ namespace OpenForBusiness
             shop.Checks++;
 
             var book = BookFor(shop.House);
+            var open = !book.Closed;
             var till = Till(vm);
-            var tended = Tended(vm, till);
-            var giveUpAfter = book.Has(Perk.PatientCustomers) ? GiveUpAfter * Reputation.PatientTimes : GiveUpAfter;
-            var ringUpChecks = book.Has(Perk.QuickHands) ? Reputation.QuickRingUpChecks : RingUpChecks;
+            var staff = StaffOnLot(vm, book);
 
-            // 0. the employees on the lot: paid by the hour, and sent back to the till if they have wandered
-            var staff = (book.Employees.Count == 0) ? new List<VMAvatar>()
-                : vm.Context.ObjectQueries.Avatars.OfType<VMAvatar>().Where(x => IsCustomer(vm, x) && book.Employees.Contains(SimNumber(x))).ToList();
-            PayWages(vm, shop, book, till, staff);
-            if (till != null && shop.Checks % SendBackEvery == 0)
+            // 0. the hour: wages
+            var hour = GameHour(vm);
+            if (hour != shop.LastHour)
             {
-                foreach (var employee in staff)
-                {
-                    if (book.Employees.Contains(SimNumber(employee)) && !Reached(employee, till.MultitileGroup)) WalkTo(vm, employee, till.MultitileGroup);
-                }
+                var first = shop.LastHour < 0;
+                shop.LastHour = hour;
+                if (!first && open && staff.Count > 0) PayWages(vm, shop, book, staff);
             }
 
-            // 1. Sims on their way to buy. With a till they go there and wait for one of the family to ring them up.
-            //    Without one they go to the object and leave the money.
+            // 1. the staff at work, while the business is open
+            if (open)
+            {
+                foreach (var (sim, record) in staff)
+                {
+                    if (book.EmployeeOf(record.Sim) == null) continue; //quit just now
+                    switch (record.Job)
+                    {
+                        case Job.Cashier:
+                            if (till != null && shop.Checks % SendBackEvery == 0 && !Reached(sim, till.MultitileGroup)) WalkTo(vm, sim, till.MultitileGroup);
+                            break;
+                        case Job.Restocker:
+                            if (book.Shelves.Count > 0 && !shop.Restockers.ContainsKey(sim.ObjectID)
+                                && Family(vm).Budget >= book.Shelves.Min(x => RestockCost(book, x))) StartRestock(vm, sim, true);
+                            break;
+                        case Job.Salesperson:
+                            if (!shop.Pitches.ContainsKey(sim.ObjectID) && Dice.Next(3) == 0) PitchSomeone(vm, shop, book, sim);
+                            break;
+                    }
+                }
+            }
+            RestockWork(vm, shop, book);
+            PitchWork(vm, shop, book, till);
+
+            // 2. Sims on their way to buy. With a till they go there and wait to be rung up. Without one they go to the
+            //    object and leave the money.
+            var tenders = Tenders(vm, till);
+            var cashier = tenders.OrderByDescending(x => (int)BadgeOf(vm, x, Talent.Cashiering)).FirstOrDefault();
+            var ringUpChecks = BadgeBook.RingUpChecks((cashier == null) ? BadgeLevel.None : BadgeOf(vm, cashier, Talent.Cashiering));
             var serving = false;
             foreach (var shopper in shop.Shoppers.Values.OrderByDescending(x => x.Served).ThenByDescending(x => x.Waited).ToList())
             {
                 var avatar = vm.GetObjectById(shopper.AvatarID) as VMAvatar;
                 var item = shopper.Item;
-                if (!IsCustomer(vm, avatar) || item.BaseObject == null || item.BaseObject.Dead || item.SalePrice <= 0 || book.Employees.Contains(SimNumber(avatar)))
+                if (!IsShopper(vm, book, avatar) || item.BaseObject == null || item.BaseObject.Dead || item.SalePrice <= 0)
                 {
                     shop.Shoppers.Remove(shopper.AvatarID);
                     continue;
                 }
-                if (++shopper.Waited > giveUpAfter)
+                if (++shopper.Waited > GiveUpAfter)
                 {
                     shop.Shoppers.Remove(shopper.AvatarID);
                     shop.LookAgainAt[avatar.ObjectID] = shop.Checks + LookAgainAfter;
@@ -891,50 +1156,71 @@ namespace OpenForBusiness
                 if (till != null)
                 {
                     //one customer at a time, the one who has waited longest
-                    if (!tended || serving) continue;
+                    if (cashier == null || serving) continue;
                     serving = true;
                     if (++shopper.Served < ringUpChecks) continue;
                 }
                 //something in use, or holding something, stays until it is free
                 if (item.BaseObject.IsUserMovable(vm.Context, true) != VMPlacementError.Success) continue;
                 shop.Shoppers.Remove(shopper.AvatarID);
-                Sell(vm, shop, item, avatar);
+                Sell(vm, shop, item, avatar, (shopper.Price > 0) ? shopper.Price : item.SalePrice);
+                if (till != null) Practice(vm, shop, cashier, Talent.Cashiering);
             }
 
-            // 2. Sims who might look at something
+            // 3. Sims who might look at something, while the business is open
+            if (!open) return;
             List<VMMultitileGroup> stock = null;
-            var browseOneIn = tended ? Math.Max(1, BrowseOneIn / TendedBrowseTimes) : BrowseOneIn;
-            if (book.Has(Perk.WordOfMouth)) browseOneIn = Math.Max(1, browseOneIn * 2 / Reputation.WordOfMouthHalves);
+            var halves = Reputation.BrowseHalves(book.PerkLevel(PerkTree.Connections)) * ((cashier != null) ? 2 : 1);
+            var browseOneIn = Math.Max(1, BrowseOneIn * 2 / halves);
             foreach (var avatar in vm.Context.ObjectQueries.Avatars.OfType<VMAvatar>().ToList())
             {
-                if (!IsCustomer(vm, avatar) || shop.Shoppers.ContainsKey(avatar.ObjectID) || book.Employees.Contains(SimNumber(avatar))) continue;
+                if (!IsShopper(vm, book, avatar) || shop.Shoppers.ContainsKey(avatar.ObjectID)) continue;
                 if (shop.LookAgainAt.TryGetValue(avatar.ObjectID, out var at) && shop.Checks < at) continue;
                 if (Dice.Next(browseOneIn) != 0) continue;
 
                 if (stock == null) stock = ForSale(vm).Where(x => !shop.Shoppers.Values.Any(y => y.Item == x)).ToList();
                 if (stock.Count == 0) break;
+                var isNew = !book.Knows(SimNumber(avatar));
+                Meet(vm, shop, book, avatar);
                 var item = stock[Dice.Next(stock.Count)];
                 var catalog = CatalogItem(item.BaseObject);
-                if (catalog == null || Dice.Next(100) >= ChanceToBuy(item.SalePrice, (int)catalog.Value.Price, tended, book.StarsOf(SimNumber(avatar)), book.Has(Perk.Salesmanship)))
+                var stars = book.StarsOf(SimNumber(avatar));
+                if (catalog == null || Dice.Next(100) >= Reputation.ChanceToBuy(item.SalePrice, (int)catalog.Value.Price, cashier != null, stars, book.PerkLevel(PerkTree.Connections)))
                 {
                     shop.LookAgainAt[avatar.ObjectID] = shop.Checks + LookAgainAfter;
-                    if (catalog != null)
-                    {
-                        var putOff = Reputation.StarsForLooking(item.SalePrice, (int)catalog.Value.Price);
-                        if (putOff != 0)
-                        {
-                            AddStars(vm, shop, book, avatar, putOff);
-                            Changed(vm);
-                        }
-                    }
+                    //they have it in mind now: a sales pitch is about this
+                    if (!shop.Meters.TryGetValue(avatar.ObjectID, out var meter) || meter.Item?.BaseObject == null || meter.Item.BaseObject.Dead || meter.Item.SalePrice <= 0)
+                        shop.Meters[avatar.ObjectID] = new BuyMeter() { Item = item };
+                    var putOff = (catalog == null) ? 0 : Reputation.StarsForLooking(item.SalePrice, (int)catalog.Value.Price);
+                    if (putOff != 0) AddStars(vm, shop, book, avatar, putOff);
+                    if (isNew || putOff != 0) Changed(vm);
                     continue;
                 }
                 stock.Remove(item);
                 shop.LookAgainAt.Remove(avatar.ObjectID);
+                shop.Meters.Remove(avatar.ObjectID);
                 shop.Shoppers[avatar.ObjectID] = new Shopper() { AvatarID = avatar.ObjectID, Item = item };
                 WalkTo(vm, avatar, (till != null) ? till.MultitileGroup : item);
             }
         }
+
+        /// <summary>A salesperson picks a customer: one with something in mind first, and not one just pitched to.</summary>
+        private static void PitchSomeone(VM vm, LotShop shop, ShopBook book, VMAvatar seller)
+        {
+            var busy = new HashSet<short>(shop.Pitches.Values.Select(x => x.Customer));
+            var customers = vm.Context.ObjectQueries.Avatars.OfType<VMAvatar>()
+                .Where(x => IsShopper(vm, book, x) && !shop.Shoppers.ContainsKey(x.ObjectID) && !busy.Contains(x.ObjectID)
+                    && !(shop.PitchedAt.TryGetValue(x.ObjectID, out var at) && shop.Checks - at < PitchAgainAfter))
+                .OrderByDescending(x => shop.Meters.ContainsKey(x.ObjectID))
+                .ThenBy(x => Dice.Next())
+                .ToList();
+            var customer = customers.FirstOrDefault();
+            if (customer == null) return;
+            var pitch = Sales.EmployeePitch(BadgeOf(vm, seller, Talent.Sales), book.StarsOf(SimNumber(customer)), MeterOf(vm, customer)?.Meter ?? 0);
+            StartPitch(vm, seller, customer, pitch, true);
+        }
+
+        // ---- getting about ----
 
         private static int Tile(short pos) => pos >> 4;
 
@@ -949,54 +1235,81 @@ namespace OpenForBusiness
             return false;
         }
 
+        private static bool Near(VMAvatar avatar, LotTilePos pos)
+        {
+            return pos.Level == avatar.Position.Level && Math.Abs(Tile(pos.x) - Tile(avatar.Position.x)) <= ReachTiles
+                && Math.Abs(Tile(pos.y) - Tile(avatar.Position.y)) <= ReachTiles;
+        }
+
+        private static bool NearSim(VMAvatar a, VMAvatar b) => b.Position != LotTilePos.OUT_OF_WORLD && Near(a, b.Position);
+
+        private static readonly (int x, int y)[] Around = { (0, 1), (1, 0), (0, -1), (-1, 0) };
+
         /// <summary>
-        /// Sends a Sim to stand by an object, the way the player's "go here" does: the engine's own marker object is
-        /// put on a tile beside it and its first interaction is queued for the Sim. If none of that is there to use
-        /// the Sim stays put, and buys from where they are once BuyAnywayAfter has passed.
+        /// Sends a Sim to stand by an object (or another Sim), the way the player's "go here" does: the engine's own
+        /// marker object is put on a tile beside it and its first interaction is queued for the Sim. If none of that is
+        /// there to use the Sim stays put, and what they were sent for happens from where they are after a while.
         /// </summary>
         private static void WalkTo(VM vm, VMAvatar avatar, VMMultitileGroup item)
         {
+            var taken = new HashSet<(int, int)>(item.Objects.Select(x => (Tile(x.Position.x), Tile(x.Position.y))));
+            var tiles = new List<LotTilePos>();
+            foreach (var part in item.Objects)
+            {
+                if (part.Position == LotTilePos.OUT_OF_WORLD) continue;
+                foreach (var step in Around.OrderBy(x => Dice.Next()))
+                {
+                    var tx = Tile(part.Position.x) + step.x;
+                    var ty = Tile(part.Position.y) + step.y;
+                    if (!taken.Contains((tx, ty))) tiles.Add(new LotTilePos((short)(tx * 16 + 8), (short)(ty * 16 + 8), part.Position.Level));
+                }
+            }
+            WalkToTiles(vm, avatar, tiles, item);
+        }
+
+        /// <summary>Sends a Sim to a spot (an empty shelf): the spot itself, or a tile beside it.</summary>
+        private static void WalkToSpot(VM vm, VMAvatar avatar, LotTilePos pos)
+        {
+            var tiles = new List<LotTilePos>() { new LotTilePos((short)(Tile(pos.x) * 16 + 8), (short)(Tile(pos.y) * 16 + 8), pos.Level) };
+            foreach (var step in Around.OrderBy(x => Dice.Next()))
+                tiles.Add(new LotTilePos((short)((Tile(pos.x) + step.x) * 16 + 8), (short)((Tile(pos.y) + step.y) * 16 + 8), pos.Level));
+            WalkToTiles(vm, avatar, tiles, null);
+        }
+
+        private static void WalkToTiles(VM vm, VMAvatar avatar, List<LotTilePos> tiles, VMMultitileGroup exclude)
+        {
             try
             {
-                var taken = new HashSet<(int, int)>(item.Objects.Select(x => (Tile(x.Position.x), Tile(x.Position.y))));
-                var around = new (int x, int y)[] { (0, 1), (1, 0), (0, -1), (-1, 0) };
-                foreach (var part in item.Objects)
+                foreach (var pos in tiles)
                 {
-                    if (part.Position == LotTilePos.OUT_OF_WORLD) continue;
-                    foreach (var step in around.OrderBy(x => Dice.Next()))
-                    {
-                        var tx = Tile(part.Position.x) + step.x;
-                        var ty = Tile(part.Position.y) + step.y;
-                        if (taken.Contains((tx, ty))) continue;
-                        var pos = new LotTilePos((short)(tx * 16 + 8), (short)(ty * 16 + 8), part.Position.Level);
-                        if (vm.Context.IsOutOfBounds(pos)) continue;
-                        if (vm.Context.ObjectQueries.GetObjectsAt(pos)?.Any(x => x is VMGameObject && x.MultitileGroup != item) ?? false) continue;
+                    if (vm.Context.IsOutOfBounds(pos)) continue;
+                    if (vm.Context.ObjectQueries.GetObjectsAt(pos)?.Any(x => x is VMGameObject && x.MultitileGroup != exclude) ?? false) continue;
 
-                        var marker = vm.Context.CreateObjectInstance(GOTO_GUID, pos, Direction.NORTH)?.Objects.FirstOrDefault();
-                        if (marker == null) return; //this game has no marker object
-                        var menu = (marker.Position == LotTilePos.OUT_OF_WORLD) ? null : marker.GetPieMenu(vm, avatar, true, false);
-                        if (menu == null || menu.Count == 0)
-                        {
-                            marker.Delete(true, vm.Context);
-                            continue;
-                        }
-                        marker.PushUserInteraction(menu[0].ID, avatar, vm.Context, false, new short[] { menu[0].Param0, 0, 0, 0 });
-                        return;
+                    var marker = vm.Context.CreateObjectInstance(GOTO_GUID, pos, Direction.NORTH)?.Objects.FirstOrDefault();
+                    if (marker == null) return; //this game has no marker object
+                    var menu = (marker.Position == LotTilePos.OUT_OF_WORLD) ? null : marker.GetPieMenu(vm, avatar, true, false);
+                    if (menu == null || menu.Count == 0)
+                    {
+                        marker.Delete(true, vm.Context);
+                        continue;
                     }
+                    marker.PushUserInteraction(menu[0].ID, avatar, vm.Context, false, new short[] { menu[0].Param0, 0, 0, 0 });
+                    return;
                 }
             }
             catch (Exception e)
             {
-                //walking over is for show. the sale still goes through.
-                Console.WriteLine("[business] could not send " + avatar + " to " + item.BaseObject + ": " + e.Message);
+                //walking over is for show. what they were sent for still happens.
+                Console.WriteLine("[business] could not send " + avatar + ": " + e.Message);
             }
         }
 
-        private static void Sell(VM vm, LotShop shop, VMMultitileGroup item, VMAvatar buyer)
+        // ---- sales ----
+
+        private static void Sell(VM vm, LotShop shop, VMMultitileGroup item, VMAvatar buyer, int price)
         {
             var family = Family(vm);
             var business = IsBusinessLot(vm);
-            var price = item.SalePrice;
             var name = NameOf(item.BaseObject);
             var buyerName = buyer.Name;
             var catalogPrice = (int?)CatalogItem(item.BaseObject)?.Price ?? 0;
@@ -1007,7 +1320,7 @@ namespace OpenForBusiness
                 GUID = GuidOf(item.BaseObject),
                 Position = item.BaseObject.Position,
                 Direction = item.BaseObject.Direction,
-                Price = price,
+                Price = item.SalePrice, //restocked at the price it had, whatever this customer was offered
                 SourceID = business ? SourceOf(shop, item) : (short)0
             };
             if (business)
