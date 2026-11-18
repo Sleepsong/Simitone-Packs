@@ -88,7 +88,7 @@ turns one of the rims to run along it. A pool with no diagonals is still built b
 
 ## Status
 
-Experimental. It builds against the `addon-packs` branch. Its patches, placement rules, wall and
+Experimental. It builds against the `engine/addon-packs` branch. Its patches, placement rules, wall and
 floor bookkeeping, room and routing changes, and the pool model have been checked against the built
 engine without the game running, and the pool model has been drawn from above and looked at. It
 has not yet been played in the game itself, which needs The Sims' own files. Things to look at

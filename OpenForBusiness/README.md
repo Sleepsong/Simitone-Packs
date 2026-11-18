@@ -127,7 +127,7 @@ rank and the stars behind it, the employees and their wages, and the house's tot
 
 ## State
 
-It builds, and its patches apply to the `addon-packs` build of Simitone (all five target methods are
+It builds, and its patches apply to the `engine/addon-packs` build of Simitone (all five target methods are
 found and patched). The price table, the stars, ranks and perks, and the saved book (with the files
 of every earlier stage) are checked by a small test. **It has not
 been run with the game**, because that needs a copy of The Sims. The parts that only playing can show:

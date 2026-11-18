@@ -7,7 +7,7 @@ Some packs contain a compiled `.dll`. This repository is where that code comes f
 what a pack does before you run it, and build it yourself instead of trusting a download.
 
 These packs need a build of Simitone with add-on pack support, which at the moment is the
-`addon-packs` branch.
+`engine/addon-packs` branch.
 
 ## The packs
 
@@ -48,7 +48,7 @@ You need the .NET 9 SDK and Simitone's source, including its FreeSO submodule. P
 called `Simitone` inside this repository or next to it:
 
 ```bash
-git clone --recursive -b addon-packs https://github.com/Sleepsong/Simitone
+git clone --recursive -b engine/addon-packs https://github.com/Sleepsong/Simitone
 dotnet build BuildCheats/BuildCheats.csproj -c Release
 dotnet build HalfWalls/HalfWalls.csproj -c Release
 dotnet build TerrainPaint/TerrainPaint.csproj -c Release
