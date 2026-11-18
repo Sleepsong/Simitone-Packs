@@ -1,0 +1,14 @@
+{
+  "cap": 25,
+  "moodlets": {
+    "just_married": { "name": "Just Married", "text": "Married, and living together.", "mood": 20, "hours": 48, "group": "" },
+    "new_baby": { "name": "New Baby", "text": "A baby has been born into the household.", "mood": 15, "hours": 48, "group": "" },
+    "promoted": { "name": "Promoted", "text": "Moved up at work.", "mood": 12, "hours": 24, "group": "job" },
+    "new_job": { "name": "New Job", "text": "Starting out in a new job.", "mood": 6, "hours": 12, "group": "job" },
+    "demoted": { "name": "Demoted", "text": "Moved down at work.", "mood": -12, "hours": 24, "group": "job" },
+    "fired": { "name": "Fired", "text": "Lost their job.", "mood": -15, "hours": 24, "group": "job" },
+    "burnt_food": { "name": "Burnt Food", "text": "Set the cooking on fire.", "mood": -8, "hours": 4, "group": "" },
+    "fire": { "name": "Fire!", "text": "There was a fire.", "mood": -12, "hours": 6, "group": "" },
+    "lost_family": { "name": "Lost a Loved One", "text": "Someone has left the household for good.", "mood": -20, "hours": 72, "group": "" }
+  }
+}

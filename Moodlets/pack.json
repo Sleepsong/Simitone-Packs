@@ -1,0 +1,9 @@
+{
+  "id": "sample.moodlets",
+  "name": "Moodlets",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Moodlets, after The Sims 3: things that happen give your Sims a mood boost or a mood penalty for a while, such as Just Married, Promoted or Burnt Food. Shown beside the needs. A first stage, not yet run against a game. Type moodlet in the console for the household's.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "Moodlets.dll"
+}
