@@ -74,7 +74,7 @@ jobs:
     - name: Build Driveways
       run: dotnet build Driveways/Driveways.csproj -c Release
 
-    - name: Test Driveways' route planning
+    - name: Test Driveways' route planning and save format
       run: dotnet run --project Driveways/tests -c Release
 
     - name: Build Family Tree

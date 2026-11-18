@@ -9,6 +9,8 @@
   <ItemGroup>
     <!-- route planning uses nothing from the engine, so it is checked without it -->
     <Compile Include="..\Route.cs" />
+    <!-- nor does the format a drive is kept in beside the save -->
+    <Compile Include="..\Saved.cs" />
   </ItemGroup>
 
 </Project>

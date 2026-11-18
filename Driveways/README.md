@@ -34,8 +34,8 @@ looks wrong, `driveways door` has Sims use the car's other side.
 A Sim with a job can drive to work in their car. **Drive to Work** is on the car's menu from when the
 game says the carpool will come (two hours before work) until the carpool leaves.
 
-- Set off early, before the carpool: the Sim drives off and is away. When the carpool comes it is
-  kept out of sight, and the game takes them to work from there.
+- Set off early, before the carpool: the Sim drives off and is away, off the lot as a Sim at work is.
+  When the carpool comes it is kept out of sight, and the game takes them to work from there.
 - Or wait for the carpool: choose Drive to Work while it is at the kerb, and it is hidden as they
   drive off.
 
@@ -107,6 +107,23 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 | `driveways help` | What the commands are |
 
 ## Changes
+
+- **0.18**: cars stop for Sims, and drives are saved.
+  - A car stops for anyone in its way, on the driveway or the pavement, as it pulls out or comes
+    home: a Sim, a visitor or a pet. After a second and a half it sounds its horn, the game's own
+    for that car, and again every five seconds. Someone who stays put for twenty seconds is driven
+    past, so nobody can keep a car out for ever. Before, a Sim who stepped onto the driveway after
+    the car had set off was driven through.
+  - Waiting to be taken to work after leaving early, the Sim is off the lot, out of the world as a
+    Sim at work is, not standing invisible by the driveway. If the car comes home with them, they
+    are put back where they got out of it.
+  - A lot saved in the middle of a drive, or while a Sim is at work, carries on where it was when it
+    is loaded: the car is where it was on its way, and a Sim at work comes home in their car. The
+    pack keeps this in a file of its own beside the save, `LocalHouse/PackData/sample.driveways/`,
+    and the save itself is not changed. The same goes for the home lot while a Sim is on a
+    community lot: a Sim at work while another drives into town still comes home in their car.
+    A drive that cannot be put back as it was (the car or the Sim is not there, or not where the
+    drive would have them) ends with the car parked, as before.
 
 - **0.17**: smooth turns in 3D. The car rounds the corner between the driveway and the road on a curve,
   and in 3D turns smoothly through it. In 2D it follows the same curve but its picture still snaps
@@ -218,26 +235,27 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 
 - **The carpool is still there, out of sight.** It is what takes a Sim to work and brings them back,
   so its horn can still be heard, morning and evening.
-- **Waiting for the carpool, a Sim is on the lot, hidden by their car.** Others walk round them.
 - **Driving to a community lot: they arrive and come home the game's way.** They do not drive up to
   the community lot, and they come home without the car; it is parked at home all along. Only the
   Sim who drives goes, without the household or a date. Studio Town and Magic Town have their own
   ways of arriving, and have not been tried.
-- **A lot saved while a car is at work** loads with the car parked, and the Sim comes home by carpool.
+- **A drive is saved beside the save, not in it.** Copy a neighbourhood to another computer without
+  `LocalHouse/PackData`, and a lot saved mid-drive loads with the car parked, and a Sim at work
+  comes home by carpool. A save made by an older version of the pack does the same.
 - **Which side of the car to get in by is a guess.** The game's animations are made for its carpool;
   if a Sim gets in facing the wrong way or beside the door, `driveways door` tries the other side.
 - **The engine sound is the game's carpool's.** It is the sound for driving away, played as the car
   pulls out and as it comes back; there is none while it waits or drives on the driveway.
 - **Only what is drawn moves.** For the game's rules the car never leaves its parking place, and the Sim
-  stays standing next to it. Other Sims walk round both while they are "away". The good side of this is
-  that nothing about a drive is saved: a lot saved in the middle of one loads with the car parked and the
-  Sim beside it.
+  stays standing next to it (unless they are waiting for the carpool, off the lot). Other Sims walk
+  round the car while it is "away".
 - **In 2D the car turns in quarter turns.** It has four pictures, like every Sims 1 object, so it snaps
   round half way through the corner. In 3D it turns smoothly.
 - **Which end of a car is its front is a guess.** If they drive along the road backwards, `driveways
   reverse` turns them round.
-- **Nothing gets run over.** The car checks that the driveway is clear before it sets off. A Sim who
-  walks onto the driveway afterwards is driven through.
+- **Nothing gets run over, but a Sim who will not move is driven past.** The car waits twenty seconds
+  for someone standing in its way, then drives on through them. It only looks on the lot: on the road,
+  nobody walks.
 - **The road is found by its floor tiles.** Tarmac is tile 9 (and 10 and 11, the line down the
   middle), in a strip along one side of the lot; the pavement, tile 12, marks where the garden starts.
   A lot that paves its road differently will not be found.
@@ -252,10 +270,11 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 | `pack/driveways/content/Downloads/Driveways.iff` | The objects: what they are, and almost nothing of what they look like. Written by `generator`, and committed, since it is data |
 | `generator/` | Writes that file, then reads it back and checks it. Every tile of a driveway or a car is its own object; all the driveway's share one flat grey square and all the cars' one grey block, drawn by tracing rays with the camera maths the engine uses to rebuild a 3D model from a sprite |
 | `FloorDress.cs` | Paints the driveway's preview, while it is held. It makes a second set of sprites in memory, the shape and depth of the grey square, each pixel coloured from the place on a floor tile of the game's that it lies over. Nothing of the game's is copied into the pack |
+| `VMDrive.Saving.cs`, `Saved.cs` | Keeping drives under way with the lot: the pack's copy of them whenever the game takes one of the lot, written to a file beside the save, and put back when the lot is loaded. `Saved.cs` is the file's format, plain numbers |
 | `VMDrive.cs` | A new SimAntics primitive, number 200. The objects' scripts are one or two instructions that call it: to set an object up, to say whether the car is parked, and to drive. Also where a driveway and a car may be put, and what each is drawn with: the floor for the driveway, and the game's cars' tiles for the cars |
 | `Route.cs` | Where things go: finding the road, the car's way out and back and how fast, where a driveway snaps to, and where a car fits on one. Plain numbers, nothing from the engine |
-| `tests/` | Checks `Route.cs` |
-| `DrivewaysPack.cs` | Adds the primitive and the console commands, and Harmony patches: on the game's tick, so a car is never left hidden if its drive is cut short; round an object being moved or deleted, to snap a driveway to the road, keep cars on driveways, and lay and take up the driveway's floor; when an object's picture is set, to give the driveway's preview and the cars theirs; when the game looks for an object under the cursor, so a driveway that is down can be clicked; and when the player lets go of something, so a driveway that has been moved stays hidden |
+| `tests/` | Checks `Route.cs`, and that `Saved.cs` reads back what it writes |
+| `DrivewaysPack.cs` | Adds the primitive and the console commands, and Harmony patches: on the game's tick, so a car is never left hidden if its drive is cut short, and a lot loaded mid-drive gets its drives back before anything runs; when the game takes a copy of the lot, saves it, or loads it, to keep the drives with it; round an object being moved or deleted, to snap a driveway to the road, keep cars on driveways, and lay and take up the driveway's floor; when an object's picture is set, to give the driveway's preview and the cars theirs; when the game looks for an object under the cursor, so a driveway that is down can be clicked; and when the player lets go of something, so a driveway that has been moved stays hidden |
 | `Shared.cs` | The ids and sizes the object file and the code must agree on, and the cars: which of the game's each is drawn with. Compiled into both |
 
 To write the object file again, and see a driveway painted with a made-up test tile:
@@ -269,5 +288,5 @@ The second folder is optional. It gets `driveway.ppm`.
 
 ## What comes next
 
-Roughly in order: Sims getting in and out; the car
-taking a Sim to work in place of the carpool; driving to community lots.
+Roughly in order: watching all of this run in the game and fixing what that shows; driving up to the
+community lot rather than arriving the game's way; the household or a date coming along.

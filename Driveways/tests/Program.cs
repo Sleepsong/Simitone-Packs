@@ -373,5 +373,47 @@ const int DW = 5, DL = 9; //the driveway, in tiles
     Check(CarSnap.Fit(X0, Y0, X0 + 1, Y1, 36, 25, 1, 3, 6) == null, "car: a driveway shorter than the car does not take it");
 }
 
+// ---- a drive kept beside the save (Saved.cs) ----
+
+{
+    var drives = new SavedDrives { Day = 12, Hour = 7, Minute = 45 };
+    drives.Trips.Add(new SavedTrip
+    {
+        Car = new SavedObject(301, 0x7D21A101), Sim = new SavedObject(27, 0xABCDEF01), Phase = "Waiting", Distance = 3.25f, Timer = 17,
+        ToWork = true, ToLot = 0, Carpool = new SavedObject(412, 0xDB6DEDB2), CarpoolInteraction = 1,
+        WaitingFrom = new SavedTile { X = 40 * 16 + 8, Y = 23 * 16 + 8, Level = 1 }, WaitingFacing = 4
+    });
+    drives.Commutes.Add(new SavedCommute
+    {
+        Car = new SavedObject(320, 0x7D21A102), SimGUID = 0xABCDEF02, SimName = "Bella", State = "AtWork", Ticks = 5, Distance = 0,
+        CarsWhenGone = new List<SavedObject> { new SavedObject(500, 0xBC3AEC18) }
+    });
+    drives.HiddenCars.Add(new SavedObject(412, 0xDB6DEDB2));
+    drives.AutoQueued.Add(new SavedQueued { SimGUID = 0xABCDEF02, Day = 12 });
+
+    var back = SavedDrives.FromBytes(drives.ToBytes());
+    Check(back != null, "save: what was written reads back");
+    if (back != null)
+    {
+        var t = back.Trips.Single();
+        Check(t.Car.ID == 301 && t.Car.GUID == 0x7D21A101 && t.Sim.ID == 27 && t.Sim.GUID == 0xABCDEF01, "save: a trip keeps its car and Sim, with their GUIDs");
+        Check(t.Phase == "Waiting" && Near(t.Distance, 3.25f) && t.Timer == 17 && t.ToWork && t.ToLot == 0, "save: a trip keeps how far it has got");
+        Check(t.Carpool.ID == 412 && t.CarpoolInteraction == 1, "save: a trip keeps the carpool it is waiting for");
+        Check(t.WaitingFrom != null && t.WaitingFrom.X == 648 && t.WaitingFrom.Y == 376 && t.WaitingFrom.Level == 1 && t.WaitingFacing == 4, "save: a trip keeps where the Sim stood before going out of the world");
+        var c = back.Commutes.Single();
+        Check(c.Car.ID == 320 && c.SimGUID == 0xABCDEF02 && c.SimName == "Bella" && c.State == "AtWork" && c.Ticks == 5, "save: a Sim at work keeps their car and how far the day has got");
+        Check(c.CarsWhenGone.Single().ID == 500 && c.Carpool == null, "save: a Sim at work keeps the cars that were there when they went");
+        Check(back.HiddenCars.Single().ID == 412 && back.AutoQueued.Single().Day == 12, "save: the hidden carpools and the Sims driven to work today are kept");
+        Check(back.SavedAt(12, 7, 45) && !back.SavedAt(12, 7, 46) && !back.SavedAt(13, 7, 45), "save: it belongs only with the save of the same time");
+        Check(!back.IsEmpty, "save: a lot with drives under way is not empty");
+    }
+    Check(new SavedDrives().IsEmpty && SavedDrives.FromBytes(new SavedDrives().ToBytes())?.IsEmpty == true, "save: a lot with no drives is empty");
+    Check(SavedDrives.FromBytes(null) == null && SavedDrives.FromBytes(new byte[0]) == null, "save: no file is nothing");
+    Check(SavedDrives.FromBytes(System.Text.Encoding.UTF8.GetBytes("not a save {")) == null, "save: a broken file is nothing");
+    Check(SavedDrives.FromBytes(System.Text.Encoding.UTF8.GetBytes("{\"Version\": 99}")) == null, "save: a file from a later version is left alone");
+    var holes = SavedDrives.FromBytes(System.Text.Encoding.UTF8.GetBytes("{\"Version\": 1, \"Trips\": [null, {\"Phase\": \"Out\"}], \"Commutes\": null}"));
+    Check(holes != null && holes.Trips.Count == 0 && holes.Commutes.Count == 0 && holes.IsEmpty, "save: entries with nothing to find are dropped");
+}
+
 Console.WriteLine($"{passed} passed, {failed} failed");
 return failed == 0 ? 0 : 1;

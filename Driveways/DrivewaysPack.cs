@@ -31,7 +31,7 @@ namespace Driveways
     ///
     /// The pack is two things. Its content layer is one object file with a driveway and some cars, written by the
     /// generator folder. Its code layer is this assembly: one new SimAntics primitive (VMDrive) that the objects'
-    /// short scripts call, a console command, and Harmony patches: on the game's tick, an object being moved, deleted
+    /// short scripts call, a console command, and Harmony patches: on the game's tick, the lot being copied, saved and loaded, an object being moved, deleted
     /// or given its picture, the game looking for an object under the cursor, and the player letting go of one. Every patch catches whatever
     /// goes wrong in it: the pack must never stop the game doing what it was doing.
     /// </summary>
@@ -40,8 +40,14 @@ namespace Driveways
         public void OnLoad(Pack pack)
         {
             var harmony = new Harmony("pack." + pack.Id);
+            if (!string.IsNullOrEmpty(pack.Id)) VMDrive.PackId = pack.Id;
             var tick = AccessTools.Method(typeof(VM), "Tick") ?? throw new Exception("VM.Tick was not found: this pack was made for a different version of Simitone");
-            harmony.Patch(tick, postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterTick)));
+            harmony.Patch(tick, prefix: new HarmonyMethod(typeof(DrivewaysPack), nameof(BeforeTick)), postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterTick)));
+            //a drive under way is kept with the lot when the game takes a copy of it (to save it, or while the family is on a
+            //community lot), and put back when the lot is. optional: without them a lot loads with its cars parked
+            TryPatch(harmony, AccessTools.Method(typeof(VM), "Save"), postfix: nameof(AfterCopy));
+            TryPatch(harmony, AccessTools.Method(typeof(VM), "Load", new[] { typeof(FSO.SimAntics.Marshals.VMMarshal) }), postfix: nameof(AfterLoad));
+            TryPatch(harmony, AccessTools.Method(typeof(TS1GameScreen), "Save"), postfix: nameof(AfterSave));
             //a driveway being put down snaps to the road
             var move = AccessTools.Method(typeof(VMMultitileGroup), "ChangePosition") ?? throw new Exception("VMMultitileGroup.ChangePosition was not found: this pack was made for a different version of Simitone");
             harmony.Patch(move, prefix: new HarmonyMethod(typeof(DrivewaysPack), nameof(BeforeMove)), postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterMove)));
@@ -292,6 +298,27 @@ namespace Driveways
             }
             catch (Exception) { } //(never let this stop an object being moved)
             return true;
+        }
+
+        public static void BeforeTick(VM __instance)
+        {
+            //(a lot just loaded mid-drive: its drives are put back before any script runs)
+            try { VMDrive.RestoreSaved(__instance); } catch (Exception) { }
+        }
+
+        public static void AfterCopy(VM __instance, FSO.SimAntics.Marshals.VMMarshal __result)
+        {
+            try { VMDrive.Copied(__instance, __result); } catch (Exception) { }
+        }
+
+        public static void AfterLoad(VM __instance, object[] __args)
+        {
+            try { VMDrive.Loaded(__instance, __args != null && __args.Length > 0 ? __args[0] as FSO.SimAntics.Marshals.VMMarshal : null); } catch (Exception) { }
+        }
+
+        public static void AfterSave(TS1GameScreen __instance)
+        {
+            try { VMDrive.Saved(__instance?.vm); } catch (Exception) { }
         }
 
         public static void AfterTick(VM __instance)

@@ -26,10 +26,10 @@ namespace Driveways
     ///
     /// A drive changes nothing the game saves. The car stays where it is parked as far as the game's rules go (it
     /// still takes up its tiles), and the Sim stays standing beside it. Only what is drawn moves: the car's picture
-    /// is taken along the route and then hidden, and the Sim's is hidden for the whole trip. So a lot saved in the
-    /// middle of a drive loads with the car parked and the Sim next to it.
+    /// is taken along the route and then hidden, and the Sim's is hidden for the whole trip. Where the car is on its
+    /// way is kept by the pack beside the save, and put back when the lot is loaded (VMDrive.Saving.cs).
     /// </summary>
-    public class VMDrive : VMPrimitiveHandler
+    public partial class VMDrive : VMPrimitiveHandler
     {
         /// <summary>How long the car is away, in ticks (30 to the second at normal speed).</summary>
         public const int AwayTicks = 600;
@@ -66,9 +66,17 @@ namespace Driveways
             public float Distance;
             public int Timer;
             public uint LastTick;
+            /// <summary>How long the car has been waiting for someone to get out of its way.</summary>
+            public int Waited;
+            /// <summary>
+            /// While waiting off the lot for the carpool, the Sim is out of the world, as the game keeps a Sim at work:
+            /// where they stood by the car, to put them back if the car comes home with them.
+            /// </summary>
+            public LotTilePos? WaitingFrom;
+            public Direction WaitingFacing;
         }
 
-        //the trips under way on each lot, by the car's object id. nothing here is saved
+        //the trips under way on each lot, by the car's object id. kept beside the save by VMDrive.Saving
         private static ConditionalWeakTable<VM, Dictionary<short, Trip>> AllTrips = new ConditionalWeakTable<VM, Dictionary<short, Trip>>();
 
         private static Dictionary<short, Trip> TripsOf(VM vm) => AllTrips.GetOrCreateValue(vm);
@@ -250,9 +258,12 @@ namespace Driveways
                 if (car != null && car.Objects.Count > 0)
                 {
                     var trips = TripsOf(context.VM);
-                    if (trips.TryGetValue(car.BaseObject.ObjectID, out var trip) && trip.Carpool != null) UnhideCar(context.VM, trip.Carpool.Car);
+                    trips.TryGetValue(car.BaseObject.ObjectID, out var trip);
+                    if (trip?.Carpool != null) UnhideCar(context.VM, trip.Carpool.Car);
                     trips.Remove(car.BaseObject.ObjectID);
                     Park(car);
+                    if (trip != null && context.Caller is VMAvatar away) BackInTheWorld(context.VM, away, trip);
+                    else if (context.Caller is VMAvatar left && left.Position == LotTilePos.OUT_OF_WORLD && context.Locals?.Length > 0 && context.Locals[0] == 1) PlaceBeside(context.VM, left, car);
                 }
                 if (context.Caller is VMAvatar sim) Show(sim, true);
             }
@@ -276,13 +287,17 @@ namespace Driveways
             var id = car.BaseObject.ObjectID;
             var started = context.Locals != null && context.Locals.Length > 0 && context.Locals[0] == 1;
 
+            //(the lot was loaded mid-drive: what was saved carries on, once it has been put back)
+            if (!trips.ContainsKey(id) && started) RestoreSaved(vm);
             if (!trips.TryGetValue(id, out var trip))
             {
                 if (started)
                 {
-                    //this script was already driving, but the trip is gone: the lot was saved and loaded in the
-                    //middle of it, or the trip was ended for being stale. either way it is over
+                    //this script was already driving, but the trip is gone: it was ended for being stale, or the lot
+                    //was loaded mid-drive and the trip could not be kept. either way it is over. (a Sim who was waiting
+                    //out of the world for the carpool is put back by the car)
                     Park(car);
+                    if (sim.Position == LotTilePos.OUT_OF_WORLD) PlaceBeside(vm, sim, car);
                     Show(sim, true);
                     return VMPrimitiveExitCode.GOTO_TRUE;
                 }
@@ -327,6 +342,7 @@ namespace Driveways
             switch (trip.Phase)
             {
                 case Phase.Out:
+                    if (Blocked(vm, car, trip.Plan.Out, trip.Distance, sim.ObjectID, ref trip.Waited)) break;
                     trip.Distance += trip.Plan.Out.SpeedAt(trip.Distance);
                     if (trip.Distance >= trip.Plan.Out.Length && trip.ToLot != 0)
                     {
@@ -347,8 +363,14 @@ namespace Driveways
                     else if (trip.Distance >= trip.Plan.Out.Length && trip.ToWork)
                     {
                         Show(car, false);
-                        //(off the lot. early, before the carpool: wait for it, out of sight)
+                        //(off the lot. early, before the carpool: wait for it out of the world, as the game keeps a Sim at work)
                         trip.Phase = Phase.Waiting;
+                        if (sim.Position != LotTilePos.OUT_OF_WORLD)
+                        {
+                            trip.WaitingFrom = sim.Position;
+                            trip.WaitingFacing = sim.Direction;
+                            sim.SetPosition(LotTilePos.OUT_OF_WORLD, sim.Direction, vm.Context);
+                        }
                         goto case Phase.Waiting;
                     }
                     else if (trip.Distance >= trip.Plan.Out.Length)
@@ -375,6 +397,8 @@ namespace Driveways
                             }
                             if (trip.Carpool != null)
                             {
+                                //back into the world (still hidden) beside the carpool, for the game to put them in it
+                                PutBeside(vm, sim, trip.Carpool.Car, trip);
                                 if (HandOver(vm, trip, sim))
                                 {
                                     trips.Remove(id);
@@ -392,6 +416,7 @@ namespace Driveways
                         if (why == null) break; //(still waiting)
                         //cancelled, or no work after all: come straight home, and let the carpool be seen again
                         if (trip.Carpool != null) UnhideCar(vm, trip.Carpool.Car);
+                        BackInTheWorld(vm, sim, trip);
                         trip.Carpool = null;
                         trip.ToWork = false;
                         trip.Phase = Phase.Back;
@@ -422,11 +447,14 @@ namespace Driveways
                     break;
 
                 case Phase.Back:
+                    if (Blocked(vm, car, trip.Plan.Back, trip.Distance, sim.ObjectID, ref trip.Waited)) break;
                     trip.Distance += trip.Plan.Back.SpeedAt(trip.Distance);
                     if (trip.Distance >= trip.Plan.Back.Length)
                     {
                         trips.Remove(id);
                         Park(car);
+                        BackInTheWorld(vm, sim, trip);
+                        if (sim.Position == LotTilePos.OUT_OF_WORLD) PlaceBeside(vm, sim, car); //(home: never left out of the world)
                         Show(sim, true);
                         return VMPrimitiveExitCode.GOTO_TRUE;
                     }
@@ -457,7 +485,7 @@ namespace Driveways
                 if (trip.Carpool != null) UnhideCar(vm, trip.Carpool.Car);
                 Park(trip.Car);
                 var sim = vm.GetObjectById(trip.SimID) as VMAvatar;
-                if (sim != null) Show(sim, true);
+                if (sim != null) { BackInTheWorld(vm, sim, trip); Show(sim, true); }
             }
         }
 
@@ -664,6 +692,7 @@ namespace Driveways
             public int Ticks;      //how long it has been in its state, or doing nothing to do with the carpool
             public float Distance; //on the way home
             public HashSet<VMMultitileGroup> CarsWhenGone; //the game's cars on the lot when the Sim had gone to work
+            public int Waited;     //how long the car has been waiting for someone to get out of its way
             public string Destination; //for a drive to a community lot: its name
         }
 
@@ -672,7 +701,7 @@ namespace Driveways
 
         /// <summary>
         /// The game's cars the pack is keeping out of sight: the carpool that takes a Sim who drove to work, and the
-        /// one that brings them back. Each is hidden every tick until it has gone. Only its picture: nothing saved.
+        /// one that brings them back. Each is hidden every tick until it has gone. Only its picture: which ones are kept beside the save.
         /// </summary>
         private static ConditionalWeakTable<VM, HashSet<VMMultitileGroup>> AllHiddenCars = new ConditionalWeakTable<VM, HashSet<VMMultitileGroup>>();
 
@@ -790,6 +819,7 @@ namespace Driveways
                     case CommuteState.Riding:
                     case CommuteState.Home:
                         if (sim != null && commute.State == CommuteState.Riding) Show(sim, false); //(the portal shows them as it puts them back)
+                        if (Blocked(vm, commute.Car, commute.Plan.Back, commute.Distance, sim?.ObjectID ?? 0, ref commute.Waited)) break;
                         commute.Distance += commute.Plan.Back.SpeedAt(commute.Distance);
                         if (commute.Distance < commute.Plan.Back.Length) { Draw(commute.Car, commute.Plan.Back.PoseAt(commute.Distance)); break; }
                         Park(commute.Car);
@@ -988,6 +1018,91 @@ namespace Driveways
             }
         }
 
+        // ---- keeping out of the way ----
+        //
+        // While the car is on the lot it watches the space it is about to drive into (its body, a little bigger, over the
+        // next tile and a half), and stops for anyone in it: a Sim, a visitor, a pet. After a second and a half it sounds
+        // its horn, as the game's own car of its model does. Someone who stays put for twenty seconds is driven past, so a
+        // Sim standing still on the driveway cannot keep a car out for ever. Off the lot, on the road, nobody walks.
+
+        private const int HornAfter = 45, HornAgain = 150, GiveUpAfter = 600;
+
+        /// <summary>
+        /// True when someone is in the car's way, so it waits this tick (counting how long in waited). Once it has
+        /// waited as long as it will, it drives on until its way is clear, and then waits for the next one again.
+        /// </summary>
+        private static bool Blocked(VM vm, VMMultitileGroup car, Path path, float distance, short driver, ref int waited)
+        {
+            if (InTheWay(vm, path, distance, driver) == null) { waited = 0; return false; }
+            if (waited >= GiveUpAfter) return false;
+            if (++waited % HornAgain == HornAfter) PlaySound(car, HornScript);
+            return true;
+        }
+
+        /// <summary>Whoever is in the space the car is about to drive into, if anyone.</summary>
+        private static VMEntity InTheWay(VM vm, Path path, float distance, short driver)
+        {
+            var arch = vm.Context.Architecture;
+            for (float ahead = 0; ahead <= 1.6f; ahead += 0.4f)
+            {
+                var pose = path.PoseAt(Math.Min(distance + ahead, path.Length));
+                if (pose.X < -1 || pose.Y < -1 || pose.X > arch.Width + 1 || pose.Y > arch.Height + 1) continue; //(off the lot)
+                foreach (var who in vm.Context.ObjectQueries.Avatars)
+                {
+                    if (who == null || who.Dead || who.GhostImage || who.ObjectID == driver || who.Position == LotTilePos.OUT_OF_WORLD) continue;
+                    if (who.GetValue(VMStackObjectVariable.Hidden) != 0 || (VM.UseWorld && who.WorldUI != null && !who.WorldUI.Visible)) continue;
+                    //where they are, in the car's own space at that pose
+                    var local = DrivePlan.RotateBy(who.Position.x / 16f - pose.X, who.Position.y / 16f - pose.Y, -pose.Angle);
+                    if (Math.Abs(local.X) <= Shared.CarWidth / 2f + 0.25f && Math.Abs(local.Y) <= Shared.CarLength / 2f + 0.25f) return who;
+                }
+            }
+            return null;
+        }
+
+        // ---- out of the world while the car is away ----
+
+        /// <summary>
+        /// A Sim sent out of the world while the car was away goes back where they got in (from out of the world, or from
+        /// beside the carpool that would not have them). If that spot is taken, beside their car: never left out.
+        /// </summary>
+        private static void BackInTheWorld(VM vm, VMAvatar sim, Trip trip)
+        {
+            if (trip?.WaitingFrom == null) return; //(never sent out)
+            var from = trip.WaitingFrom.Value;
+            trip.WaitingFrom = null;
+            if (sim.Position == from) return;
+            if (sim.SetPosition(from, trip.WaitingFacing, vm.Context).Status == VMPlacementError.Success) return;
+            if (sim.Position == LotTilePos.OUT_OF_WORLD) PlaceBeside(vm, sim, trip.Car);
+        }
+
+        /// <summary>Put a Sim who is out of the world back in it beside a car (the carpool), or else where they got in.</summary>
+        private static void PutBeside(VM vm, VMAvatar sim, VMMultitileGroup car, Trip trip)
+        {
+            if (sim.Position != LotTilePos.OUT_OF_WORLD) return;
+            if (!PlaceBeside(vm, sim, car)) BackInTheWorld(vm, sim, trip);
+        }
+
+        /// <summary>Put a Sim on a free tile beside a car, the nearest its middle. False if there is none.</summary>
+        private static bool PlaceBeside(VM vm, VMAvatar sim, VMMultitileGroup car)
+        {
+            if (car == null) return false;
+            var arch = vm.Context.Architecture;
+            var tiles = new HashSet<(int, int)>(car.Objects.Where(o => !o.Dead && o.Position != LotTilePos.OUT_OF_WORLD).Select(o => ((int)o.Position.TileX, (int)o.Position.TileY)));
+            if (tiles.Count == 0) return false;
+            float cx = (float)tiles.Average(t => t.Item1), cy = (float)tiles.Average(t => t.Item2);
+            var around = new List<(int X, int Y)>();
+            foreach (var (x, y) in tiles)
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dy = -1; dy <= 1; dy++)
+                        if (!tiles.Contains((x + dx, y + dy)) && !around.Contains((x + dx, y + dy))) around.Add((x + dx, y + dy));
+            foreach (var (x, y) in around.OrderBy(t => Math.Abs(t.X - cx) + Math.Abs(t.Y - cy)))
+            {
+                if (x < 0 || y < 0 || x >= arch.Width || y >= arch.Height) continue;
+                if (sim.SetPosition(LotTilePos.FromBigTile((short)x, (short)y, 1), sim.Direction, vm.Context).Status == VMPlacementError.Success) return true;
+            }
+            return false;
+        }
+
         // ---- the engine ----
         //
         // A car sounds as the game's own car of that model sounds driving away: the shared car script "leave sound"
@@ -995,22 +1110,28 @@ namespace Driveways
         // model is drawn as, on a residential lot. The sound is played on the car as the game's play sound primitive
         // plays it, so it follows the car's picture down the road.
 
-        private const ushort LeaveSoundScript = 8201;
-        private static Dictionary<uint, string> EngineSounds = new Dictionary<uint, string>();
+        private const ushort LeaveSoundScript = 8201, HornScript = 8200;
+        private static Dictionary<(uint, ushort), string> EngineSounds = new Dictionary<(uint, ushort), string>();
 
-        private static string EngineSound(VM vm, VMMultitileGroup car)
+        private static string EngineSound(VM vm, VMMultitileGroup car) => CarSound(vm, car, LeaveSoundScript);
+
+        /// <summary>
+        /// The sound the game's car of this model plays in one of the cars' shared sound scripts (leave sound, honk
+        /// horn), found by following the script as the game would for that car.
+        /// </summary>
+        private static string CarSound(VM vm, VMMultitileGroup car, ushort scriptID)
         {
             var model = Shared.Cars.FirstOrDefault(c => c.GUID == GUIDOf(car.BaseObject));
             if (model == null) return null;
             lock (EngineSounds)
             {
-                if (EngineSounds.TryGetValue(model.GUID, out var known)) return known;
+                if (EngineSounds.TryGetValue((model.GUID, scriptID), out var known)) return known;
                 string name = null;
                 try
                 {
                     var game = FSO.Content.Content.Get().WorldObjects.Get(model.GameGUID);
                     var shared = (game?.Resource as FSO.Content.GameObjectResource)?.SemiGlobal?.MainIff;
-                    var script = shared?.Get<FSO.Files.Formats.IFF.Chunks.BHAV>(LeaveSoundScript);
+                    var script = shared?.Get<FSO.Files.Formats.IFF.Chunks.BHAV>(scriptID);
                     if (script != null)
                     {
                         //follow the script as the game would for this car: object type tests by this car's type, anything else true
@@ -1033,12 +1154,14 @@ namespace Driveways
                     }
                 }
                 catch (Exception) { }
-                EngineSounds[model.GUID] = name;
+                EngineSounds[(model.GUID, scriptID)] = name;
                 return name;
             }
         }
 
-        private static void PlayEngine(VMMultitileGroup car)
+        private static void PlayEngine(VMMultitileGroup car) => PlaySound(car, LeaveSoundScript);
+
+        private static void PlaySound(VMMultitileGroup car, ushort scriptID)
         {
             if (!VM.UseWorld || car == null || car.Objects.Count == 0) return;
             try
@@ -1046,7 +1169,7 @@ namespace Driveways
                 var owner = car.BaseObject;
                 var vm = owner.Thread?.Context?.VM;
                 if (vm == null) return;
-                var name = EngineSound(vm, car);
+                var name = CarSound(vm, car, scriptID);
                 if (name == null) return;
                 if (owner.SoundThreads.Any(x => x?.Name == name)) return; //(already playing)
                 var thread = FSO.HIT.HITVM.Get().PlaySoundEvent(name);
