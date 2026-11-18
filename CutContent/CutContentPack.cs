@@ -54,7 +54,7 @@ namespace CutContent
         public static void Log(string msg) => Console.WriteLine("[cut] " + msg);
 
         /// <summary>The version this code is, kept the same as pack.json's.</summary>
-        public const string Build = "0.10";
+        public const string Build = "0.10.1";
 
         /// <summary>Which version is running and from where, to tell an old copy of the pack from a new one.</summary>
         public static string Running = "Cut Content " + Build;

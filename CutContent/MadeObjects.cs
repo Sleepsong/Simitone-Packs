@@ -66,6 +66,7 @@ namespace CutContent
                     case OBJD o: there = (iff.List<OBJD>() ?? new List<OBJD>()).Any(x => x.GUID == o.GUID); break;
                     case BHAV b: there = iff.Get<BHAV>(b.ChunkID) == b; break;
                     case STR s: there = iff.Get<STR>(s.ChunkID) == s; break;
+                    case OBJf f: there = iff.Get<OBJf>(f.ChunkID) == f; break;
                     default: there = false; break;
                 }
                 if (there) continue;
@@ -84,6 +85,28 @@ namespace CutContent
             copy.ChunkProcessed = true;
             copy.AddedByPatch = true;
             return copy;
+        }
+
+        /// <summary>
+        /// The function table a copied definition needs. An object that keeps its scripts in a function table (as the
+        /// film-set objects do) has it under its definition's own number, so a copy with a new number needs a copy of the
+        /// table under that number, or the game finds no scripts for it and closes when it is placed. Null when the model
+        /// keeps its scripts in its definition.
+        /// </summary>
+        public static OBJf FunctionTable(GameObjectResource res, OBJD like, OBJD copy)
+        {
+            if (like.UsesFnTable == 0) return null;
+            var table = res.Get<OBJf>(like.ChunkID);
+            if (table?.functions == null) return null;
+            return new OBJf
+            {
+                ChunkID = copy.ChunkID,
+                ChunkLabel = copy.ChunkLabel,
+                ChunkType = "OBJf",
+                ChunkProcessed = true,
+                AddedByPatch = true,
+                functions = table.functions.Select(x => new OBJfFunctionEntry { ConditionFunction = x.ConditionFunction, ActionFunction = x.ActionFunction }).ToArray(),
+            };
         }
 
         /// <summary>A text list of the pack's own, ready to add to a file.</summary>

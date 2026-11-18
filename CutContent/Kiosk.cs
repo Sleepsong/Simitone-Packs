@@ -122,7 +122,13 @@ namespace CutContent
                 }
                 else if (Made.RoomFlags == 0) Made.RoomFlags = 0x40; //miscellaneous
                 Made = MadeObjects.Copy(iff, Made); //written out and read in again, so its raw values (which scripts read) agree
-                MadeObjects.Add(res, like.GUID, Made, new List<IffChunk> { Made });
+                //the film-set objects keep their scripts in a function table under their definition's number: the kiosk
+                //needs a copy of the camera's under its own, or placing it closes the game
+                var chunks = new List<IffChunk> { Made };
+                var functions = MadeObjects.FunctionTable(res, like, Made);
+                if (functions != null) chunks.Insert(0, functions);
+                else if (like.UsesFnTable != 0) { Made.UsesFnTable = 0; Made = MadeObjects.Copy(iff, Made); } //no table to copy: none at all, rather than one that isn't there
+                MadeObjects.Add(res, like.GUID, Made, chunks);
                 AddToCatalog(byCategory, byGUID, Made, text.GetString(0));
                 notes.Add($"made from its catalog text ({text.ChunkID}) and picture ({picture.ChunkID}) in {entry.FileName}, which no object used, on the model of \"{like.ChunkLabel}\"; " +
                     $"in buy mode for ${Price}, sorted as \"{sorts?.ChunkLabel ?? like.ChunkLabel}\" (home lots: Decorative > Sculptures; community lots: their decorative section)");
