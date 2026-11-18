@@ -1,0 +1,9 @@
+{
+  "id": "sample.chemistry",
+  "name": "Chemistry",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Turn-ons, turn-offs and chemistry, after The Sims 2: Nightlife. Each grown Sim has two turn-ons and a turn-off, and how much a social raises how one Sim feels about another depends on the chemistry between them: half as much for a Sim who is turned off, up to twice as much at three bolts. Changes the game's balance. A first stage, not yet run against a game. Console: chemistry help",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "Chemistry.dll"
+}

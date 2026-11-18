@@ -92,6 +92,12 @@ jobs:
     - name: Test Life Stages' patches and rules
       run: dotnet run --project LifeStages/tests -c Release
 
+    - name: Build Chemistry
+      run: dotnet build Chemistry/Chemistry.csproj -c Release
+
+    - name: Test Chemistry's patches and rules
+      run: dotnet run --project Chemistry/tests -c Release
+
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
 
@@ -191,6 +197,13 @@ jobs:
       with:
         name: LifeStages
         path: LifeStages/pack/
+        if-no-files-found: error
+
+    - name: Upload Chemistry
+      uses: actions/upload-artifact@v4
+      with:
+        name: Chemistry
+        path: Chemistry/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube
