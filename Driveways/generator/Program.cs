@@ -200,7 +200,7 @@ BHAVInstruction Call(byte mode, byte ifTrue = 254, byte ifFalse = 255) =>
 void AddScript(ushort id, string name, ushort locals, params BHAVInstruction[] instructions) =>
     iff.AddChunk(new BHAV() { ChunkID = id, ChunkLabel = name, ChunkProcessed = true, Locals = locals, Instructions = instructions });
 
-const ushort InitDriveway = 4100, InitCar = 4101, GoForADrive = 4102, IsParked = 4103, DriveToWork = 4104, CanDriveToWork = 4105, RideHome = 4106, CanRideHome = 4107;
+const ushort InitDriveway = 4100, InitCar = 4101, GoForADrive = 4102, IsParked = 4103, DriveToWork = 4104, CanDriveToWork = 4105, RideHome = 4106, CanRideHome = 4107, DriveToLot = 4108, CanDriveToLot = 4109;
 const ushort CarMenu = 4200;
 
 AddScript(InitDriveway, "Init - Driveway", 0, Call(Shared.ModeInitDriveway));
@@ -219,6 +219,12 @@ AddScript(DriveToWork, "Drive to Work", 1,
 AddScript(CanRideHome, "Ride Home - Test", 0, Call(Shared.ModeCanRideHome));
 //(given to a Sim by the pack's code when they are back from work: it holds them while their car brings them in)
 AddScript(RideHome, "Ride Home", 0, Call(Shared.ModeRideHome));
+//the test adds a menu entry for each community lot, "Drive to.../Downtown/The Bar", whose Param0 is the lot's number
+AddScript(CanDriveToLot, "Drive to a Lot - Test", 0, Call(Shared.ModeCanDriveToLot));
+iff.AddChunk(new BHAV() { ChunkID = DriveToLot, ChunkLabel = "Drive to a Lot", ChunkProcessed = true, Args = 4, Locals = 1, Instructions = new[] {
+    new BHAVInstruction { Opcode = 27, TruePointer = 1, FalsePointer = 255, Operand = new byte[] { 0, 0, 0xFF, 0xFE, 0, 0, 0, 0 } },
+    // this runs every tick until the car has left the lot; then the game takes the Sim to the lot in argument 0
+    Call(Shared.ModeDriveToLot) } });
 
 
 const ushort PavingGraphic = 100, BlockGraphic = 101;
@@ -296,13 +302,15 @@ iff.AddChunk(new TTAB()
     {
         new TTABInteraction { ActionFunction = GoForADrive, TestFunction = IsParked, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 0 },
         new TTABInteraction { ActionFunction = DriveToWork, TestFunction = CanDriveToWork, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 1 },
-        new TTABInteraction { ActionFunction = RideHome, TestFunction = CanRideHome, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 2 }
+        new TTABInteraction { ActionFunction = RideHome, TestFunction = CanRideHome, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 2 },
+        new TTABInteraction { ActionFunction = DriveToLot, TestFunction = CanDriveToLot, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 3 }
     }
 });
 var menuStrings = new TTAs() { ChunkID = CarMenu, ChunkLabel = "Car", ChunkProcessed = true };
 menuStrings.InsertString(0, new STRItem("Go for a Drive"));
 menuStrings.InsertString(1, new STRItem("Drive to Work"));
 menuStrings.InsertString(2, new STRItem("Ride Home"));
+menuStrings.InsertString(3, new STRItem("Drive to..."));
 iff.AddChunk(menuStrings);
 
 var outDir = args.Length > 0 ? args[0] : ".";
@@ -344,15 +352,17 @@ if (oldTile.BHAV_Init != InitDriveway || oldTile.FunctionFlags != 0 || oldTile.M
 var menu = check.Get<TTAB>(CarMenu);
 var label = check.Get<TTAs>(CarMenu).GetString(0);
 var label2 = check.Get<TTAs>(CarMenu).GetString(1);
-if (menu.Interactions.Length != 3 || menu.Interactions[2].ActionFunction != RideHome || menu.Interactions[2].TestFunction != CanRideHome || check.Get<TTAs>(CarMenu).GetString(2) != "Ride Home" || menu.Interactions[0].ActionFunction != GoForADrive || menu.Interactions[0].TestFunction != IsParked || label != "Go for a Drive"
+if (menu.Interactions.Length != 4 || menu.Interactions[3].ActionFunction != DriveToLot || menu.Interactions[3].TestFunction != CanDriveToLot || check.Get<TTAs>(CarMenu).GetString(3) != "Drive to..." || menu.Interactions[2].ActionFunction != RideHome || menu.Interactions[2].TestFunction != CanRideHome || check.Get<TTAs>(CarMenu).GetString(2) != "Ride Home" || menu.Interactions[0].ActionFunction != GoForADrive || menu.Interactions[0].TestFunction != IsParked || label != "Go for a Drive"
     || menu.Interactions[1].ActionFunction != DriveToWork || menu.Interactions[1].TestFunction != CanDriveToWork || menu.Interactions[1].TTAIndex != 1 || label2 != "Drive to Work") throw new Exception("The cars' menu did not survive");
-foreach (var (id, mode) in new[] { (InitDriveway, Shared.ModeInitDriveway), (InitCar, Shared.ModeInitCar), (IsParked, Shared.ModeIsParked), (CanDriveToWork, Shared.ModeCanDriveToWork), (CanRideHome, Shared.ModeCanRideHome), (RideHome, Shared.ModeRideHome) })
+foreach (var (id, mode) in new[] { (InitDriveway, Shared.ModeInitDriveway), (InitCar, Shared.ModeInitCar), (IsParked, Shared.ModeIsParked), (CanDriveToWork, Shared.ModeCanDriveToWork), (CanRideHome, Shared.ModeCanRideHome), (RideHome, Shared.ModeRideHome), (CanDriveToLot, Shared.ModeCanDriveToLot) })
 {
     var script = check.Get<BHAV>(id);
     if (script.Instructions.Length != 1 || script.Instructions[0].Opcode != Shared.Opcode || script.Instructions[0].Operand[0] != mode || script.Instructions[0].TruePointer != 254) throw new Exception("Script " + id + " did not survive");
 }
 var drive = check.Get<BHAV>(GoForADrive);
 if (drive.Locals != 1 || drive.Instructions.Length != 2 || drive.Instructions[0].Opcode != 27 || drive.Instructions[1].Opcode != Shared.Opcode || drive.Instructions[1].Operand[0] != Shared.ModeDrive) throw new Exception("The drive script did not survive");
+var toLot = check.Get<BHAV>(DriveToLot);
+if (toLot.Args != 4 || toLot.Instructions.Length != 2 || toLot.Instructions[1].Opcode != Shared.Opcode || toLot.Instructions[1].Operand[0] != Shared.ModeDriveToLot) throw new Exception("The drive to a lot script did not survive");
 var toWork = check.Get<BHAV>(DriveToWork);
 if (toWork.Locals != 1 || toWork.Instructions.Length != 2 || toWork.Instructions[0].Opcode != 27 || toWork.Instructions[1].Opcode != Shared.Opcode || toWork.Instructions[1].Operand[0] != Shared.ModeDriveToWork) throw new Exception("The drive to work script did not survive");
 Console.WriteLine($"Menu: \"{label}\" -> script {GoForADrive} ({drive.Instructions.Length} instructions), test {IsParked}; \"{label2}\" -> script {DriveToWork}, test {CanDriveToWork}");

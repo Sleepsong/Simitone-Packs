@@ -56,6 +56,8 @@ namespace Driveways
         {
             /// <summary>A drive to work: when the car has left the lot, the carpool is given the Sim.</summary>
             public bool ToWork;
+            /// <summary>A drive to a community lot: when the car has left the lot, the game takes the Sim to this one.</summary>
+            public short ToLot;
             public Carpool Carpool;
             public short SimID;
             public VMMultitileGroup Car;
@@ -119,9 +121,30 @@ namespace Driveways
                         if (context.Caller is VMAvatar lost) Show(lost, true);
                         return VMPrimitiveExitCode.GOTO_FALSE;
                     }
+                case Shared.ModeCanDriveToLot:
+                    try
+                    {
+                        var car = CarOf(context.StackObject);
+                        var sim = context.Caller as VMAvatar;
+                        if (car == null || sim == null || !IsParked(context.VM, car)) return VMPrimitiveExitCode.GOTO_FALSE;
+                        var places = Destinations(context.VM);
+                        if (places.Count == 0) return VMPrimitiveExitCode.GOTO_FALSE;
+                        //building the menu: one entry for each lot, in a menu for each part of town, as the game's own
+                        //tests do (VMChangeActionString). the entry's Param0 is given to the action as its first argument
+                        if (context.Thread.IsCheck && context.Thread.ActionStrings != null)
+                            foreach (var place in places)
+                                context.Thread.ActionStrings.Add(new VMPieMenuInteraction { Name = $"Drive to.../{place.Area}/{place.Name}", Param0 = place.House });
+                        return VMPrimitiveExitCode.GOTO_TRUE;
+                    }
+                    catch (Exception) { return VMPrimitiveExitCode.GOTO_FALSE; }
                 case Shared.ModeDrive:
                 case Shared.ModeDriveToWork:
-                    try { return Drive(context, operand.Mode == Shared.ModeDriveToWork); }
+                case Shared.ModeDriveToLot:
+                    try
+                    {
+                        var lot = (operand.Mode == Shared.ModeDriveToLot && context.Args != null && context.Args.Length > 0) ? context.Args[0] : (short)0;
+                        return Drive(context, operand.Mode == Shared.ModeDriveToWork, lot);
+                    }
                     catch (Exception)
                     {
                         //whatever went wrong, do not leave a car or a Sim hidden
@@ -219,7 +242,7 @@ namespace Driveways
             return !TripsOf(vm).ContainsKey(id) && !CommutesOf(vm).Any(c => c.Car == car);
         }
 
-        private static VMPrimitiveExitCode Drive(VMStackFrame context, bool toWork)
+        private static VMPrimitiveExitCode Drive(VMStackFrame context, bool toWork, short toLot)
         {
             var vm = context.VM;
             var sim = context.Caller as VMAvatar;
@@ -248,6 +271,11 @@ namespace Driveways
                     OnMessage?.Invoke(vm, Explain(plan.Problem));
                     return VMPrimitiveExitCode.GOTO_FALSE;
                 }
+                if (toLot != 0 && !Destinations(vm).Any(d => d.House == toLot))
+                {
+                    OnMessage?.Invoke(vm, "The car cannot take them there.");
+                    return VMPrimitiveExitCode.GOTO_FALSE;
+                }
                 Carpool carpool = null;
                 if (toWork)
                 {
@@ -260,7 +288,7 @@ namespace Driveways
                     //the carpool is not wanted: the Sim's own car takes them. (it is still what takes them, out of sight)
                     if (carpool != null) HideCar(vm, carpool.Car);
                 }
-                trip = new Trip { SimID = sim.ObjectID, Car = car, Plan = plan, Phase = Phase.Out, ToWork = toWork, Carpool = carpool };
+                trip = new Trip { SimID = sim.ObjectID, Car = car, Plan = plan, Phase = Phase.Out, ToWork = toWork, Carpool = carpool, ToLot = toLot };
                 trips[id] = trip;
                 if (context.Locals != null && context.Locals.Length > 0) context.Locals[0] = 1;
                 Show(sim, false);
@@ -276,7 +304,22 @@ namespace Driveways
             {
                 case Phase.Out:
                     trip.Distance += trip.Plan.Out.SpeedAt(trip.Distance);
-                    if (trip.Distance >= trip.Plan.Out.Length && trip.ToWork)
+                    if (trip.Distance >= trip.Plan.Out.Length && trip.ToLot != 0)
+                    {
+                        Show(car, false);
+                        if (!sim.GetFlag(VMEntityFlags.InteractionCanceled))
+                        {
+                            trips.Remove(id);
+                            return Travel(context, trip, sim);
+                        }
+                        //cancelled: come straight home
+                        trip.ToLot = 0;
+                        trip.Phase = Phase.Back;
+                        trip.Distance = 0;
+                        Draw(car, trip.Plan.Back.PoseAt(0));
+                        Show(car, true);
+                    }
+                    else if (trip.Distance >= trip.Plan.Out.Length && trip.ToWork)
                     {
                         Show(car, false);
                         //(off the lot. early, before the carpool: wait for it, out of sight)
@@ -391,6 +434,84 @@ namespace Driveways
             }
         }
 
+        // ---- driving to a community lot ----
+        //
+        // The game takes Sims to another lot with one call, ChangeToLotInTemp0 (generic call 17): the lot's number in
+        // temp 0, and in global 34 whether the household goes too. The taxi makes it once its passengers are in. The
+        // car makes the same call, from the Sim's own script, once it has driven off the lot with them: so the trip,
+        // what they find there and how they get home are all the game's own. Simitone keeps the home lot as it was
+        // when they left, and puts it back when they return, so the car is on the driveway when they get home.
+
+        /// <summary>A lot the car can drive to: its number, the part of town it is in, and its name.</summary>
+        private class Destination
+        {
+            public short House;
+            public string Area, Name;
+        }
+
+        /// <summary>
+        /// The parts of town with community lots, by their number in LotLocations.iff (as the neighbourhood screen numbers
+        /// them). The vacation island (3) is left out: a family goes there for days, not for a drive. In the main
+        /// neighbourhood (1) only lots zoned for the community count.
+        /// </summary>
+        private static readonly (int Mode, string Area)[] Areas = { (1, "Around Town"), (2, "Downtown"), (4, "Old Town"), (5, "Studio Town"), (8, "Magic Town") };
+
+        private static ConditionalWeakTable<VM, List<Destination>> AllDestinations = new ConditionalWeakTable<VM, List<Destination>>();
+
+        /// <summary>The community lots in the player's game that the car can drive to from this lot, by part of town and name.</summary>
+        private static List<Destination> Destinations(VM vm)
+        {
+            if (AllDestinations.TryGetValue(vm, out var known)) return known;
+            var list = new List<Destination>();
+            try
+            {
+                var hood = FSO.Content.Content.Get().Neighborhood;
+                var here = vm.GetGlobalValue(10); //(the lot being played, as the game's taxi reads it)
+                var seen = new HashSet<int>();
+                foreach (var (mode, area) in Areas)
+                {
+                    var locations = hood.LotLocations?.Get<FSO.Files.Formats.IFF.Chunks.STR>((ushort)mode);
+                    if (locations == null) continue;
+                    var inArea = new List<Destination>();
+                    for (int i = 0; i < locations.Length; i++)
+                    {
+                        var parts = (locations.GetString(i) ?? "").Split(',');
+                        if (!int.TryParse(parts[0].Trim(), out var num) || num <= 0 || num == 99 || num == here || !seen.Add(num)) continue;
+                        if (mode == 1 && (!hood.ZoningDictionary.TryGetValue((short)num, out var zone) || zone != 1)) continue;
+                        if (!File.Exists(hood.GetHousePath(num))) continue;
+                        string name = null;
+                        try { name = hood.GetHouseNameDesc(num)?.Item1?.Trim(); } catch (Exception) { }
+                        //(a menu entry's name is split at slashes into menus)
+                        name = string.IsNullOrEmpty(name) ? $"Lot {num}" : name.Replace('/', '-');
+                        inArea.Add(new Destination { House = (short)num, Area = area, Name = name });
+                    }
+                    list.AddRange(inArea.OrderBy(d => d.Name));
+                }
+            }
+            catch (Exception) { }
+            AllDestinations.AddOrUpdate(vm, list);
+            return list;
+        }
+
+        /// <summary>
+        /// The car has left the lot with the Sim: have the game take them to the lot, as its taxi does. Only the Sim who
+        /// drove goes (global 34 is the game's own say in that, 0 for one Sim: whatever a past trip left there would
+        /// otherwise decide). In case the game does not go, the car and the Sim are watched for a moment.
+        /// </summary>
+        private static VMPrimitiveExitCode Travel(VMStackFrame context, Trip trip, VMAvatar sim)
+        {
+            var vm = context.VM;
+            CommutesOf(vm).Add(new Commute
+            {
+                Car = trip.Car, Plan = trip.Plan, SimGUID = sim.Object.OBJ.GUID, SimName = sim.Name, State = CommuteState.Departing,
+                Destination = Destinations(vm).FirstOrDefault(d => d.House == trip.ToLot)?.Name
+            });
+            vm.SetGlobalValue(34, 0);
+            context.Thread.TempRegisters[0] = trip.ToLot;
+            return new FSO.SimAntics.Primitives.VMGenericTS1Call().Execute(context,
+                new FSO.SimAntics.Primitives.VMGenericTS1CallOperand { Call = FSO.SimAntics.Model.VMGenericTS1CallMode.ChangeToLotInTemp0 });
+        }
+
         // ---- driving to work ----
         //
         // The game sends a Sim to work with the lot's car portal (CarPortal.iff), an object at the road's edge. Two hours
@@ -499,7 +620,7 @@ namespace Driveways
             return when + ". Their carpool is not here, so they cannot drive to work now.";
         }
 
-        private enum CommuteState { GettingIn, AtWork, Riding, Arrived, Home }
+        private enum CommuteState { GettingIn, AtWork, Riding, Arrived, Home, Departing }
 
         /// <summary>A Sim gone to work in their own car: the car is away until they are back.</summary>
         private class Commute
@@ -513,6 +634,7 @@ namespace Driveways
             public int Ticks;      //how long it has been in its state, or doing nothing to do with the carpool
             public float Distance; //on the way home
             public HashSet<VMMultitileGroup> CarsWhenGone; //the game's cars on the lot when the Sim had gone to work
+            public string Destination; //for a drive to a community lot: its name
         }
 
         private static ConditionalWeakTable<VM, List<Commute>> AllCommutes = new ConditionalWeakTable<VM, List<Commute>>();
@@ -640,6 +762,14 @@ namespace Driveways
                         if (commute.State == CommuteState.Home) { commutes.Remove(commute); break; }
                         commute.State = CommuteState.Arrived;
                         commute.Ticks = 0;
+                        break;
+
+                    case CommuteState.Departing:
+                        //the game changes lots at once, and this lot stops. still here two seconds later: it did not go
+                        if (++commute.Ticks <= 60) break;
+                        if (sim != null) Show(sim, true);
+                        StartHome(commute, CommuteState.Home);
+                        OnMessage?.Invoke(vm, $"The game did not take {commute.SimName} to {commute.Destination ?? "the lot"}, so they have come home.");
                         break;
 
                     case CommuteState.Arrived:
@@ -1049,6 +1179,10 @@ namespace Driveways
                 try { lines.Add(DescribeWork(vm, person)); } catch (Exception e) { lines.Add($"{person.Name}: the hours could not be worked out ({e.Message})."); }
             }
 
+            var places = Destinations(vm);
+            lines.Add(places.Count == 0 ? "No community lots for the car to drive to (none in this game, or none could be read)."
+                : $"Community lots the car can drive to: {string.Join(", ", places.Select(p => $"{p.Name} ({p.Area}, lot {p.House})"))}.");
+
             var cars = vm.Entities.Where(e => e is VMGameObject && IsCarGUID(GUIDOf(e))).Select(e => e.MultitileGroup).Distinct().ToList();
             var driveways = vm.Entities.Where(e => e is VMGameObject && IsDriveway(e)).Select(e => e.MultitileGroup).Distinct().Count();
             lines.Add(driveways == 0 ? "No driveways on this lot." : $"{driveways} driveway{(driveways == 1 ? "" : "s")} on this lot.");
@@ -1063,7 +1197,9 @@ namespace Driveways
                 {
                     var doing = commute.State == CommuteState.GettingIn ? $"taking {commute.SimName} to work."
                         : commute.State == CommuteState.AtWork ? $"away while {commute.SimName} is at work."
-                        : commute.State == CommuteState.Home ? "on its way home." : $"bringing {commute.SimName} home.";
+                        : commute.State == CommuteState.Home ? "on its way home."
+                        : commute.State == CommuteState.Departing ? $"taking {commute.SimName} to {commute.Destination}."
+                        : $"bringing {commute.SimName} home.";
                     lines.Add(where + doing);
                     continue;
                 }

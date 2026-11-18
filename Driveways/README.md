@@ -40,6 +40,18 @@ Cancelling Drive to Work while they are still on the lot or waiting brings them 
 game will not take them (no carpool comes, it has gone, or it will not have them), the car comes home
 and a message says so.
 
+### Driving to a community lot
+
+The car's **Drive to...** menu lists the community lots in your game, by part of town: Downtown, Old
+Town, Studio Town, Magic Town, and lots in the neighbourhood zoned for the community. Choose one, and
+the Sim drives off; once the car has left the lot, the game takes them there as its taxi would. What
+they find there, and getting home, are the game's own: they come home the way the game brings them,
+and the car is on the driveway, as the house was left.
+
+Only the Sim who drives goes. The vacation island is not on the list. Cancelling while the car is
+still on the lot brings it straight back. If the game does not change lots, the car comes home and a
+message says so.
+
 ### Going for a drive
 
 The Sim walks to the car, the car pulls out along the driveway, turns onto the road and drives off the
@@ -82,6 +94,10 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 | `driveways help` | What the commands are |
 
 ## Changes
+
+- **0.15**: **Drive to...** a community lot, a first stage. The car's menu lists the community lots in
+  the game by part of town, and the game's own lot change takes the Sim there once the car has left.
+  The `driveways` report lists the lots the car can drive to.
 
 - **0.14**: fixed Drive to Work not being offered. The pack read the time and the day from a copy the
   game only fills in when a lot is loaded, so it worked out the wrong time of day, and after one day at
@@ -177,7 +193,10 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 - **The carpool is still there, out of sight.** It is what takes a Sim to work and brings them back,
   so its horn can still be heard, morning and evening.
 - **Waiting for the carpool, a Sim is on the lot, hidden by their car.** Others walk round them.
-- **No driving to community lots yet.**
+- **Driving to a community lot: they arrive and come home the game's way.** They do not drive up to
+  the community lot, and they come home without the car; it is parked at home all along. Only the
+  Sim who drives goes, without the household or a date. Studio Town and Magic Town have their own
+  ways of arriving, and have not been tried.
 - **A lot saved while a car is at work** loads with the car parked, and the Sim comes home by carpool.
 - **The Sim does not get in.** They walk to the car and vanish until it is back. There are no animations
   for getting in and out.

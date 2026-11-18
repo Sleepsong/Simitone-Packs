@@ -75,5 +75,9 @@ namespace Driveways
         public const byte ModeRideHome = 6;
         /// <summary>Operand byte 0: true when the car is bringing the Sim running this home. Never true for the player's menu.</summary>
         public const byte ModeCanRideHome = 7;
+        /// <summary>Operand byte 0: true when the car can take the Sim running this to a community lot; adds one menu entry for each lot.</summary>
+        public const byte ModeCanDriveToLot = 8;
+        /// <summary>Operand byte 0: take the Sim running this to the lot in the action's first argument (the menu entry's Param0).</summary>
+        public const byte ModeDriveToLot = 9;
     }
 }
