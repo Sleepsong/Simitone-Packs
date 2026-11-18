@@ -22,8 +22,8 @@ using System.Collections.Generic;
 namespace CreateAStyle
 {
     /// <summary>
-    /// Build mode's Style Brush: click an object to open its style, where each of its colours can be changed.
-    /// - Ctrl and click (or the touch erase button) takes an object's style off.
+    /// Build mode's Style Brush: click an object or a Sim to open its style, where each of its colours can be changed.
+    /// - Ctrl and click (or the touch erase button) takes an object's or a Sim's style off.
     /// - Shift and click gives an object the style last made, if it is an object of the same kind.
     /// </summary>
     public class UIStyleBrush : UICustomLotControl
@@ -55,12 +55,13 @@ namespace CreateAStyle
             return (entity.MasterDefinition ?? entity.Object?.OBJ)?.GUID ?? 0;
         }
 
-        /// <summary>The object under the cursor that can be styled, or null.</summary>
+        /// <summary>The object or Sim under the cursor that can be styled, or null.</summary>
         private VMEntity Target()
         {
             if (Hover <= 0) return null;
             var entity = vm.GetObjectById(Hover);
-            if (entity == null || entity is VMAvatar || !(entity.WorldUI is ObjectComponent)) return null;
+            if (entity is VMAvatar sim) return (sim.Avatar != null && !sim.Dead) ? sim : null;
+            if (entity == null || !(entity.WorldUI is ObjectComponent)) return null;
             return entity;
         }
 
@@ -78,13 +79,14 @@ namespace CreateAStyle
 
             if (Modifiers.IsSet(UILotControlModifiers.CTRL))
             {
-                if (UIStylePanel.Current != null && UIStylePanel.Current.IsFor(entity)) UIStylePanel.Close();
-                CreateAStylePack.SetStyle(vm, entity, null);
+                if (UIStylePanel.Current != null && UIStylePanel.Current.IsFor(entity)) UIStylePanel.Drop(true);
+                if (entity is VMAvatar sim) SimStyles.Clear(sim);
+                else CreateAStylePack.SetStyle(vm, entity, null);
                 HITVM.Get().PlaySoundEvent(UISounds.BuildDragToolPlace);
             }
             else if (Modifiers.IsSet(UILotControlModifiers.SHIFT))
             {
-                if (LastStyle == null || KindOf(entity) != LastGUID)
+                if (entity is VMAvatar || LastStyle == null || KindOf(entity) != LastGUID)
                 {
                     HITVM.Get().PlaySoundEvent(UISounds.Error);
                     return;
@@ -113,10 +115,13 @@ namespace CreateAStyle
             var entity = Target();
 
             string tip;
-            if (entity == null) tip = "Click an object to style it";
-            else if (Modifiers.IsSet(UILotControlModifiers.CTRL)) tip = (CreateAStylePack.StyleOf(entity) != null) ? "Take the style off" : "No style to take off";
-            else if (Modifiers.IsSet(UILotControlModifiers.SHIFT)) tip = (LastStyle != null && KindOf(entity) == LastGUID) ? "Give it the last style" : "The last style was for another kind of object";
-            else tip = "Style " + entity.ToString();
+            var sim = entity as VMAvatar;
+            if (entity == null) tip = "Click an object or a Sim to style it";
+            else if (Modifiers.IsSet(UILotControlModifiers.CTRL))
+                tip = ((sim != null) ? SimStyles.HasStyle(sim) : CreateAStylePack.StyleOf(entity) != null) ? "Take the style off" : "No style to take off";
+            else if (Modifiers.IsSet(UILotControlModifiers.SHIFT))
+                tip = (sim != null) ? "A Sim's style cannot be given to others" : (LastStyle != null && KindOf(entity) == LastGUID) ? "Give it the last style" : "The last style was for another kind of object";
+            else tip = (sim != null) ? "Style " + sim.Name + "'s clothes, hair and hat" : "Style " + entity.ToString();
 
             state.UIState.TooltipProperties.Show = true;
             state.UIState.TooltipProperties.Color = Color.Black;

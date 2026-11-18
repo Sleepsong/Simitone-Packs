@@ -1,19 +1,22 @@
 # Create a Style
 
 Recolour any object on the lot, one part at a time, as in The Sims 3: turn a red sofa blue and leave its
-wooden frame alone, or tint a white fridge.
+wooden frame alone, or tint a white fridge. And the same for Sims: their clothes, hair and hats, never
+their skin.
 
-**Version 0.2, still experimental.** The first version did nothing on Windows: see "What changed in
-0.2" below. This version has been tested against the engine's own drawing code on a real graphics
-device (in 2D and 3D, with the texture caching Simitone uses on Windows and on Linux and Mac), but not
-yet in a full game. Expect to find things wrong, above all in how the panel looks and takes clicks.
+**Version 0.3, still experimental.** Objects have been played in the game. Sims are new in 0.3 and have
+only been tested against the engine's own drawing code with made-up outfits, not yet with the game's
+own: see "Sims" below for what to look out for.
 
 ## Using it
 
 In build mode, open **Wall Coverings** and pick the **Style Brush**. (Or type `stylebrush` in the cheat
-console, from build or buy mode.)
+console, from build or buy mode.) For a Sim, you can also select them and type `stylesim` in the cheat
+console, in any mode, live mode included.
 
-- **Click an object** to open its style at the side of the screen. Each part of the object has a block
+- **Click an object or a Sim** to open its style at the side of the screen. A Sim has a tab for each
+  thing they wear that can be styled: **Clothes**, **Hair and hat**, and **Hands** if they wear gloves.
+  Each part of the object, or of what is on the tab, has a block
   with two swatches (as it was, as it is now) and three sliders:
 
   | Slider | Does |
@@ -29,7 +32,7 @@ console, from build or buy mode.)
 - A line above the buttons says how it is going: how many of the object's pictures it has recoloured,
   that it is waiting for pictures still loading, or why it could not recolour one. If moving a slider
   does not change the object, that line is the thing to report.
-- **Ctrl and click** (or the touch erase button) takes an object's style off.
+- **Ctrl and click** (or the touch erase button) takes an object's or a Sim's style off.
 - **Shift and click** gives an object the style made last, if it is the same kind of object: for the
   other five dining chairs.
 
@@ -64,10 +67,41 @@ This works well when an object's parts differ in colour, and it is what limits t
   texture together, since the object is drawn from one in 2D and the other in 3D. These have not been
   tested on a real remade model yet.
 
+## Sims
+
+A Sim is drawn as 3D meshes, each with a texture: one for the body (the clothes, with the arms, neck
+and legs), one for the head (the face, hair and any hat), and the hands. Skin and clothes share a
+texture, and colours alone cannot tell them apart: brown hair or a tan shirt can be the colour of skin.
+
+But the game has each outfit and head in light, medium and dark skin (the `lgt`, `med` or `drk` in a
+texture's name), and those versions differ only where there is skin. So the pack compares them: a pixel
+that is the same in all of them is clothes, hair or hat, and can be recoloured; a pixel that differs is
+skin, and is never touched. The parts on each tab are found from the clothes, hair and hat alone.
+
+- **One style per outfit.** A Sim's style is kept for the outfit they have on. When they change into
+  swimwear or pyjamas, those show as they were made until you style them too, and their everyday clothes
+  keep their style for when they change back.
+- **Styles follow the Sim**, not the lot: they are kept for the whole neighbourhood, so a styled Sim
+  looks the same visiting another lot. They are saved when you save a lot.
+- **Pets** have no skin, so all of their coat can be recoloured.
+
+What to look out for:
+
+- **Outfits and heads in only one skin tone** (much custom content) cannot be checked for skin, so they
+  are not offered: their tab says so. Hats and gloves are on the head and hand textures, so the same
+  goes for them.
+- **A thin line of the old colour** can show where clothes or hair meet skin (a collar, a hairline). The
+  game blends the two along that edge, so those pixels differ between skin tones and are left alone.
+- **If something that is not skin will not change**, the game's versions in other skin tones may differ
+  there too. The tab's line above the buttons says what it found.
+- **Sim pictures in the interface** (portraits, relationships) are mostly drawn from copies of the
+  Sim, which the pack does not know about, so they may keep the original colours. Create-a-Sim does.
+
 ## Saving
 
 Styles are saved when the lot is saved, in this pack's own file beside Simitone's saves
-(`LocalHouse/PackData/sample.createastyle/`). The lot's save itself is unchanged. Without the pack the
+(`LocalHouse/PackData/sample.createastyle/`): one file for each lot's objects, and one for each
+neighbourhood's Sims. The lot's save itself is unchanged. Without the pack the
 lot loads with its objects as they were made, and Simitone warns that the pack is missing; switch the
 pack back on and the styles are there again.
 
@@ -77,14 +111,18 @@ the wrong thing.
 
 ## Not done yet
 
-- **Sims' clothes.** Skins are textures like any other, and the same recolouring would work on them,
-  but clothes and skin share a texture and are close in colour, so it needs more than this.
 - **The catalogue.** A style is made on an object already placed. There is no styling while buying.
 - **Old-format sprites** (`SPR#`, which very few objects use) should now work like the others, since
   the pack reads the textures rather than the sprite files, but none have been tried.
 - The pack keeps a copy of the pixels of each picture it has recoloured, and each different style on
   show has its own textures. A lot with hundreds of differently styled objects will use noticeably more
   memory.
+
+## What changed in 0.3
+
+- **Sims:** their clothes, hair and hats can be styled, with their skin left as it is. See "Sims" above.
+- The panel has a tab for each thing a Sim wears.
+- `stylesim` opens the style of the selected Sim, in any mode.
 
 ## What changed in 0.2
 
@@ -113,9 +151,14 @@ Nothing in the engine is changed.
 - `StyleTextures.cs` makes and keeps the recoloured copies of the game's textures. The engine has one
   texture for each sprite, shared by every object that uses it, so a styled object needs its own.
   Objects with the same style share theirs.
-- `CreateAStylePack.cs` is where it meets the engine, as four Harmony patches. In 2D, an object's
+- `SimStyles.cs` is the Sims' side: telling skin apart, keeping each Sim's styles, and swapping a
+  styled Sim's textures for the styled copies just before they are drawn, and back just after. It is
+  hooked in with two more patches, on Avatar.AddBinding (to keep each texture's name, which the engine
+  does not) and Avatar.DrawGeometry.
+- `CreateAStylePack.cs` is where it meets the engine, as four Harmony patches for objects. In 2D, an object's
   sprites are swapped for the styled copies as the engine lists them for drawing. In 3D, a model is
   shared by every object of its kind, so its textures are swapped for the styled copies just before a
   styled object is drawn, and put back just after.
-- `UIStyleBrush.cs` and `UIStylePanel.cs` are the build tool and the panel. The panel draws itself
+- `UIStyleBrush.cs` and `UIStylePanel.cs` are the build tool and the panel, and `StyleTargets.cs` what
+  the panel is styling: an object, or a Sim and the things they wear. The panel draws itself
   from plain rectangles, so the pack has no artwork.

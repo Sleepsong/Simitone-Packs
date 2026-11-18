@@ -11,6 +11,7 @@ using FSO.Files.RC;
 using FSO.LotView.Components;
 using FSO.LotView.Utils;
 using FSO.SimAntics;
+using FSO.Vitaboy;
 using HarmonyLib;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -42,6 +43,7 @@ namespace CreateAStyle
     ///     from the texture's own pixels.
     ///  4. Saving. Styles are this pack's own data for the lot, by object, and are put back when the lot is loaded.
     ///  5. The tool. A Style Brush in build mode, with the wall coverings.
+    ///  6. Sims: their clothes, hair and hats, never their skin. That is SimStyles.cs; here it is only hooked in.
     /// </summary>
     public class CreateAStylePack : ISimitonePack
     {
@@ -61,6 +63,7 @@ namespace CreateAStyle
                 throw;
             }
             PackManager.RegisterCommand("stylebrush", StyleBrushCommand);
+            PackManager.RegisterCommand("stylesim", StyleSimCommand);
         }
 
         private static HarmonyMethod Mine(string name) => new HarmonyMethod(typeof(CreateAStylePack), name);
@@ -103,6 +106,10 @@ namespace CreateAStyle
             harmony.Patch(Find(typeof(VM), "Update"), prefix: Mine(nameof(BeforeUpdate)));
             // 5
             harmony.Patch(Find(typeof(UIBuyBrowsePanel), "AddWallpapers"), postfix: Mine(nameof(AddStyleBrush)));
+            // 6
+            harmony.Patch(Find(typeof(Avatar), "AddBinding"), postfix: new HarmonyMethod(typeof(SimStyles), nameof(SimStyles.Named)));
+            harmony.Patch(Find(typeof(Avatar), "DrawGeometry"), prefix: new HarmonyMethod(typeof(SimStyles), nameof(SimStyles.BeforeDraw)),
+                finalizer: new HarmonyMethod(typeof(SimStyles), nameof(SimStyles.AfterDraw)));
         }
 
         // ---- 1. which objects are styled ----
@@ -339,6 +346,7 @@ namespace CreateAStyle
 
         public void OnLotSaved(VM vm, string lotPath)
         {
+            SimStyles.Save(PackId);
             ReleaseGone(vm);
             var styled = vm.Entities.Where(x => !x.Dead && x.Object?.OBJ != null && StyleOf(x) != null).ToList();
             if (styled.Count == 0)
@@ -368,6 +376,7 @@ namespace CreateAStyle
         {
             UIStylePanel.Drop();
             ReleaseGone(vm);
+            SimStyles.LotLoaded(PackId, lotPath);
             Loaded.Remove(vm);
             if (lotPath == null) return; //not from a file: the objects are the ones that were handed over, with their styles
             var saved = LotPackData.Read(PackId, lotPath);
@@ -379,6 +388,7 @@ namespace CreateAStyle
         public static void BeforeUpdate(VM __instance)
         {
             RetryPending();
+            SimStyles.Tick(__instance);
             if (!Loaded.TryGetValue(__instance, out var saved)) return;
             if (__instance.Entities.Count == 0) return; //not there yet
             Loaded.Remove(__instance);
@@ -457,6 +467,15 @@ namespace CreateAStyle
             control.ObjectHolder?.ClearSelected();
             control.CustomControl?.Release();
             control.CustomControl = new UIStyleBrush(control.vm, control.World, control, new List<int>());
+            return true;
+        }
+
+        /// <summary>The console's "stylesim": opens the style of the Sim who is selected, in any mode.</summary>
+        private static bool StyleSimCommand(string[] args)
+        {
+            var control = (GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.LotControl;
+            if (!(control?.ActiveEntity is VMAvatar sim) || sim.Avatar == null) return false;
+            UIStylePanel.Open(control.vm, sim);
             return true;
         }
     }

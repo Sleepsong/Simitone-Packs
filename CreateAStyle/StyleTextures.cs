@@ -98,10 +98,11 @@ namespace CreateAStyle
 
         /// <summary>
         /// The styled copy of one of the game's textures, made on first use. Sprite is where the texture came from, if
-        /// it came from a sprite. The texture itself is returned when the style changes nothing in it, or when it cannot
-        /// be recoloured yet: then pending is true, and it is worth asking again a little later.
+        /// it came from a sprite. Keep marks pixels to leave as they are (a Sim's skin), if any; it is to be the same
+        /// for every call with the same texture. The texture itself is returned when the style changes nothing in it, or
+        /// when it cannot be recoloured yet: then pending is true, and it is worth asking again a little later.
         /// </summary>
-        public Texture2D Get(Texture2D original, DGRPSprite sprite, out bool pending)
+        public Texture2D Get(Texture2D original, DGRPSprite sprite, out bool pending, bool[] keep = null)
         {
             pending = false;
             if (original == null || original.IsDisposed) return original;
@@ -116,7 +117,7 @@ namespace CreateAStyle
             Forget();
             try
             {
-                copy = Make(original, sprite);
+                copy = Make(original, sprite, keep);
             }
             catch (Exception e)
             {
@@ -164,7 +165,7 @@ namespace CreateAStyle
         }
 
         /// <summary>The styled copy of a texture, the texture itself if the style changes none of it, or null if its pixels cannot be had yet.</summary>
-        private Texture2D Make(Texture2D original, DGRPSprite sprite)
+        private Texture2D Make(Texture2D original, DGRPSprite sprite, bool[] keep)
         {
             if (original.Format != SurfaceFormat.Color && original.Format != SurfaceFormat.Dxt5) return original;
             var pixels = Pixels.Of(original, sprite, out var w, out var h);
@@ -174,7 +175,7 @@ namespace CreateAStyle
             bool changed = false;
             for (int i = 0; i < pixels.Length; i++)
             {
-                data[i] = Style.Apply(pixels[i]);
+                data[i] = (keep != null && i < keep.Length && keep[i]) ? pixels[i] : Style.Apply(pixels[i]);
                 if (data[i] != pixels[i]) changed = true;
             }
             if (!changed) return original; //none of this texture is in a part the player changed
@@ -339,13 +340,14 @@ namespace CreateAStyle
             return result;
         }
 
-        /// <summary>Adds a sprite's colours to a count of colours.</summary>
-        public static void Count(Color[] pixels, Dictionary<uint, int> into)
+        /// <summary>Adds a picture's colours to a count of colours, leaving out the pixels marked in skip, if any.</summary>
+        public static void Count(Color[] pixels, Dictionary<uint, int> into, bool[] skip = null)
         {
             if (pixels == null) return;
-            foreach (var pixel in pixels)
+            for (int i = 0; i < pixels.Length; i++)
             {
-                if (pixel.A < 128) continue;
+                var pixel = pixels[i];
+                if (pixel.A < 128 || (skip != null && i < skip.Length && skip[i])) continue;
                 var key = pixel.PackedValue | 0xFF000000;
                 into.TryGetValue(key, out var n);
                 into[key] = n + 1;

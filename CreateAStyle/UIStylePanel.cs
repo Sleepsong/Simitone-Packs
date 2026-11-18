@@ -16,14 +16,16 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CreateAStyle
 {
     /// <summary>
-    /// An object's style: one block for each of its parts, with what the part looked like, what it looks like now, and
-    /// three sliders (hue, colour strength, lightness). The object on the lot changes as the sliders move. It sits at
-    /// the side of the screen so the object stays in view, and draws itself from plain rectangles, so it needs no
-    /// artwork of its own.
+    /// The style of an object or a Sim. An object is one piece; a Sim has a tab for each texture they wear that can be
+    /// styled (clothes, hair and hat, hands). Each piece has a block for each of its parts, with what the part looked
+    /// like, what it looks like now, and three sliders (hue, colour strength, lightness). The object or Sim changes as
+    /// the sliders move. The panel sits at the side of the screen so they stay in view, and draws itself from plain
+    /// rectangles, so it needs no artwork of its own.
     /// </summary>
     public class UIStylePanel : UIContainer
     {
@@ -32,32 +34,43 @@ namespace CreateAStyle
         private const int PanelWidth = 300;
         private const int Margin = 12;
         private const int HeaderHeight = 52;
+        private const int TabHeight = 26;
         private const int BlockHeight = 96;
+        private const int NoteHeight = 70;
         private const int FooterHeight = 74;
         private const int SliderX = 92;
         private const int SliderWidth = PanelWidth - SliderX - Margin;
         private const int SliderHeight = 14;
         private const int SliderGap = 22;
         private const int Segments = 32;
+        private static readonly Color Soft = new Color(190, 200, 215);
 
-        private VM vm;
-        private VMEntity Entity;
-        private Style Working;
+        private StyleTarget Target;
+        private int Tab;
+        private StylePiece Piece => Target.Pieces.Count == 0 ? null : Target.Pieces[Tab];
+        private Style Working => Piece?.Working;
+        private bool HasTabs => Target.Pieces.Count > 1;
+        private int ContentTop => HeaderHeight + (HasTabs ? TabHeight + 8 : 0);
+
         private int PanelHeight;
         private Texture2D White;
-
+        private List<UILabel> Labels = new List<UILabel>();
+        private UIMouseEventRef MouseRef;
+        private List<Rectangle> Tabs = new List<Rectangle>();
         private Rectangle ResetButton, DoneButton;
         private UILabel Status;
+
         private bool WasDown;
         /// <summary>The slider being dragged: the part's number times 3, plus 0 for hue, 1 for strength, 2 for lightness. Or -1.</summary>
         private int Dragging = -1;
-        private bool Unapplied;
+        /// <summary>Pieces changed since they were last shown in the game.</summary>
+        private HashSet<StylePiece> Unapplied = new HashSet<StylePiece>();
         private long LastApplied;
 
         public static void Open(VM vm, VMEntity entity)
         {
             Close();
-            var panel = new UIStylePanel(vm, entity);
+            var panel = new UIStylePanel(StyleTarget.For(vm, entity));
             Current = panel;
             UIScreen.GlobalShowDialog(panel, false);
         }
@@ -68,14 +81,22 @@ namespace CreateAStyle
             if (panel == null) return;
             Current = null;
             panel.ApplyNow();
-            UIStyleBrush.Remember(panel.Entity, panel.Working.IsDefault ? null : panel.Working);
+            if (panel.Target is ObjectTarget obj) UIStyleBrush.Remember(obj.Entity, obj.Pieces[0].Working.IsDefault ? null : obj.Pieces[0].Working);
             UIScreen.RemoveDialog(panel);
         }
 
-        /// <summary>The lot the panel was for is gone, and the panel with it.</summary>
-        public static void Drop() { Current = null; }
+        /// <summary>
+        /// Closes the panel without putting its changes in the game: the lot it was for is gone, and the panel with it,
+        /// or (remove) the style is being taken off.
+        /// </summary>
+        public static void Drop(bool remove = false)
+        {
+            var panel = Current;
+            Current = null;
+            if (remove && panel != null) UIScreen.RemoveDialog(panel);
+        }
 
-        public bool IsFor(VMEntity entity) => CreateAStylePack.Whole(Entity).Contains(entity);
+        public bool IsFor(VMEntity entity) => Target.IsFor(entity);
 
         /// <summary>Whether a point of the screen is on the panel.</summary>
         public bool Contains(Point screen)
@@ -84,37 +105,62 @@ namespace CreateAStyle
             return local.X >= 0 && local.Y >= 0 && local.X < PanelWidth && local.Y < PanelHeight;
         }
 
-        private UIStylePanel(VM vm, VMEntity entity)
+        private UIStylePanel(StyleTarget target)
         {
-            this.vm = vm;
-            Entity = entity;
-            //carry on from the style the object has, or start from its parts as they are
-            Working = CreateAStylePack.StyleOf(entity)?.Clone() ?? CreateAStylePack.Analyse(entity);
+            Target = target;
             White = TextureGenerator.GetPxWhite(GameFacade.GraphicsDevice);
+            Build();
+        }
 
-            var parts = Working.Channels.Count;
-            PanelHeight = HeaderHeight + Math.Max(1, parts) * BlockHeight + FooterHeight;
+        /// <summary>Lays the panel out for the piece on show.</summary>
+        private void Build()
+        {
+            foreach (var label in Labels) Remove(label);
+            Labels.Clear();
+            if (MouseRef != null) RemoveMouseListener(MouseRef);
+            Tabs.Clear();
+            Dragging = -1;
+
+            var piece = Piece;
+            var parts = Working?.Channels.Count ?? 0;
+            var body = (parts > 0) ? parts * BlockHeight : NoteHeight;
+            PanelHeight = ContentTop + body + FooterHeight;
 
             AddLabel("Create a Style", Margin, 6, PanelWidth - Margin * 2, 16, Color.White);
-            AddLabel(entity.ToString(), Margin, 28, PanelWidth - Margin * 2, 11, new Color(190, 200, 215));
+            AddLabel(Target.Name, Margin, 28, PanelWidth - Margin * 2, 11, Soft);
 
-            if (parts == 0)
+            if (HasTabs)
             {
-                AddLabel("No colours here that can be changed.", Margin, HeaderHeight + 20, PanelWidth - Margin * 2, 12, Color.White);
+                var width = (PanelWidth - Margin * 2) / Target.Pieces.Count;
+                for (int i = 0; i < Target.Pieces.Count; i++)
+                {
+                    var rect = new Rectangle(Margin + i * width, HeaderHeight, width - 4, TabHeight);
+                    Tabs.Add(rect);
+                    AddLabel(Target.Pieces[i].Title, rect.X, rect.Y + 6, rect.Width, 10, Color.White, TextAlignment.Center | TextAlignment.Top);
+                }
+            }
+
+            if (piece == null)
+            {
+                AddLabel("Nothing here can be styled.", Margin, ContentTop + 12, PanelWidth - Margin * 2, 12, Color.White, wrapped: true);
+            }
+            else if (parts == 0)
+            {
+                AddLabel(piece.Note ?? "No colours here that can be changed.", Margin, ContentTop + 8, PanelWidth - Margin * 2, 11, Color.White, wrapped: true);
             }
             int colour = 0;
             for (int i = 0; i < parts; i++)
             {
                 var channel = Working.Channels[i];
-                var top = HeaderHeight + i * BlockHeight;
+                var top = ContentTop + i * BlockHeight;
                 var name = channel.Neutral ? "Greys" : "Colour " + (++colour);
                 AddLabel(name + "  " + Math.Max(1, (int)Math.Round(channel.Share * 100)) + "%", Margin, top + 2, 120, 11, Color.White);
-                AddLabel("Hue", SliderX - 62, top + 22, 58, 10, new Color(190, 200, 215), TextAlignment.Right | TextAlignment.Top);
-                AddLabel(channel.Neutral ? "Tint" : "Strength", SliderX - 62, top + 22 + SliderGap, 58, 10, new Color(190, 200, 215), TextAlignment.Right | TextAlignment.Top);
-                AddLabel("Light", SliderX - 62, top + 22 + SliderGap * 2, 58, 10, new Color(190, 200, 215), TextAlignment.Right | TextAlignment.Top);
+                AddLabel("Hue", SliderX - 62, top + 22, 58, 10, Soft, TextAlignment.Right | TextAlignment.Top);
+                AddLabel(channel.Neutral ? "Tint" : "Strength", SliderX - 62, top + 22 + SliderGap, 58, 10, Soft, TextAlignment.Right | TextAlignment.Top);
+                AddLabel("Light", SliderX - 62, top + 22 + SliderGap * 2, 58, 10, Soft, TextAlignment.Right | TextAlignment.Top);
             }
 
-            Status = AddLabel("", Margin, PanelHeight - FooterHeight + 4, PanelWidth - Margin * 2, 10, new Color(190, 200, 215));
+            Status = AddLabel("", Margin, PanelHeight - FooterHeight + 4, PanelWidth - Margin * 2, 10, Soft, wrapped: true);
             var buttonY = PanelHeight - 38;
             ResetButton = new Rectangle(Margin, buttonY, 130, 28);
             DoneButton = new Rectangle(PanelWidth - Margin - 130, buttonY, 130, 28);
@@ -122,11 +168,12 @@ namespace CreateAStyle
             AddLabel("Done", DoneButton.X, DoneButton.Y + 5, DoneButton.Width, 12, Color.White, TextAlignment.Center | TextAlignment.Top);
 
             //clicks on the panel are the panel's, not the lot's behind it
-            ListenForMouse(new Rectangle(0, 0, PanelWidth, PanelHeight), (type, state) => { });
+            MouseRef = ListenForMouse(new Rectangle(0, 0, PanelWidth, PanelHeight), (type, state) => { });
             Place();
         }
 
-        private UILabel AddLabel(string text, int x, int y, int width, int size, Color colour, TextAlignment align = TextAlignment.Left | TextAlignment.Top)
+        private UILabel AddLabel(string text, int x, int y, int width, int size, Color colour,
+            TextAlignment align = TextAlignment.Left | TextAlignment.Top, bool wrapped = false)
         {
             var label = new UILabel();
             label.CaptionStyle = label.CaptionStyle.Clone();
@@ -134,10 +181,12 @@ namespace CreateAStyle
             label.CaptionStyle.Color = colour;
             label.CaptionStyle.Shadow = false;
             label.Alignment = align;
+            label.Wrapped = wrapped;
             label.Size = new Vector2(width, 0);
             label.Position = new Vector2(x, y);
-            label.Caption = text;
+            label.Caption = text ?? "";
             Add(label);
+            Labels.Add(label);
             return label;
         }
 
@@ -158,7 +207,7 @@ namespace CreateAStyle
 
         private Rectangle SliderRect(int part, int slider)
         {
-            return new Rectangle(SliderX, HeaderHeight + part * BlockHeight + 24 + slider * SliderGap, SliderWidth, SliderHeight);
+            return new Rectangle(SliderX, ContentTop + part * BlockHeight + 24 + slider * SliderGap, SliderWidth, SliderHeight);
         }
 
         private static float Min(StyleChannel channel, int slider) => (slider == 2) ? StyleChannel.MinBrightness : 0;
@@ -194,7 +243,7 @@ namespace CreateAStyle
         {
             base.Update(state);
             if (Current != this) return;
-            if (Entity.Dead)
+            if (Target.Gone)
             {
                 Close();
                 return;
@@ -203,11 +252,12 @@ namespace CreateAStyle
             var down = state.MouseState.LeftButton == ButtonState.Pressed;
             var mouse = GlobalPoint(state.MouseState.Position.ToVector2());
             var point = new Point((int)mouse.X, (int)mouse.Y);
+            var parts = Working?.Channels.Count ?? 0;
 
             if (down && !WasDown)
             {
                 Dragging = -1;
-                for (int i = 0; i < Working.Channels.Count && Dragging == -1; i++)
+                for (int i = 0; i < parts && Dragging == -1; i++)
                 {
                     for (int s = 0; s < 3; s++)
                     {
@@ -218,7 +268,15 @@ namespace CreateAStyle
                 }
                 if (Dragging == -1)
                 {
-                    if (ResetButton.Contains(point))
+                    var tab = Tabs.FindIndex(x => x.Contains(point));
+                    if (tab != -1 && tab != Tab)
+                    {
+                        Tab = tab;
+                        WasDown = down;
+                        Build();
+                        return;
+                    }
+                    if (ResetButton.Contains(point) && Working != null)
                     {
                         foreach (var channel in Working.Channels) channel.Reset();
                         Changed();
@@ -233,7 +291,7 @@ namespace CreateAStyle
             }
             if (!down) Dragging = -1;
 
-            if (Dragging != -1)
+            if (Dragging != -1 && Dragging / 3 < parts)
             {
                 var channel = Working.Channels[Dragging / 3];
                 var slider = Dragging % 3;
@@ -247,26 +305,28 @@ namespace CreateAStyle
             }
             WasDown = down;
 
-            //the object follows the sliders, but not on every twitch: each change makes its textures again
-            if (Unapplied && (!down || Environment.TickCount64 - LastApplied > 80)) ApplyNow();
+            //the game follows the sliders, but not on every twitch: each change makes its textures again
+            if (Unapplied.Count > 0 && (!down || Environment.TickCount64 - LastApplied > 80)) ApplyNow();
 
             //how the recolouring is going, so that if it is not, it says why
-            var status = CreateAStylePack.StatusOf(Entity) ?? (Working.Channels.Count > 0 && Working.IsDefault ? "Move a slider to change a part." : "");
+            var status = (Piece == null) ? "" : Target.StatusOf(Piece) ?? (parts > 0 && Working.IsDefault ? "Move a slider to change a part." : "");
             if (Status.Caption != status) Status.Caption = status;
         }
 
         private void Changed()
         {
             Working.Touch();
-            Unapplied = true;
+            Unapplied.Add(Piece);
         }
 
         private void ApplyNow()
         {
-            if (!Unapplied) return;
-            Unapplied = false;
+            if (Unapplied.Count == 0) return;
             LastApplied = Environment.TickCount64;
-            if (!Entity.Dead) CreateAStylePack.SetStyle(vm, Entity, Working.Clone());
+            var pieces = Unapplied.ToList();
+            Unapplied.Clear();
+            if (Target.Gone) return;
+            foreach (var piece in pieces) Target.Apply(piece);
         }
 
         // ---- drawing ----
@@ -282,10 +342,16 @@ namespace CreateAStyle
             Fill(batch, new Rectangle(0, 0, PanelWidth, PanelHeight), new Color(24, 28, 40) * 0.94f);
             Fill(batch, new Rectangle(0, 0, PanelWidth, HeaderHeight - 6), new Color(0, 70, 140) * 0.9f);
 
-            for (int i = 0; i < Working.Channels.Count; i++)
+            for (int i = 0; i < Tabs.Count; i++)
+            {
+                Fill(batch, Tabs[i], (i == Tab) ? new Color(0, 110, 200) : new Color(55, 62, 80));
+            }
+
+            var parts = Working?.Channels.Count ?? 0;
+            for (int i = 0; i < parts; i++)
             {
                 var channel = Working.Channels[i];
-                var top = HeaderHeight + i * BlockHeight;
+                var top = ContentTop + i * BlockHeight;
                 Fill(batch, new Rectangle(Margin, top - 3, PanelWidth - Margin * 2, 1), Color.White * 0.15f);
 
                 //what the part was, and what it is now
