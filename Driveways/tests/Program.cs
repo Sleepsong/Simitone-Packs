@@ -112,8 +112,36 @@ List<Pose> Run(Path path, out int ticks, out float fastest, out float slowest)
     bool smooth = true; Pose last = plan.Back.PoseAt(0);
     foreach (var pose in backPoses) { if (Math.Abs(pose.X - last.X) + Math.Abs(pose.Y - last.Y) > DrivePlan.RoadSpeed + 0.001f) smooth = false; last = pose; }
     Check(smooth, "south road: the car never jumps");
-    //on the driveway legs the body stays inside the corridor's two columns
-    Check(outPoses.Where(p => p.Heading == 0).All(p => Near(p.X, 31)), "south road: it stays on the driveway until the road");
+    //on the driveway, until it starts to turn, the body stays in the corridor's two columns
+    var turnStarts = plan.Out.Legs[0].Length - plan.Out.CornerRadius;
+    bool straight = true;
+    for (float d = 0; d < turnStarts; d += 0.1f) if (!Near(plan.Out.PoseAt(d).X, 31)) straight = false;
+    Check(straight, "south road: it stays on the driveway until it turns onto the road");
+
+    //the turn onto the road: smooth, the short way round, and snapping its picture once
+    bool turnSmooth = true, once = true, between = true; int changes = 0;
+    var before = plan.Out.PoseAt(0);
+    for (float d = 0.02f; d <= plan.Out.Length; d += 0.02f)
+    {
+        var p = plan.Out.PoseAt(d);
+        if (Math.Abs(p.X - before.X) + Math.Abs(p.Y - before.Y) > 0.05f || Math.Abs(Path.Normalise(p.Angle - before.Angle)) > 0.05f) turnSmooth = false;
+        if (p.Heading != before.Heading) changes++;
+        if (p.Heading != Path.SnapAngle(p.Angle)) between = false;
+        before = p;
+    }
+    if (changes != 1) once = false;
+    Check(turnSmooth, "corner: the car moves and turns a little at a time, never jumping");
+    Check(once, $"corner: its picture snaps round once ({changes})");
+    Check(between, "corner: its picture is always the nearest of the four ways to where it points");
+    var turnEnd = plan.Out.PoseAt(plan.Out.Length);
+    Check(Near(plan.Out.PoseAt(0).Angle, 0) && Near(Path.SnapAngle(turnEnd.Angle), 3) && Math.Abs(turnEnd.Angle - (-Math.PI / 2)) < 0.001, "corner: it starts pointing north and ends pointing west, turning the short way");
+    var cornerPose = plan.Out.PoseAt(plan.Out.Legs[0].Length);
+    var cornerX = plan.Out.Legs[1].X; var cornerY = plan.Out.Legs[1].Y;
+    Check(Math.Abs(cornerPose.X - cornerX) + Math.Abs(cornerPose.Y - cornerY) > 0.2f, "corner: the curve cuts the corner rather than going round it sharp");
+    var rb = DrivePlan.RotateBy(1, 2, (float)(Math.PI / 2)); var rq = DrivePlan.Rotate(1, 2, 1);
+    Check(Near(rb.X, rq.X) && Near(rb.Y, rq.Y), "turning by a quarter turn in radians matches turning by one heading");
+    var la = DrivePlan.LeadFromCentreAt(10, 20, (float)Math.PI, W, L); var lq = DrivePlan.LeadFromCentre(10, 20, 2, W, L);
+    Check(Near(la.X, lq.X) && Near(la.Y, lq.Y), "the lead tile by angle matches the lead tile by heading");
 }
 
 // ---- the same lot with the car nose-out (facing the road): it drives out forwards and comes back in reverse ----

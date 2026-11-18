@@ -108,6 +108,10 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 
 ## Changes
 
+- **0.17**: smooth turns in 3D. The car rounds the corner between the driveway and the road on a curve,
+  and in 3D turns smoothly through it. In 2D it follows the same curve but its picture still snaps
+  round half way, since the game has four pictures of each car. The camera can change mid-drive.
+
 - **0.16**: getting in and out, engine sounds, and driving to work by themselves.
   - Sims walk to the car's door and get in with the game's own animation, and get out the same way
     when they are back, from a drive or from work. Before, they vanished beside the car.
@@ -228,8 +232,8 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
   stays standing next to it. Other Sims walk round both while they are "away". The good side of this is
   that nothing about a drive is saved: a lot saved in the middle of one loads with the car parked and the
   Sim beside it.
-- **The car turns in quarter turns.** It has four pictures, like every Sims 1 object, so it snaps round
-  the corner onto the road.
+- **In 2D the car turns in quarter turns.** It has four pictures, like every Sims 1 object, so it snaps
+  round half way through the corner. In 3D it turns smoothly.
 - **Which end of a car is its front is a guess.** If they drive along the road backwards, `driveways
   reverse` turns them round.
 - **Nothing gets run over.** The car checks that the driveway is clear before it sets off. A Sim who

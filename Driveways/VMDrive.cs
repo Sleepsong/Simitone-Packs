@@ -533,6 +533,8 @@ namespace Driveways
                 Car = trip.Car, Plan = trip.Plan, SimGUID = sim.Object.OBJ.GUID, SimName = sim.Name, State = CommuteState.Departing,
                 Destination = Destinations(vm).FirstOrDefault(d => d.House == trip.ToLot)?.Name
             });
+            //(the lot is about to go: let go of the car's tiles)
+            foreach (var part in trip.Car.Objects) if (part.WorldUI is ObjectComponent picture) ClearFreeAngle(picture);
             vm.SetGlobalValue(34, 0);
             context.Thread.TempRegisters[0] = trip.ToLot;
             new FSO.SimAntics.Primitives.VMGenericTS1Call().Execute(context,
@@ -1530,23 +1532,63 @@ namespace Driveways
         /// <summary>
         /// Draw the car's tiles as if it stood at this pose. This is VMMultitileGroup.SetVisualPosition, except that it
         /// leaves the objects' own direction alone: only their pictures turn.
+        ///
+        /// In 3D each tile is a model, and can be turned to any angle: the car turns smoothly round a corner (the
+        /// pose's Angle), its tiles laid out round it, each telling the engine its exact angle (FreeAngles). In 2D a
+        /// tile is one of four pictures, so the car keeps to the nearest of the four ways (the pose's Heading), and
+        /// snaps round half way through a turn. Which it is is looked at every tick, so the camera can change mid-drive.
         /// </summary>
         private static void Draw(VMMultitileGroup car, Pose pose)
         {
             if (!VM.UseWorld) return;
-            var lead = DrivePlan.LeadFromCentre(pose.X, pose.Y, pose.Heading, Shared.CarWidth, Shared.CarLength);
+            bool free = In3D(car);
+            float angle = free ? pose.Angle : pose.Heading * (float)(Math.PI / 2);
+            var lead = DrivePlan.LeadFromCentreAt(pose.X, pose.Y, angle, Shared.CarWidth, Shared.CarLength);
             var baseOffset = car.Offsets[car.Objects.IndexOf(car.BaseObject)];
             for (int i = 0; i < car.Objects.Count; i++)
             {
                 var part = car.Objects[i];
                 if (part.WorldUI == null) continue;
-                var off = DrivePlan.Rotate((car.Offsets[i].x - baseOffset.x) / 16f, (car.Offsets[i].y - baseOffset.y) / 16f, pose.Heading);
+                var off = DrivePlan.RotateBy((car.Offsets[i].x - baseOffset.x) / 16f, (car.Offsets[i].y - baseOffset.y) / 16f, angle);
                 if (part.WorldUI.Room == 0) part.WorldUI.Room = 65535; //(as SetVisualPosition does: never treated as off the lot)
-                //in 2D, objects that stand still are drawn once and kept. one that moves must say so, to be drawn afresh every frame
-                if (part.WorldUI is ObjectComponent picture) picture.ForceDynamic = true;
+                if (part.WorldUI is ObjectComponent picture)
+                {
+                    //in 2D, objects that stand still are drawn once and kept. one that moves must say so, to be drawn afresh every frame
+                    picture.ForceDynamic = true;
+                    if (free) SetFreeAngle(picture, angle); else ClearFreeAngle(picture);
+                }
                 part.WorldUI.Direction = Directions[pose.Heading];
                 part.VisualPosition = new Vector3(lead.X + off.X, lead.Y + off.Y, 0);
             }
+        }
+
+        /// <summary>Whether the lot is being shown in 3D, where a car can turn smoothly.</summary>
+        private static bool In3D(VMMultitileGroup car)
+        {
+            var world = car.BaseObject?.Thread?.Context?.World;
+            return world?.State != null && world.State.CameraMode == FSO.LotView.Model.CameraRenderMode._3D;
+        }
+
+        // the exact angle of each car tile turning in 3D, which the engine is told in place of its own (see DrivewaysPack.AfterWorld3D)
+        private static readonly Dictionary<ObjectComponent, float> FreeAngles = new Dictionary<ObjectComponent, float>();
+        /// <summary>How many tiles have an angle of their own: when none do, the engine is not delayed by looking.</summary>
+        public static int FreeAngleCount;
+
+        private static void SetFreeAngle(ObjectComponent picture, float angle)
+        {
+            lock (FreeAngles) { FreeAngles[picture] = angle; FreeAngleCount = FreeAngles.Count; }
+        }
+
+        private static void ClearFreeAngle(ObjectComponent picture)
+        {
+            if (FreeAngleCount == 0) return;
+            lock (FreeAngles) { FreeAngles.Remove(picture); FreeAngleCount = FreeAngles.Count; }
+        }
+
+        /// <summary>The exact angle a car tile is turned to while it drives in 3D, or null for its own.</summary>
+        public static float? FreeAngleOf(ObjectComponent picture)
+        {
+            lock (FreeAngles) return FreeAngles.TryGetValue(picture, out var angle) ? angle : (float?)null;
         }
 
         /// <summary>Put the car's pictures back where the car really is.</summary>
@@ -1556,9 +1598,9 @@ namespace Driveways
             foreach (var part in car.Objects)
             {
                 if (part.WorldUI == null || part.Dead || part.Position == LotTilePos.OUT_OF_WORLD) continue;
+                if (part.WorldUI is ObjectComponent picture) { ClearFreeAngle(picture); picture.ForceDynamic = false; }
                 part.WorldUI.Direction = part.Direction;
                 part.VisualPosition = new Vector3(part.Position.x / 16f, part.Position.y / 16f, (part.Position.Level - 1) * 2.95f);
-                if (part.WorldUI is ObjectComponent picture) picture.ForceDynamic = false;
             }
             Show(car, true);
         }

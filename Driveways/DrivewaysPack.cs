@@ -56,6 +56,9 @@ namespace Driveways
             //without them a driveway can still be bought, and sold from the lot's list of objects
             TryPatch(harmony, AccessTools.Method(typeof(World), "GetObjectIDAtScreenPos"), postfix: nameof(AfterPick));
             TryPatch(harmony, AccessTools.Method(typeof(UIObjectHolder), "ClearSelected"), prefix: nameof(BeforeLetGo), postfix: nameof(AfterLetGo));
+            //in 3D a driving car turns smoothly: its tiles' models are turned to their exact angle. optional: without it, it snaps as in 2D.
+            //(the 3D model's matrix is patched, not the small RadianDirection getter it reads: that one is likely inlined into it)
+            TryPatch(harmony, AccessTools.PropertyGetter(typeof(FSO.LotView.Components.ObjectComponent), "World3D"), postfix: nameof(AfterWorld3D));
             VMDrive.OnMessage = ShowMessage;
             Settings.Load();
             PackManager.RegisterCommand("driveways", Command);
@@ -183,6 +186,20 @@ namespace Driveways
                     postfix: postfix == null ? null : new HarmonyMethod(typeof(DrivewaysPack), postfix));
             }
             catch (Exception) { }
+        }
+
+        /// <summary>
+        /// The engine asks for the matrix that places an object's 3D model. For a car tile driving in 3D, make it as the
+        /// engine makes it (ObjectComponent.World3D), turned to the tile's exact angle in place of its eighths of a turn.
+        /// </summary>
+        public static void AfterWorld3D(FSO.LotView.Components.ObjectComponent __instance, ref Matrix __result)
+        {
+            if (VMDrive.FreeAngleCount == 0) return;
+            var angle = VMDrive.FreeAngleOf(__instance);
+            if (angle == null) return;
+            var at = FSO.LotView.WorldSpace.GetWorldFromTile(__instance.Position);
+            __result = Matrix.CreateScale(3f) * Matrix.CreateRotationY(-angle.Value)
+                * Matrix.CreateTranslation(new Vector3(1.5f, 0.1f, 1.5f)) * Matrix.CreateTranslation(at);
         }
 
         /// <summary>

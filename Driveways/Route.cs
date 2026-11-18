@@ -216,7 +216,10 @@ namespace Driveways
     public struct Pose
     {
         public float X, Y;
+        /// <summary>Which way the car points, in quarter turns: what the game's four pictures of it can show.</summary>
         public int Heading;
+        /// <summary>Which way the car points exactly, in radians clockwise from north: what a 3D car can show.</summary>
+        public float Angle;
     }
 
     /// <summary>One straight piece of a drive.</summary>
@@ -265,11 +268,64 @@ namespace Driveways
         }
 
         /// <summary>The car's position after it has gone this far along the drive.</summary>
-        public Pose PoseAt(float distance)
+        /// <summary>How far before and after a corner the car starts and ends its turn, in tiles (less on a short leg).</summary>
+        public float CornerRadius = 1.5f;
+
+        private const float QuarterTurn = (float)(Math.PI / 2);
+
+        /// <summary>The point that far along the legs, as if the corners were sharp.</summary>
+        private (float X, float Y) PointAt(float distance)
         {
             var leg = LegAt(distance, out var along);
-            return new Pose { X = leg.X + leg.DX * along, Y = leg.Y + leg.DY * along, Heading = leg.Heading };
+            return (leg.X + leg.DX * along, leg.Y + leg.DY * along);
         }
+
+        /// <summary>
+        /// The car's position after it has gone this far along the drive. Where one leg turns into the next the
+        /// corner is rounded: within CornerRadius of it the car follows a curve that cuts the corner, and turns
+        /// smoothly from the one way to the other (Angle), its picture snapping half way round (Heading).
+        /// Distances are still along the legs, so a drive's length, and how fast it goes, are as before.
+        /// </summary>
+        public Pose PoseAt(float distance)
+        {
+            float corner = 0;
+            for (int i = 0; i + 1 < Legs.Count; i++)
+            {
+                corner += Legs[i].Length;
+                var from = Legs[i]; var to = Legs[i + 1];
+                if (Math.Abs(from.DX - to.DX) < 0.001f && Math.Abs(from.DY - to.DY) < 0.001f && from.Heading == to.Heading) continue; //(no corner)
+                var r = Math.Min(CornerRadius, Math.Min(from.Length, to.Length) / 2);
+                if (r < 0.05f || distance <= corner - r || distance >= corner + r) continue;
+                //a curve from r before the corner to r after it, pulled towards the corner
+                var a = PointAt(corner - r); var c = PointAt(corner); var b = PointAt(corner + r);
+                var t = (distance - (corner - r)) / (2 * r);
+                var u = 1 - t;
+                var x = u * u * a.X + 2 * u * t * c.X + t * t * b.X;
+                var y = u * u * a.Y + 2 * u * t * c.Y + t * t * b.Y;
+                //turning the short way round, gently at either end
+                var start = from.Heading * QuarterTurn;
+                var turn = (to.Heading - from.Heading) * QuarterTurn;
+                while (turn > Math.PI) turn -= 2 * (float)Math.PI;
+                while (turn < -Math.PI) turn += 2 * (float)Math.PI;
+                var angle = Normalise(start + turn * (t * t * (3 - 2 * t)));
+                return new Pose { X = x, Y = y, Angle = angle, Heading = SnapAngle(angle) };
+            }
+            var leg = LegAt(distance, out var along);
+            return new Pose { X = leg.X + leg.DX * along, Y = leg.Y + leg.DY * along, Heading = leg.Heading, Angle = Normalise(leg.Heading * QuarterTurn) };
+        }
+
+        /// <summary>An angle as one between -half a turn and half a turn, so the same way is always the same number.</summary>
+        public static float Normalise(float angle)
+        {
+            var full = 2 * (float)Math.PI;
+            angle %= full;
+            if (angle > Math.PI) angle -= full;
+            if (angle <= -Math.PI) angle += full;
+            return angle;
+        }
+
+        /// <summary>The nearest of the four ways to an angle.</summary>
+        public static int SnapAngle(float angle) => (((int)Math.Round(angle / QuarterTurn)) % 4 + 4) % 4;
 
         /// <summary>How far the car moves in one tick from here: it speeds up out of each leg's start and slows into its end.</summary>
         public float SpeedAt(float distance)
@@ -330,6 +386,20 @@ namespace Driveways
         {
             var off = Rotate((carWidth - 1) / 2f, (carLength - 1) / 2f, heading);
             return (leadX + off.X, leadY + off.Y);
+        }
+
+        /// <summary>Turn an offset in the car's own space by any angle, in radians clockwise from north (as Rotate does by quarter turns).</summary>
+        public static (float X, float Y) RotateBy(float x, float y, float angle)
+        {
+            float cos = (float)Math.Cos(angle), sin = (float)Math.Sin(angle);
+            return (x * cos - y * sin, x * sin + y * cos);
+        }
+
+        /// <summary>The middle of the lead tile for a body whose middle is here, turned by any angle.</summary>
+        public static (float X, float Y) LeadFromCentreAt(float centreX, float centreY, float angle, int carWidth, int carLength)
+        {
+            var off = RotateBy((carWidth - 1) / 2f, (carLength - 1) / 2f, angle);
+            return (centreX - off.X, centreY - off.Y);
         }
 
         /// <summary>The middle of the lead tile for a body whose middle is here: the opposite of BodyCentre.</summary>
