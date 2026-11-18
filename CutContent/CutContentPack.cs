@@ -51,10 +51,38 @@ namespace CutContent
     /// </summary>
     public class CutContentPack : ISimitonePack
     {
-        public static void Log(string msg) => Console.WriteLine("[cut] " + msg);
+        private static readonly object LogLock = new object();
+        private static string LogPath;
+
+        /// <summary>The pack's log: the terminal, and cutcontent.log in Simitone's user directory (next to config.ini).</summary>
+        public static string LogFile => LogPath ??= Path.Combine(FSOEnvironment.UserDir, "cutcontent.log");
+
+        public static void Log(string msg)
+        {
+            var line = "[cut] " + msg;
+            Console.WriteLine(line);
+            try { lock (LogLock) File.AppendAllText(LogFile, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " " + line + Environment.NewLine); }
+            catch { } //the terminal still has it
+        }
+
+        /// <summary>As the game starts: a long log is put aside (cutcontent.old.log), so the file to send is the recent one.</summary>
+        private static void StartLog()
+        {
+            try
+            {
+                var file = new FileInfo(LogFile);
+                if (file.Exists && file.Length > 512 * 1024)
+                {
+                    var old = Path.Combine(file.DirectoryName, "cutcontent.old.log");
+                    if (File.Exists(old)) File.Delete(old);
+                    file.MoveTo(old);
+                }
+            }
+            catch { }
+        }
 
         /// <summary>The version this code is, kept the same as pack.json's.</summary>
-        public const string Build = "0.10.2";
+        public const string Build = "0.10.3";
 
         /// <summary>Which version is running and from where, to tell an old copy of the pack from a new one.</summary>
         public static string Running = "Cut Content " + Build;
@@ -63,7 +91,8 @@ namespace CutContent
         {
             var listed = pack.Manifest?.Version;
             Running = $"Cut Content {Build}" + (listed != null && listed != Build ? $" (but its pack.json says {listed})" : "") + $", loaded from {pack.Folder}";
-            Log(Running);
+            StartLog();
+            Log("================ " + Running + " ================");
             Investments.PackId = pack.Id;
             RestoredSkills.PackId = pack.Id;
             OldSurvey.PackFolder = pack.Folder;

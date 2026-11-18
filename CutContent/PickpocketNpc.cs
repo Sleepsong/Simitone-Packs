@@ -201,7 +201,10 @@ namespace CutContent
             catch (Exception e)
             {
                 CutContentPack.Log($"pickpocket: failed while {stage}: {e}");
-                return $"He couldn't come: something failed while {stage}: {e.Message}";
+                //where it failed, so a picture of the message is enough: the first few places in the code, without the file paths
+                var where = string.Join("\n", (e.StackTrace ?? "").Split('\n').Select(x => x.Trim()).Where(x => x.StartsWith("at ")).Take(6)
+                    .Select(x => System.Text.RegularExpressions.Regex.Replace(x, @" in .*$", "")));
+                return $"He couldn't come: something failed while {stage}: {e.GetType().Name}: {e.Message}\n{where}\n(The whole of it is in cutcontent.log.)";
             }
         }
 
