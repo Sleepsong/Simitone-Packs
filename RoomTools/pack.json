@@ -1,0 +1,9 @@
+{
+  "id": "sample.roomtools",
+  "name": "Room Tools",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "The Sims 4's room tools: pick up a room with everything in it and move, turn or copy it, drag a wall to resize a room, undo and redo in build and buy mode, and a library of saved rooms and lots (the Lot Bin) kept as files you can share. In build mode, under Rooms. Experimental.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "RoomTools.dll"
+}

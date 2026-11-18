@@ -92,6 +92,12 @@ jobs:
     - name: Test Life Stages' patches and rules
       run: dotnet run --project LifeStages/tests -c Release
 
+    - name: Build Room Tools
+      run: dotnet build RoomTools/RoomTools.csproj -c Release
+
+    - name: Test Room Tools' patches, walls and floors, and library files
+      run: dotnet run --project RoomTools/tests -c Release
+
     - name: Check the Test Cube object can be regenerated
       run: dotnet run --project TestCube/generator -c Release -- "$RUNNER_TEMP/testcube"
 
@@ -191,6 +197,13 @@ jobs:
       with:
         name: LifeStages
         path: LifeStages/pack/
+        if-no-files-found: error
+
+    - name: Upload Room Tools
+      uses: actions/upload-artifact@v4
+      with:
+        name: RoomTools
+        path: RoomTools/pack/
         if-no-files-found: error
 
     - name: Upload Test Cube
