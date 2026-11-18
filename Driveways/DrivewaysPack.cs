@@ -69,6 +69,7 @@ namespace Driveways
         ///   driveways work            writes how the game's carpool works to driveways-work.txt
         ///   driveways floor <words>   paints driveways with the floor whose name has those words; "tarmac" for the road's; nothing for the pack's choice
         ///   driveways reverse         turns the cars round as they drive along the road, if they drive backwards
+        ///   driveways door            Sims get in by the car's other side
         ///   driveways help            (or anything else) says what the commands are
         /// </summary>
         private static bool Command(string[] args)
@@ -85,6 +86,11 @@ namespace Driveways
                     DrivewayLook.Repaint();
                     try { VMDrive.Relay((GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm); } catch (Exception) { }
                     Show("Driveways", "The driveway's look: " + DrivewayLook.Describe());
+                    return true;
+                case "door":
+                    Settings.DoorOnRight = !Settings.DoorOnRight;
+                    Settings.Save();
+                    Show("Driveways", Settings.DoorOnRight ? "Sims now get in and out by the car's right side." : "Sims now get in and out by the car's left side, the driver's.");
                     return true;
                 case "reverse":
                     Settings.ReverseCars = !Settings.ReverseCars;
@@ -103,6 +109,7 @@ namespace Driveways
             "driveways floors: lists the floors a driveway can be paved with, in driveways-floors.txt\n\n" +
             "driveways floor <words from a floor's name>: paves driveways with that floor. \"driveways floor tarmac\" for the road's; \"driveways floor\" alone for the pack's choice\n\n" +
             "driveways reverse: turns the cars round, if they drive along the road backwards\n\n" +
+            "driveways door: Sims get in by the car's other side, if getting in looks wrong\n\n" +
             "driveways cars, driveways work: lists of the game's vehicles and how its carpool works, for whoever is working on the pack";
 
         private static bool ReportTo(string name, Func<string> what, string says)

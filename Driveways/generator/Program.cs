@@ -200,32 +200,63 @@ BHAVInstruction Call(byte mode, byte ifTrue = 254, byte ifFalse = 255) =>
 void AddScript(ushort id, string name, ushort locals, params BHAVInstruction[] instructions) =>
     iff.AddChunk(new BHAV() { ChunkID = id, ChunkLabel = name, ChunkProcessed = true, Locals = locals, Instructions = instructions });
 
-const ushort InitDriveway = 4100, InitCar = 4101, GoForADrive = 4102, IsParked = 4103, DriveToWork = 4104, CanDriveToWork = 4105, RideHome = 4106, CanRideHome = 4107, DriveToLot = 4108, CanDriveToLot = 4109;
+const ushort InitDriveway = 4100, InitCar = 4101, GoForADrive = 4102, IsParked = 4103, DriveToWork = 4104, CanDriveToWork = 4105, RideHome = 4106, CanRideHome = 4107, DriveToLot = 4108, CanDriveToLot = 4109, ToggleAuto = 4110, CanToggleAuto = 4111;
 const ushort CarMenu = 4200;
 
 AddScript(InitDriveway, "Init - Driveway", 0, Call(Shared.ModeInitDriveway));
 AddScript(InitCar, "Init - Car", 0, Call(Shared.ModeInitCar));
 AddScript(IsParked, "Go for a Drive - Test", 0, Call(Shared.ModeIsParked));
-AddScript(GoForADrive, "Go for a Drive", 1,
-    // walk up to the tile of the car that was clicked (Go To Relative Position: anywhere near it, facing it)...
-    new BHAVInstruction { Opcode = 27, TruePointer = 1, FalsePointer = 255, Operand = new byte[] { 0, 0, 0xFF, 0xFE, 0, 0, 0, 0 } },
-    // ...then drive. this instruction runs every tick until the car is home again
-    Call(Shared.ModeDrive));
+
+// the instructions the cars' scripts are made of
+BHAVInstruction Prim(ushort opcode, byte ifTrue, byte ifFalse, params byte[] operand) =>
+    new BHAVInstruction { Opcode = opcode, TruePointer = ifTrue, FalsePointer = ifFalse, Operand = operand.Concat(new byte[8]).Take(8).ToArray() };
+BHAVInstruction Mode(byte mode, byte ifTrue, byte ifFalse, byte arg = 0) => Prim(Shared.Opcode, ifTrue, ifFalse, mode, arg);
+//Go To Relative Position (27): location and direction relative to the stack object (VMGotoRelativeLocation, VMGotoRelativeDirection)
+BHAVInstruction Walk(sbyte location, sbyte direction, byte ifTrue, byte ifFalse) => Prim(27, ifTrue, ifFalse, 0, 0, (byte)location, (byte)direction);
+//Animate Sim (44): an animation from this object's table 129 (a2o), played to its end, forwards or backwards. it says false
+//at each event in the animation, and is run again to carry on, as the game's own scripts do
+BHAVInstruction Animate(byte animation, bool backwards, byte next, byte self) => Prim(44, next, self, animation, 0, 0, 0, 0, (byte)(backwards ? 2 : 0));
+const byte GetInWithCarOnLeft = 1, GetInWithCarOnRight = 2; //(A2O-car-getinl, A2O-car-getinr)
+
+// A drive: get ready (or say why not), walk to the door, get in, drive, and get out again if back by the car.
+// The door is the driver's, on the car's left, unless the player has chosen its right ("driveways door").
+// The Sim faces the way the car does, so the car is on their right on its left side.
+void AddDrive(ushort id, string name, byte mode) => iff.AddChunk(new BHAV() { ChunkID = id, ChunkLabel = name, ChunkProcessed = true, Args = 4, Locals = 1, Instructions = new[] {
+    /* 0 */ Mode(Shared.ModePrepare, 1, 255, mode),
+    /* 1 */ Mode(Shared.ModeIsLeftDoor, 2, 4),
+    /* 2 */ Walk(6 /* to the left of */, 0 /* the same way */, 3, 6),
+    /* 3 */ Animate(GetInWithCarOnRight, false, 7, 3),
+    /* 4 */ Walk(2 /* to the right of */, 0, 5, 6),
+    /* 5 */ Animate(GetInWithCarOnLeft, false, 7, 5),
+    /* 6 */ Walk(-1 /* anywhere near */, -2 /* facing it */, 7, 255),
+    /* 7 */ Mode(mode, 8, 254), //(runs every tick until the drive is over: true when the Sim is back by the car, false when they have gone)
+    /* 8 */ Mode(Shared.ModeIsLeftDoor, 9, 10),
+    /* 9 */ Animate(GetInWithCarOnRight, true, 254, 9),
+    /* 10 */ Animate(GetInWithCarOnLeft, true, 254, 10) } });
+
+AddDrive(GoForADrive, "Go for a Drive", Shared.ModeDrive);
 AddScript(CanDriveToWork, "Drive to Work - Test", 0, Call(Shared.ModeCanDriveToWork));
-AddScript(DriveToWork, "Drive to Work", 1,
-    new BHAVInstruction { Opcode = 27, TruePointer = 1, FalsePointer = 255, Operand = new byte[] { 0, 0, 0xFF, 0xFE, 0, 0, 0, 0 } },
-    // this runs every tick until the car has left the lot, and the game's carpool has been given the Sim to take to work
-    Call(Shared.ModeDriveToWork));
+AddDrive(DriveToWork, "Drive to Work", Shared.ModeDriveToWork);
 AddScript(CanRideHome, "Ride Home - Test", 0, Call(Shared.ModeCanRideHome));
-//(given to a Sim by the pack's code when they are back from work: it holds them while their car brings them in)
-AddScript(RideHome, "Ride Home", 0, Call(Shared.ModeRideHome));
+//(given to a Sim by the pack's code when they are back from work: it holds them while their car brings them in, then they get out)
+AddScript(RideHome, "Ride Home", 0,
+    Mode(Shared.ModeRideHome, 1, 254),
+    Mode(Shared.ModeIsLeftDoor, 2, 3),
+    Animate(GetInWithCarOnRight, true, 254, 2),
+    Animate(GetInWithCarOnLeft, true, 254, 3));
 //the test adds a menu entry for each community lot, "Drive to.../Downtown/The Bar", whose Param0 is the lot's number
 AddScript(CanDriveToLot, "Drive to a Lot - Test", 0, Call(Shared.ModeCanDriveToLot));
-iff.AddChunk(new BHAV() { ChunkID = DriveToLot, ChunkLabel = "Drive to a Lot", ChunkProcessed = true, Args = 4, Locals = 1, Instructions = new[] {
-    new BHAVInstruction { Opcode = 27, TruePointer = 1, FalsePointer = 255, Operand = new byte[] { 0, 0, 0xFF, 0xFE, 0, 0, 0, 0 } },
-    // this runs every tick until the car has left the lot; then the game takes the Sim to the lot in argument 0
-    Call(Shared.ModeDriveToLot) } });
+AddDrive(DriveToLot, "Drive to a Lot", Shared.ModeDriveToLot);
+AddScript(CanToggleAuto, "Always Drive to Work - Test", 0, Call(Shared.ModeCanToggleAuto));
+AddScript(ToggleAuto, "Always Drive to Work", 0, Call(Shared.ModeToggleAuto));
 
+// the game's own animations for getting into a car, by name, as the carpool lists them (table 129 is an object's
+// adult animations; the engine plays "A2O-car-getinl.anim" from the game's files)
+var animations = new STR() { ChunkID = 129, ChunkLabel = "a2o", ChunkProcessed = true };
+animations.InsertString(0, new STRItem("0"));
+animations.InsertString(1, new STRItem("A2O-car-getinl"));
+animations.InsertString(2, new STRItem("A2O-car-getinr"));
+iff.AddChunk(animations);
 
 const ushort PavingGraphic = 100, BlockGraphic = 101;
 //(a square looks the same from all four sides, but each view gets its own sprite: the floor painted on it has to turn with it)
@@ -303,7 +334,8 @@ iff.AddChunk(new TTAB()
         new TTABInteraction { ActionFunction = GoForADrive, TestFunction = IsParked, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 0 },
         new TTABInteraction { ActionFunction = DriveToWork, TestFunction = CanDriveToWork, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 1 },
         new TTABInteraction { ActionFunction = RideHome, TestFunction = CanRideHome, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 2 },
-        new TTABInteraction { ActionFunction = DriveToLot, TestFunction = CanDriveToLot, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 3 }
+        new TTABInteraction { ActionFunction = DriveToLot, TestFunction = CanDriveToLot, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 3 },
+        new TTABInteraction { ActionFunction = ToggleAuto, TestFunction = CanToggleAuto, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 4 }
     }
 });
 var menuStrings = new TTAs() { ChunkID = CarMenu, ChunkLabel = "Car", ChunkProcessed = true };
@@ -311,6 +343,7 @@ menuStrings.InsertString(0, new STRItem("Go for a Drive"));
 menuStrings.InsertString(1, new STRItem("Drive to Work"));
 menuStrings.InsertString(2, new STRItem("Ride Home"));
 menuStrings.InsertString(3, new STRItem("Drive to..."));
+menuStrings.InsertString(4, new STRItem("Always Drive to Work"));
 iff.AddChunk(menuStrings);
 
 var outDir = args.Length > 0 ? args[0] : ".";
@@ -352,20 +385,26 @@ if (oldTile.BHAV_Init != InitDriveway || oldTile.FunctionFlags != 0 || oldTile.M
 var menu = check.Get<TTAB>(CarMenu);
 var label = check.Get<TTAs>(CarMenu).GetString(0);
 var label2 = check.Get<TTAs>(CarMenu).GetString(1);
-if (menu.Interactions.Length != 4 || menu.Interactions[3].ActionFunction != DriveToLot || menu.Interactions[3].TestFunction != CanDriveToLot || check.Get<TTAs>(CarMenu).GetString(3) != "Drive to..." || menu.Interactions[2].ActionFunction != RideHome || menu.Interactions[2].TestFunction != CanRideHome || check.Get<TTAs>(CarMenu).GetString(2) != "Ride Home" || menu.Interactions[0].ActionFunction != GoForADrive || menu.Interactions[0].TestFunction != IsParked || label != "Go for a Drive"
+if (menu.Interactions.Length != 5 || menu.Interactions[4].ActionFunction != ToggleAuto || menu.Interactions[4].TestFunction != CanToggleAuto || menu.Interactions[3].ActionFunction != DriveToLot || menu.Interactions[3].TestFunction != CanDriveToLot || check.Get<TTAs>(CarMenu).GetString(3) != "Drive to..." || menu.Interactions[2].ActionFunction != RideHome || menu.Interactions[2].TestFunction != CanRideHome || check.Get<TTAs>(CarMenu).GetString(2) != "Ride Home" || menu.Interactions[0].ActionFunction != GoForADrive || menu.Interactions[0].TestFunction != IsParked || label != "Go for a Drive"
     || menu.Interactions[1].ActionFunction != DriveToWork || menu.Interactions[1].TestFunction != CanDriveToWork || menu.Interactions[1].TTAIndex != 1 || label2 != "Drive to Work") throw new Exception("The cars' menu did not survive");
-foreach (var (id, mode) in new[] { (InitDriveway, Shared.ModeInitDriveway), (InitCar, Shared.ModeInitCar), (IsParked, Shared.ModeIsParked), (CanDriveToWork, Shared.ModeCanDriveToWork), (CanRideHome, Shared.ModeCanRideHome), (RideHome, Shared.ModeRideHome), (CanDriveToLot, Shared.ModeCanDriveToLot) })
+foreach (var (id, mode) in new[] { (InitDriveway, Shared.ModeInitDriveway), (InitCar, Shared.ModeInitCar), (IsParked, Shared.ModeIsParked), (CanDriveToWork, Shared.ModeCanDriveToWork), (CanRideHome, Shared.ModeCanRideHome), (CanDriveToLot, Shared.ModeCanDriveToLot), (CanToggleAuto, Shared.ModeCanToggleAuto), (ToggleAuto, Shared.ModeToggleAuto) })
 {
     var script = check.Get<BHAV>(id);
     if (script.Instructions.Length != 1 || script.Instructions[0].Opcode != Shared.Opcode || script.Instructions[0].Operand[0] != mode || script.Instructions[0].TruePointer != 254) throw new Exception("Script " + id + " did not survive");
 }
-var drive = check.Get<BHAV>(GoForADrive);
-if (drive.Locals != 1 || drive.Instructions.Length != 2 || drive.Instructions[0].Opcode != 27 || drive.Instructions[1].Opcode != Shared.Opcode || drive.Instructions[1].Operand[0] != Shared.ModeDrive) throw new Exception("The drive script did not survive");
-var toLot = check.Get<BHAV>(DriveToLot);
-if (toLot.Args != 4 || toLot.Instructions.Length != 2 || toLot.Instructions[1].Opcode != Shared.Opcode || toLot.Instructions[1].Operand[0] != Shared.ModeDriveToLot) throw new Exception("The drive to a lot script did not survive");
-var toWork = check.Get<BHAV>(DriveToWork);
-if (toWork.Locals != 1 || toWork.Instructions.Length != 2 || toWork.Instructions[0].Opcode != 27 || toWork.Instructions[1].Opcode != Shared.Opcode || toWork.Instructions[1].Operand[0] != Shared.ModeDriveToWork) throw new Exception("The drive to work script did not survive");
-Console.WriteLine($"Menu: \"{label}\" -> script {GoForADrive} ({drive.Instructions.Length} instructions), test {IsParked}; \"{label2}\" -> script {DriveToWork}, test {CanDriveToWork}");
+foreach (var (id, mode) in new[] { (GoForADrive, Shared.ModeDrive), (DriveToWork, Shared.ModeDriveToWork), (DriveToLot, Shared.ModeDriveToLot) })
+{
+    var script = check.Get<BHAV>(id);
+    var ins = script.Instructions;
+    if (script.Args != 4 || script.Locals != 1 || ins.Length != 11 || ins[0].Opcode != Shared.Opcode || ins[0].Operand[0] != Shared.ModePrepare || ins[0].Operand[1] != mode
+        || ins[2].Opcode != 27 || ins[3].Opcode != 44 || ins[7].Opcode != Shared.Opcode || ins[7].Operand[0] != mode || ins[9].Opcode != 44 || ins[9].Operand[5] != 2)
+        throw new Exception("Script " + id + " did not survive");
+}
+var ride = check.Get<BHAV>(RideHome);
+if (ride.Instructions.Length != 4 || ride.Instructions[0].Operand[0] != Shared.ModeRideHome || ride.Instructions[2].Opcode != 44) throw new Exception("The ride home script did not survive");
+var anims = check.Get<STR>(129);
+if (anims == null || anims.GetString(1) != "A2O-car-getinl" || anims.GetString(2) != "A2O-car-getinr") throw new Exception("The animation names did not survive");
+Console.WriteLine($"Menu: {string.Join(", ", Enumerable.Range(0, 5).Select(i => "\"" + check.Get<TTAs>(CarMenu).GetString(i) + "\""))}; animations {anims.GetString(1)}, {anims.GetString(2)}");
 
 // rebuild 3D points from every near sprite exactly as DGRP3DMesh does, and measure how far they are from the model
 float Distance(IEnumerable<Box> model, Vector3 p) => model.Min(b =>

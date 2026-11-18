@@ -22,6 +22,13 @@ The objects are in buy mode under **Decorative > Other**.
    notch to swap its front and back.
 3. Click the car and choose **Go for a Drive**. Any adult of the household can.
 
+### Getting in and out
+
+For every drive the Sim walks to the car's door, the driver's on its left, and gets in, with the game's
+own animation for getting into its cars. Coming back, they get out the same way. The car sounds as the
+game's own car of that model does driving off, as it pulls out and as it comes back. If getting in
+looks wrong, `driveways door` has Sims use the car's other side.
+
 ### Driving to work
 
 A Sim with a job can drive to work in their car. **Drive to Work** is on the car's menu from when the
@@ -35,6 +42,11 @@ game says the carpool will come (two hours before work) until the carpool leaves
 Pay, performance and the hours are all the game's own: it is the game that takes them, out of sight.
 The car stays away while they are at work. At the end of the day the carpool that brings them back
 is hidden too: their car drives in, and they get out of it beside the driveway.
+
+**Always Drive to Work**, on the car's menu, has the car do this by itself: when the carpool comes for
+anyone in the household with a job, who is awake and at home, Drive to Work is queued for them, as if
+you had chosen it. Once a day each: if you cancel it, they take the carpool. Choose it again to stop.
+It is kept with the car, and saved with the lot.
 
 Cancelling Drive to Work while they are still on the lot or waiting brings them straight home. If the
 game will not take them (no carpool comes, it has gone, or it will not have them), the car comes home
@@ -91,9 +103,19 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 | `driveways cars` | Lists the game's vehicles in `driveways-cars.txt` |
 | `driveways work` | Writes how the game's carpool, car portals and taxi work (their menus and scripts) to `driveways-work.txt` |
 | `driveways reverse` | If the cars drive along the road backwards, this turns them round. It is remembered |
+| `driveways door` | Sims get in by the car's other side, if getting in looks wrong. It is remembered |
 | `driveways help` | What the commands are |
 
 ## Changes
+
+- **0.16**: getting in and out, engine sounds, and driving to work by themselves.
+  - Sims walk to the car's door and get in with the game's own animation, and get out the same way
+    when they are back, from a drive or from work. Before, they vanished beside the car.
+  - Before walking over, the car says if it cannot go (no road, something in the way, not time for
+    work), so nobody gets in for nothing.
+  - The car sounds as the game's car of its model does driving away, read from the game's own script
+    for it, as it pulls out and as it comes back.
+  - **Always Drive to Work** on the car's menu.
 
 - **0.15**: **Drive to...** a community lot, a first stage. The car's menu lists the community lots in
   the game by part of town, and the game's own lot change takes the Sim there once the car has left.
@@ -198,8 +220,10 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
   Sim who drives goes, without the household or a date. Studio Town and Magic Town have their own
   ways of arriving, and have not been tried.
 - **A lot saved while a car is at work** loads with the car parked, and the Sim comes home by carpool.
-- **The Sim does not get in.** They walk to the car and vanish until it is back. There are no animations
-  for getting in and out.
+- **Which side of the car to get in by is a guess.** The game's animations are made for its carpool;
+  if a Sim gets in facing the wrong way or beside the door, `driveways door` tries the other side.
+- **The engine sound is the game's carpool's.** It is the sound for driving away, played as the car
+  pulls out and as it comes back; there is none while it waits or drives on the driveway.
 - **Only what is drawn moves.** For the game's rules the car never leaves its parking place, and the Sim
   stays standing next to it. Other Sims walk round both while they are "away". The good side of this is
   that nothing about a drive is saved: a lot saved in the middle of one loads with the car parked and the

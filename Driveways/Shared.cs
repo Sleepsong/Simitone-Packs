@@ -79,5 +79,16 @@ namespace Driveways
         public const byte ModeCanDriveToLot = 8;
         /// <summary>Operand byte 0: take the Sim running this to the lot in the action's first argument (the menu entry's Param0).</summary>
         public const byte ModeDriveToLot = 9;
+        /// <summary>
+        /// Operand byte 0: before a Sim walks to the car for a drive (the drive's mode in operand byte 1): false, with a
+        /// message, if the car cannot go; otherwise true, with the stack object set to the car's tile by its door.
+        /// </summary>
+        public const byte ModePrepare = 10;
+        /// <summary>Operand byte 0: true when Sims get in by the car's left side (the driver's door), false for its right.</summary>
+        public const byte ModeIsLeftDoor = 11;
+        /// <summary>Operand byte 0: the test for switching "Always Drive to Work" on or off; names the menu entry.</summary>
+        public const byte ModeCanToggleAuto = 12;
+        /// <summary>Operand byte 0: switch "Always Drive to Work" on or off for the car.</summary>
+        public const byte ModeToggleAuto = 13;
     }
 }

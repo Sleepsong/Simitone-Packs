@@ -108,6 +108,29 @@ namespace Driveways
                         }
                         catch (Exception) { return VMPrimitiveExitCode.GOTO_FALSE; }
                     }
+                case Shared.ModePrepare:
+                    try { return Prepare(context, operand.Arg) ? VMPrimitiveExitCode.GOTO_TRUE : VMPrimitiveExitCode.GOTO_FALSE; }
+                    catch (Exception) { return VMPrimitiveExitCode.GOTO_FALSE; }
+                case Shared.ModeIsLeftDoor:
+                    return Settings.DoorOnRight ? VMPrimitiveExitCode.GOTO_FALSE : VMPrimitiveExitCode.GOTO_TRUE;
+                case Shared.ModeCanToggleAuto:
+                    {
+                        var car = CarOf(context.StackObject);
+                        if (car == null || !(context.Caller is VMAvatar)) return VMPrimitiveExitCode.GOTO_FALSE;
+                        if (context.Thread.IsCheck && context.Thread.ActionStrings != null)
+                            context.Thread.ActionStrings.Add(new VMPieMenuInteraction { Name = IsAuto(car) ? "Stop Always Driving to Work" : "Always Drive to Work" });
+                        return VMPrimitiveExitCode.GOTO_TRUE;
+                    }
+                case Shared.ModeToggleAuto:
+                    {
+                        var car = CarOf(context.StackObject);
+                        if (car == null) return VMPrimitiveExitCode.GOTO_FALSE;
+                        SetAuto(car, !IsAuto(car));
+                        OnMessage?.Invoke(context.VM, IsAuto(car)
+                            ? "Sims in this house with a job will drive to work in this car by themselves when their carpool comes, if they are awake and the car is free. Choose this again to stop."
+                            : "Sims will take the carpool to work again, unless you choose Drive to Work.");
+                        return VMPrimitiveExitCode.GOTO_TRUE;
+                    }
                 case Shared.ModeCanRideHome:
                     {
                         var sim = context.Caller as VMAvatar;
@@ -292,6 +315,7 @@ namespace Driveways
                 trips[id] = trip;
                 if (context.Locals != null && context.Locals.Length > 0) context.Locals[0] = 1;
                 Show(sim, false);
+                PlayEngine(car);
             }
             else if (trip.SimID != sim.ObjectID)
             {
@@ -318,6 +342,7 @@ namespace Driveways
                         trip.Distance = 0;
                         Draw(car, trip.Plan.Back.PoseAt(0));
                         Show(car, true);
+                        PlayEngine(car);
                     }
                     else if (trip.Distance >= trip.Plan.Out.Length && trip.ToWork)
                     {
@@ -353,7 +378,7 @@ namespace Driveways
                                 if (HandOver(vm, trip, sim))
                                 {
                                     trips.Remove(id);
-                                    return VMPrimitiveExitCode.GOTO_TRUE; //(the Sim stays hidden: the carpool takes them from here)
+                                    return VMPrimitiveExitCode.GOTO_FALSE; //(gone: the Sim stays hidden, and the carpool takes them from here)
                                 }
                                 why = $"The game would not take {sim.Name} to work just now.";
                             }
@@ -373,6 +398,7 @@ namespace Driveways
                         trip.Distance = 0;
                         Draw(car, trip.Plan.Back.PoseAt(0));
                         Show(car, true);
+                        PlayEngine(car);
                         if (why != "") OnMessage?.Invoke(vm, why);
                         break;
                     }
@@ -391,6 +417,7 @@ namespace Driveways
                         trip.Distance = 0;
                         Draw(car, trip.Plan.Back.PoseAt(0));
                         Show(car, true);
+                        PlayEngine(car);
                     }
                     break;
 
@@ -508,8 +535,9 @@ namespace Driveways
             });
             vm.SetGlobalValue(34, 0);
             context.Thread.TempRegisters[0] = trip.ToLot;
-            return new FSO.SimAntics.Primitives.VMGenericTS1Call().Execute(context,
+            new FSO.SimAntics.Primitives.VMGenericTS1Call().Execute(context,
                 new FSO.SimAntics.Primitives.VMGenericTS1CallOperand { Call = FSO.SimAntics.Model.VMGenericTS1CallMode.ChangeToLotInTemp0 });
+            return VMPrimitiveExitCode.GOTO_FALSE; //(gone: no getting out)
         }
 
         // ---- driving to work ----
@@ -709,6 +737,10 @@ namespace Driveways
                 hidden.RemoveWhere(c => c.Objects.Count == 0 || c.Objects.Any(o => o.Dead));
                 foreach (var car in hidden) ShowPictures(car, false);
             }
+            if (vm.Scheduler.CurrentTickID % 30 == 0)
+            {
+                try { AutoDrive(vm); } catch (Exception) { }
+            }
             if (!AllCommutes.TryGetValue(vm, out var commutes) || commutes.Count == 0) return;
             foreach (var commute in commutes.ToList())
             {
@@ -795,6 +827,7 @@ namespace Driveways
             commute.Distance = 0;
             Draw(commute.Car, commute.Plan.Back.PoseAt(0));
             Show(commute.Car, true);
+            PlayEngine(commute.Car);
         }
 
         /// <summary>The Sim's "Ride Home": waits while their car brings them in, then lets them out beside it.</summary>
@@ -805,14 +838,15 @@ namespace Driveways
             if (sim == null) return VMPrimitiveExitCode.GOTO_FALSE;
             var commutes = CommutesOf(vm);
             var commute = commutes.FirstOrDefault(c => c.SimGUID == sim.Object.OBJ.GUID && (c.State == CommuteState.Riding || c.State == CommuteState.Arrived));
-            if (commute == null) { Show(sim, true); return VMPrimitiveExitCode.GOTO_TRUE; }
+            //(false: no getting out of the car)
+            if (commute == null) { Show(sim, true); return VMPrimitiveExitCode.GOTO_FALSE; }
             if (commute.State == CommuteState.Riding)
             {
                 if (!sim.GetFlag(VMEntityFlags.InteractionCanceled)) return VMPrimitiveExitCode.CONTINUE_NEXT_TICK;
                 //cancelled: they walk home from the kerb, and the car comes in on its own
                 commute.State = CommuteState.Home;
                 Show(sim, true);
-                return VMPrimitiveExitCode.GOTO_TRUE;
+                return VMPrimitiveExitCode.GOTO_FALSE;
             }
             LetOut(vm, sim, commute);
             commutes.Remove(commute);
@@ -824,6 +858,15 @@ namespace Driveways
         {
             var context = vm.Context;
             var car = commute.Car;
+            //beside the door, facing the way the car does, to get out as they got in
+            var door = DoorTile(car);
+            var heading = HeadingOf(car.BaseObject.Direction);
+            if (door != null && heading >= 0)
+            {
+                var side = DrivePlan.Rotate(Settings.DoorOnRight ? 1 : -1, 0, heading);
+                var spot = LotTilePos.FromBigTile((short)(door.Position.TileX + (int)Math.Round(side.X)), (short)(door.Position.TileY + (int)Math.Round(side.Y)), 1);
+                if (sim.SetPosition(spot, car.BaseObject.Direction, context).Status == VMPlacementError.Success) { Show(sim, true); return; }
+            }
             var carTiles = new HashSet<(int, int)>(car.Objects.Select(o => ((int)o.Position.TileX, (int)o.Position.TileY)));
             float cx = (float)carTiles.Average(t => t.Item1), cy = (float)carTiles.Average(t => t.Item2);
             //the tiles next to the car, nearest its middle first: on the driveway, or else anywhere beside it
@@ -847,6 +890,171 @@ namespace Driveways
             if (!VM.UseWorld || car == null) return;
             foreach (var part in car.Objects)
                 if (part.WorldUI is ObjectComponent picture && picture.Visible != visible) picture.Visible = visible;
+        }
+
+        // ---- getting in and out ----
+        //
+        // Before a drive the Sim walks to the car's door and gets in, and at the end gets out, with the game's own
+        // animations for getting into its cars (A2O-car-getinl and -getinr, named in the object file's table 129 as the
+        // carpool names them; getting out is getting in played backwards). The scripts that do it are in the object
+        // file; here is what they ask: whether the drive can go, and where the door is.
+
+        /// <summary>The car's tile by the door the Sims use: the front seat, on its left (the driver's) or its right.</summary>
+        private const int DoorRow = 2;
+
+        private static VMEntity DoorTile(VMMultitileGroup car)
+        {
+            int x = Settings.DoorOnRight ? Shared.CarWidth - 1 : 0;
+            var sub = (short)((x << 8) | DoorRow);
+            return car.Objects.FirstOrDefault(o => !o.Dead && o.Object.OBJ.SubIndex == sub);
+        }
+
+        /// <summary>
+        /// Before the Sim walks to the car: whether this drive can go, and if not, why (so they do not walk over and get
+        /// in for nothing). If it can, the stack object becomes the tile by the door, which the walk is relative to.
+        /// </summary>
+        private static bool Prepare(VMStackFrame context, byte mode)
+        {
+            var vm = context.VM;
+            var sim = context.Caller as VMAvatar;
+            var car = CarOf(context.StackObject);
+            if (sim == null || car == null) return false;
+            if (!IsParked(vm, car)) { OnMessage?.Invoke(vm, "The car is out."); return false; }
+            var plan = PlanFor(vm, car);
+            if (plan.Problem != RouteProblem.None) { OnMessage?.Invoke(vm, Explain(plan.Problem)); return false; }
+            if (mode == Shared.ModeDriveToWork)
+            {
+                bool early = false;
+                try { early = WorkWindow(vm, sim) != null; } catch (Exception) { }
+                if (!early && CarpoolFor(vm, sim) == null)
+                {
+                    OnMessage?.Invoke(vm, $"It is not time for {sim.Name} to go to work. They can drive there from when the game says the carpool will come, an hour before it does.");
+                    return false;
+                }
+            }
+            if (mode == Shared.ModeDriveToLot)
+            {
+                var lot = (context.Args != null && context.Args.Length > 0) ? context.Args[0] : (short)0;
+                if (!Destinations(vm).Any(d => d.House == lot)) { OnMessage?.Invoke(vm, "The car cannot take them there."); return false; }
+            }
+            var door = DoorTile(car);
+            if (door != null) context.StackObject = door;
+            return true;
+        }
+
+        // ---- driving to work by themselves ----
+        //
+        // A car can be set to "Always Drive to Work": then, when the game's carpool comes for one of the household with a
+        // job, who is awake and on the lot, the car's Drive to Work is queued for them, as if the player had chosen it.
+        // Once a day for each Sim: if they cancel it, they take the carpool. The setting is kept on the car (its lead
+        // tile's first attribute), so it is saved with the lot.
+
+        private const int DriveToWorkInteraction = 1;
+
+        private static bool IsAuto(VMMultitileGroup car) => car.BaseObject.GetAttribute(0) == 1;
+        private static void SetAuto(VMMultitileGroup car, bool on) => car.BaseObject.SetAttribute(0, (short)(on ? 1 : 0));
+
+        //the Sims a car has been queued for already, by character and day
+        private static ConditionalWeakTable<VM, HashSet<(uint, short)>> AllAutoQueued = new ConditionalWeakTable<VM, HashSet<(uint, short)>>();
+
+        private static void AutoDrive(VM vm)
+        {
+            var cars = vm.Entities.Where(e => e is VMGameObject && !e.Dead && !e.GhostImage && IsCarGUID(GUIDOf(e))).Select(e => e.MultitileGroup).Distinct()
+                .Where(c => c.BaseObject.Position != LotTilePos.OUT_OF_WORLD && IsAuto(c) && IsParked(vm, c)).ToList();
+            if (cars.Count == 0) return;
+            var family = vm.TS1State?.CurrentFamily;
+            if (family == null) return;
+            var day = vm.GetGlobalValue(1);
+            var queued = AllAutoQueued.GetOrCreateValue(vm);
+            foreach (var sim in vm.Entities.OfType<VMAvatar>().ToList())
+            {
+                if (cars.Count == 0) break;
+                if (sim.Dead || sim.GhostImage || sim.Position == LotTilePos.OUT_OF_WORLD || sim.GetValue(VMStackObjectVariable.Hidden) != 0) continue;
+                if (sim.GetPersonData(VMPersonDataVariable.TS1FamilyNumber) != family.ChunkID) continue;
+                if (sim.GetPersonData(VMPersonDataVariable.PersonsAge) < 18 || sim.GetPersonData(VMPersonDataVariable.JobType) <= 0) continue;
+                if (sim.GetMotiveData(VMMotive.SleepState) != 0) continue; //(asleep: the game's carpool does not wake them either)
+                var key = (sim.Object.OBJ.GUID, day);
+                if (queued.Contains(key)) continue;
+                if (TripsOf(vm).Values.Any(t => t.SimID == sim.ObjectID) || CommutesOf(vm).Any(c => c.SimGUID == sim.Object.OBJ.GUID)) continue;
+                if (sim.Thread?.Queue?.Any(a => a?.Callee != null && IsCarGUID(GUIDOf(a.Callee))) == true) continue;
+                if (CarpoolFor(vm, sim) == null) continue;
+                var car = cars.FirstOrDefault(c => PlanFor(vm, c).Problem == RouteProblem.None);
+                if (car == null) continue;
+                car.BaseObject.PushUserInteraction(DriveToWorkInteraction, sim, vm.Context, false);
+                queued.Add(key);
+                cars.Remove(car);
+            }
+        }
+
+        // ---- the engine ----
+        //
+        // A car sounds as the game's own car of that model sounds driving away: the shared car script "leave sound"
+        // (carglobals.iff 8201) picks a sound by the car's object type, and the pack follows it for the game's car the
+        // model is drawn as, on a residential lot. The sound is played on the car as the game's play sound primitive
+        // plays it, so it follows the car's picture down the road.
+
+        private const ushort LeaveSoundScript = 8201;
+        private static Dictionary<uint, string> EngineSounds = new Dictionary<uint, string>();
+
+        private static string EngineSound(VM vm, VMMultitileGroup car)
+        {
+            var model = Shared.Cars.FirstOrDefault(c => c.GUID == GUIDOf(car.BaseObject));
+            if (model == null) return null;
+            lock (EngineSounds)
+            {
+                if (EngineSounds.TryGetValue(model.GUID, out var known)) return known;
+                string name = null;
+                try
+                {
+                    var game = FSO.Content.Content.Get().WorldObjects.Get(model.GameGUID);
+                    var shared = (game?.Resource as FSO.Content.GameObjectResource)?.SemiGlobal?.MainIff;
+                    var script = shared?.Get<FSO.Files.Formats.IFF.Chunks.BHAV>(LeaveSoundScript);
+                    if (script != null)
+                    {
+                        //follow the script as the game would for this car: object type tests by this car's type, anything else true
+                        int? sound = null;
+                        int at = 0;
+                        for (int steps = 0; steps < 200 && at < script.Instructions.Length; steps++)
+                        {
+                            var ins = script.Instructions[at];
+                            if (ins.Opcode == 23) { sound = BitConverter.ToUInt16(ins.Operand, 0); break; }
+                            var next = (ins.Opcode == 32) ? ((BitConverter.ToUInt32(ins.Operand, 0) == model.GameGUID) ? ins.TruePointer : ins.FalsePointer) : ins.TruePointer;
+                            if (next >= 253) break;
+                            at = next;
+                        }
+                        if (sound == null) sound = script.Instructions.Where(i => i.Opcode == 23).Select(i => (int?)BitConverter.ToUInt16(i.Operand, 0)).FirstOrDefault();
+                        if (sound != null)
+                        {
+                            var fwav = shared.Get<FSO.Files.Formats.IFF.Chunks.FWAV>((ushort)sound.Value) ?? vm.Context.Globals?.Resource?.Get<FSO.Files.Formats.IFF.Chunks.FWAV>((ushort)sound.Value);
+                            name = fwav?.Name;
+                        }
+                    }
+                }
+                catch (Exception) { }
+                EngineSounds[model.GUID] = name;
+                return name;
+            }
+        }
+
+        private static void PlayEngine(VMMultitileGroup car)
+        {
+            if (!VM.UseWorld || car == null || car.Objects.Count == 0) return;
+            try
+            {
+                var owner = car.BaseObject;
+                var vm = owner.Thread?.Context?.VM;
+                if (vm == null) return;
+                var name = EngineSound(vm, car);
+                if (name == null) return;
+                if (owner.SoundThreads.Any(x => x?.Name == name)) return; //(already playing)
+                var thread = FSO.HIT.HITVM.Get().PlaySoundEvent(name);
+                if (thread == null) return;
+                if (!thread.AlreadyOwns(owner.ObjectID)) thread.AddOwner(owner.ObjectID);
+                owner.SoundThreads.Add(new FSO.SimAntics.Model.Sound.VMSoundEntry { Sound = thread, Pan = true, Zoom = true, Loop = false, Name = name });
+                vm.SoundEntities.Add(owner);
+                owner.TickSounds();
+            }
+            catch (Exception) { }
         }
 
         // ---- reading the lot ----
@@ -1172,6 +1380,7 @@ namespace Driveways
             lines.Add($"Driveways snapped to the road since the game started: {Snaps} times. The last: {LastSnap}.");
             lines.Add("The driveway's look: " + DrivewayLook.Describe());
             lines.Add("The car's look: " + CarLook.Describe());
+            lines.Add($"Sims get in by the car's {(Settings.DoorOnRight ? "right" : "left")} side (\"driveways door\" to change it).");
 
             lines.Add($"The time is {vm.GetGlobalValue(0)}:{vm.GetGlobalValue(5):00} on day {vm.GetGlobalValue(1)}.");
             foreach (var person in vm.Entities.OfType<VMAvatar>().Where(a => !a.Dead && !a.GhostImage && a.GetPersonData(VMPersonDataVariable.JobType) > 0).ToList())
@@ -1204,7 +1413,10 @@ namespace Driveways
                     continue;
                 }
                 var plan = PlanFor(vm, car);
-                lines.Add(where + (plan.Problem == RouteProblem.None ? "ready to drive." : Explain(plan.Problem)));
+                var sound = EngineSound(vm, car);
+                lines.Add(where + (plan.Problem == RouteProblem.None ? "ready to drive." : Explain(plan.Problem))
+                    + (IsAuto(car) ? " It takes the household to work by itself." : "")
+                    + (sound != null ? $" Engine: {sound}." : " Engine: none found."));
             }
             return string.Join("\n\n", lines);
         }
@@ -1375,6 +1587,8 @@ namespace Driveways
         public static string Floor = "";
         /// <summary>The game's cars have their front at the other end from the pack's guess: drive them the other way round.</summary>
         public static bool ReverseCars;
+        /// <summary>Sims get in and out by the car's right side, not its left (the driver's door).</summary>
+        public static bool DoorOnRight;
 
         private static string File => System.IO.Path.Combine(FSO.Common.FSOEnvironment.UserDir, "driveways.cfg");
 
@@ -1390,6 +1604,7 @@ namespace Driveways
                     var key = line.Substring(0, split).Trim().ToLowerInvariant(); var value = line.Substring(split + 1).Trim();
                     if (key == "floor") Floor = value;
                     else if (key == "reversecars") ReverseCars = value == "1";
+                    else if (key == "dooronright") DoorOnRight = value == "1";
                 }
             }
             catch (Exception) { }
@@ -1397,7 +1612,7 @@ namespace Driveways
 
         public static void Save()
         {
-            try { System.IO.File.WriteAllLines(File, new[] { "floor=" + Floor, "reversecars=" + (ReverseCars ? "1" : "0") }); }
+            try { System.IO.File.WriteAllLines(File, new[] { "floor=" + Floor, "reversecars=" + (ReverseCars ? "1" : "0"), "dooronright=" + (DoorOnRight ? "1" : "0") }); }
             catch (Exception) { }
         }
     }
@@ -1802,15 +2017,18 @@ namespace Driveways
     public class VMDriveOperand : VMPrimitiveOperand
     {
         public byte Mode { get; set; }
+        /// <summary>Byte 1: for ModePrepare, the mode of the drive being got ready.</summary>
+        public byte Arg { get; set; }
 
         public void Read(byte[] bytes)
         {
             Mode = bytes.Length > 0 ? bytes[0] : (byte)0;
+            Arg = bytes.Length > 1 ? bytes[1] : (byte)0;
         }
 
         public void Write(byte[] bytes)
         {
-            using (var io = new BinaryWriter(new MemoryStream(bytes))) io.Write(Mode);
+            using (var io = new BinaryWriter(new MemoryStream(bytes))) { io.Write(Mode); io.Write(Arg); }
         }
     }
 }
