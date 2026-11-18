@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- the checks run against the real engine: that the pack's patches still fit it, that needs drop as they should
+         through the engine's own code with the patch on, and the pack's own rules.
+         they need no copy of The Sims, and do not start the game -->
+    <ProjectReference Include="$(SimitonePath)\Client\Simitone\Simitone.Client\Simitone.Client.csproj" />
+    <ProjectReference Include="..\LotTraits.csproj" />
+  </ItemGroup>
+
+</Project>

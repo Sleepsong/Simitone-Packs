@@ -1,0 +1,54 @@
+// The traits a lot can have. Change the numbers, or add traits of your own, then restart Simitone.
+//
+//   most         how many traits one lot can have (The Sims 4: 3)
+//   id           a short name for the trait, kept with each lot that has it: do not change it once in use
+//   needs        how fast each need drops on this lot, against the game's own rate (1).
+//                1.5 is half again as fast, 0.75 a quarter slower, 0 never. Up to 5.
+//                The needs: hunger, comfort, hygiene, bladder, energy, fun, social
+//   room         points added to every Sim's Room need on this lot, from -50 to 50
+//
+// A rate is only for dropping: a Sim who sleeps gets their energy back at the game's own pace.
+{
+  "most": 3,
+  "traits": [
+    {
+      "id": "fresh-air",
+      "name": "Fresh Air",
+      "description": "A breeze through every room, and the garden on it.",
+      "needs": { "energy": 0.85 },
+      "room": 10
+    },
+    {
+      "id": "homey",
+      "name": "Homey",
+      "description": "Whoever comes in feels at home.",
+      "needs": { "comfort": 0.75 },
+      "room": 5
+    },
+    {
+      "id": "convivial",
+      "name": "Convivial",
+      "description": "Everyone here is good company.",
+      "needs": { "social": 0.75 }
+    },
+    {
+      "id": "grody",
+      "name": "Grody",
+      "description": "However often it is cleaned, it never quite smells clean.",
+      "needs": { "hygiene": 1.5 },
+      "room": -10
+    },
+    {
+      "id": "mean-vibe",
+      "name": "Mean Vibe",
+      "description": "Something about the place puts people on edge.",
+      "needs": { "social": 1.25, "fun": 1.15 }
+    },
+    {
+      "id": "noisy-neighbours",
+      "name": "Noisy Neighbours",
+      "description": "Through the walls, all day long.",
+      "needs": { "energy": 1.2, "comfort": 1.1 }
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "id": "sample.lottraits",
+  "name": "Lot Traits",
+  "version": "0.1",
+  "author": "Simitone",
+  "description": "Lot traits, after The Sims 4: give a lot up to three traits, such as Fresh Air or Grody, and every Sim on it finds their needs drop faster or slower. Options > Lot Traits, or F7. A first stage, not yet run in the game.",
+  "minSimitoneVersion": "0.8.22",
+  "assembly": "LotTraits.dll"
+}
