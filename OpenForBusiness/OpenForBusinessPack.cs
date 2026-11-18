@@ -373,7 +373,8 @@ namespace OpenForBusiness
         /// <summary>
         /// A copy of the lot is being made, to be put down as another lot (the Lots Bin pack does this). The book stays
         /// behind: its takings, customers, rank, perks, staff and owner are the family's business, not the building's.
-        /// What is for sale goes with the copy anyway, since prices are in the lot's own save (SalePrice).
+        /// What is for sale goes with the copy anyway, since prices are in the lot's own save (SalePrice). The Lots Bin
+        /// finds this method by its name and shape: it is not part of Simitone's ISimitonePack.
         /// </summary>
         public byte[] OnLotExport(string lotPath, byte[] saved) => null;
 

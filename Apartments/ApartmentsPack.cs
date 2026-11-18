@@ -138,8 +138,8 @@ namespace Apartments
         /// goes with it, its apartments vacant; the households, their rent and their needs stay behind (LotFile.ForCopy).
         /// If that fails the copy is an ordinary house, rather than one with tenants who do not live there.
         ///
-        /// (A Simitone without this call never makes it, and the pack runs as before: it is a method like any other, and
-        /// uses nothing from Simitone that its first pack builds lacked.)
+        /// The Lots Bin finds this method by its name and shape: it is not part of Simitone's ISimitonePack. Without the
+        /// Lots Bin nothing calls it, and the pack runs as before.
         /// </summary>
         public byte[] OnLotExport(string lotPath, byte[] saved)
         {

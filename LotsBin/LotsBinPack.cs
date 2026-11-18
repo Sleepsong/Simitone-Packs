@@ -31,8 +31,11 @@ namespace LotsBin
     /// copying) and Bin (the folder the copies are kept in). If Simitone ever gives those buttons jobs of its own, the
     /// pack leaves them alone and says so in its log (LotsBin.log, in the user directory): it then needs a new version.
     ///
-    /// What packs keep for a lot goes with the copy, through PackManager.ExportLot and ImportLot: painted ground, drawn
-    /// roofs, foundations, styles, apartments. Each pack decides what of its own goes (ISimitonePack.OnLotExport).
+    /// What packs keep for a lot goes with the copy (PackData): painted ground, drawn roofs, foundations, styles,
+    /// apartments. A pack decides what of its own goes with an OnLotExport method, which this pack looks for by name.
+    ///
+    /// All of it is in this pack. It needs nothing from Simitone that its add-on pack builds have not had since packs
+    /// could keep data for a lot (LotPackData).
     /// </summary>
     public class LotsBinPack : ISimitonePack
     {
@@ -41,10 +44,6 @@ namespace LotsBin
 
         public void OnLoad(Pack pack)
         {
-            //the copying needs Simitone's pack calls for a lot's pack data. without them a lot would arrive half built
-            if (typeof(PackManager).GetMethod("ExportLot", new[] { typeof(string) }) == null
-                || typeof(PackManager).GetMethod("ImportLot", new[] { typeof(string), typeof(LotPackCopy) }) == null)
-                throw new Exception("this pack needs a newer Simitone, one whose packs can copy a lot's data (PackManager.ExportLot)");
             Apply(new Harmony(HarmonyId));
         }
 
@@ -197,7 +196,7 @@ namespace LotsBin
         private static void SaveNow(short house, string name)
         {
             var lot = LotCopy.Save(house, name);
-            var missing = LotPackRecord.Missing(lot.Info.SavedWith);
+            var missing = PackData.Missing(lot.Info.SavedWith);
             Tell(SaveCaption, "\"" + lot.Name + "\" is in the bin." + (missing.Count == 0 ? "" :
                 "\n\nIt was saved with packs that are switched off now (" + string.Join(", ", missing) + "). What they added goes with the copy, "
                 + "and works again once they are on."));

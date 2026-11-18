@@ -5,8 +5,9 @@ http://mozilla.org/MPL/2.0/.
 */
 
 // Checks for the Lots Bin pack that need no copy of The Sims: that its patch fits the engine it is built against, the
-// bin's folders, how a lot's pack data goes with a copy (Simitone's PackManager.ExportLot and ImportLot, with packs
-// made up here), how a copy is made another house's, and that a lot's pictures are written out as they were read.
+// bin's folders, how a lot's pack data goes with a copy (PackData, with packs made up here) and that it is kept where
+// Simitone's own LotPackData and LotPackRecord look for it, how a copy is made another house's, and that a lot's
+// pictures are written out as they were read. They build against Simitone as it is: the pack changes nothing in it.
 // What they cannot check is the game itself: nothing here loads a lot, so taking the Sims off one is not run.
 // Run with: dotnet run --project LotsBin/tests
 using System;
@@ -33,14 +34,12 @@ FSO.Common.FSOEnvironment.UserDir = Path.Combine(Path.GetTempPath(), "lotsbin-te
 Directory.CreateDirectory(FSO.Common.FSOEnvironment.UserDir);
 try
 {
-    // ---- the patch fits this engine, and the Simitone has the calls the pack needs ----
+    // ---- the patch fits this engine ----
     var h = new Harmony("test.lotsbin");
     var apply = typeof(LotsBinPack).GetMethod("Apply", BindingFlags.NonPublic | BindingFlags.Static);
     try { apply.Invoke(null, new object[] { h }); Check("the patch applies", true); }
     catch (TargetInvocationException e) { Check("the patch applies: " + e.InnerException, false); }
     Check("patched UIHouseSelectPanel..ctor", h.GetPatchedMethods().Any(m => m.DeclaringType.Name + "." + m.Name == "UIHouseSelectPanel..ctor"));
-    try { new LotsBinPack().OnLoad(null); Check("OnLoad finds Simitone's ExportLot and ImportLot", true); }
-    catch (Exception e) { Check("OnLoad finds Simitone's ExportLot and ImportLot: " + e.Message, false); }
     h.UnpatchAll("test.lotsbin");
     h.UnpatchAll("simitone.packs.lotsbin");
 
@@ -71,54 +70,76 @@ try
     Check("ids: letters, digits, . _ -", Bin.PackIdIsSafe("sample.lots_bin-2") && !Bin.PackIdIsSafe("..") && !Bin.PackIdIsSafe("a/b") && !Bin.PackIdIsSafe("A"));
     Check("an empty name is still a name", Bin.SafeName("  ") == "lot" && Bin.SafeName(new string('x', 90)).Length == 40);
 
-    // ---- what the packs keep goes with a copy (Simitone's ExportLot and ImportLot) ----
+    // ---- the pack keeps the packs' data where Simitone does ----
     var from = Path.Combine(FSO.Common.FSOEnvironment.UserDir, "UserData/Houses/House05.iff");
     var to = Path.Combine(FSO.Common.FSOEnvironment.UserDir, "UserData2/Houses/House05.iff");
+    LotPackData.Write("sample.terrainpaint", from, new byte[] { 1 });
+    Check("a pack's data Simitone wrote for a lot is found", PackData.PacksWithData(from).SequenceEqual(new[] { "sample.terrainpaint" }));
+    Check("...and not for another lot of the same name", PackData.PacksWithData(to).Count == 0);
+    PackData.DeleteAll(from);
+    Check("removing a lot's data removes what Simitone reads", LotPackData.Read("sample.terrainpaint", from) == null && PackData.PacksWithData(from).Count == 0);
+    PackData.SetSavedWith(to, new Dictionary<string, string>() { { "off.pack", "Off" } });
+    Check("a lot's record set here is the one Simitone warns from", LotPackRecord.Missing(to).SequenceEqual(new[] { "Off" }));
+
+    Pack Running(string id, ISimitonePack code) => new Pack() { Id = id, Code = new List<ISimitonePack>() { code }, HasCode = true };
+    void SetActive(List<Pack> packs)
+    {
+        typeof(PackManager).GetProperty("Active").SetValue(null, packs);
+        typeof(PackManager).GetField("ActiveIds", BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, new HashSet<string>(packs.Select(x => x.Id)));
+    }
+    SetActive(new List<Pack>() { Running("saved.pack", new Plain()) });
+    LotPackRecord.Saved(from);
+    var savedWith = PackData.SavedWith(from);
+    Check("the record Simitone writes when a lot is saved is read here", savedWith.Count == 1 && savedWith["saved.pack"] == "saved.pack");
+    PackData.SetSavedWith(from, null);
+    Check("a record can be cleared", PackData.SavedWith(from).Count == 0 && LotPackRecord.Missing(from).Count == 0);
+
+    // ---- what the packs keep goes with a copy ----
     LotPackData.Write("off.pack", from, new byte[] { 1 });          //a pack that is not running: goes as it is
     LotPackData.Write("sample.apartments", from, new byte[] { 2 }); //running, chooses what goes
     LotPackData.Write("plain.pack", from, new byte[] { 3 });        //running, takes the default: as it is
     LotPackData.Write("broken.pack", from, new byte[] { 4 });       //running, and fails
     LotPackData.Write("sample.openforbusiness", from, new byte[] { 5 }); //running, carries nothing
-    LotPackRecord.SetSavedWith(from, new Dictionary<string, string>() { { "off.pack", "Off" } });
+    PackData.SetSavedWith(from, new Dictionary<string, string>() { { "off.pack", "Off" } });
     LotPackData.Write("old.pack", to, new byte[] { 6 });            //what the lot it goes to had: removed
     LotPackData.Write("off.pack", to, new byte[] { 7 });
 
-    Pack Running(string id, ISimitonePack code) => new Pack() { Id = id, Code = new List<ISimitonePack>() { code } };
     var active = new List<Pack>()
     {
-        Running("sample.apartments", new Halving()),
+        Running("sample.apartments", new Doubling()),
         Running("plain.pack", new Plain()),
         Running("broken.pack", new Broken()),
         Running("sample.openforbusiness", new Nothing()),
         Running("new.pack", new Plain()),
+        Running("wrong.pack", new WrongShape()),
     };
-    typeof(PackManager).GetProperty("Active").SetValue(null, active);
-    typeof(PackManager).GetField("ActiveIds", BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, new HashSet<string>(active.Select(x => x.Id)));
+    SetActive(active);
+    LotPackData.Write("wrong.pack", from, new byte[] { 8 });
 
-    Check("the packs with data for a lot are found", LotPackData.PacksWithData(from).SequenceEqual(new[] { "broken.pack", "off.pack", "plain.pack", "sample.apartments", "sample.openforbusiness" }));
-    var exported = PackManager.ExportLot(from);
+    Check("the packs with data for a lot are found", PackData.PacksWithData(from).SequenceEqual(new[] { "broken.pack", "off.pack", "plain.pack", "sample.apartments", "sample.openforbusiness", "wrong.pack" }));
+    var exported = PackData.Export(from);
     Check("a pack that is not running: its data goes as it is", exported.Data["off.pack"].SequenceEqual(new byte[] { 1 }));
     Check("a running pack chooses what goes", exported.Data["sample.apartments"].SequenceEqual(new byte[] { 2, 2 }));
     Check("a running pack that does not choose: as it is", exported.Data["plain.pack"].SequenceEqual(new byte[] { 3 }));
     Check("a pack that fails: its data goes as it is", exported.Data["broken.pack"].SequenceEqual(new byte[] { 4 }));
-    Check("...and its code is stopped, with the reason", active[2].Code.Count == 0 && (active[2].CodeError ?? "").Contains("broken on purpose"));
+    Check("...and its code is left running: that is Simitone's to stop", active[2].Code.Count == 1 && active[2].CodeError == null);
     Check("a pack can carry nothing", !exported.Data.ContainsKey("sample.openforbusiness"));
     Check("a running pack with nothing saved carries nothing", !exported.Data.ContainsKey("new.pack"));
+    Check("a method of another shape is not the hook: as it is", exported.Data["wrong.pack"].SequenceEqual(new byte[] { 8 }));
     Check("the packs it was saved with go too", exported.SavedWith.Count == 1 && exported.SavedWith["off.pack"] == "Off");
     Check("the lot copied from keeps its own data", LotPackData.Read("sample.apartments", from).SequenceEqual(new byte[] { 2 }));
 
-    PackManager.ImportLot(to, exported);
+    PackData.Import(to, exported);
     Check("what the lot had is gone", LotPackData.Read("old.pack", to) == null);
     Check("a pack's data is replaced by the copy's", LotPackData.Read("off.pack", to).SequenceEqual(new byte[] { 1 }));
     Check("a running pack is given its data back", LotPackData.Read("sample.apartments", to).SequenceEqual(new byte[] { 2, 2, 9 }));
     Check("the default keeps it as it is", LotPackData.Read("plain.pack", to).SequenceEqual(new byte[] { 3 }));
-    Check("a stopped pack's data is kept as it is", LotPackData.Read("broken.pack", to).SequenceEqual(new byte[] { 4 }));
+    Check("a failed pack's data is kept as it is", LotPackData.Read("broken.pack", to).SequenceEqual(new byte[] { 4 }));
     Check("nothing carried, nothing kept", LotPackData.Read("sample.openforbusiness", to) == null && LotPackData.Read("new.pack", to) == null);
     Check("the lot warns of the same missing packs", LotPackRecord.Missing(to).SequenceEqual(new[] { "Off" }));
-    PackManager.ImportLot(to, new LotPackCopy());
-    Check("putting down a copy with no data clears the lot's", LotPackData.PacksWithData(to).Count == 0 && LotPackRecord.Missing(to).Count == 0);
-    typeof(PackManager).GetProperty("Active").SetValue(null, new List<Pack>());
-    typeof(PackManager).GetField("ActiveIds", BindingFlags.NonPublic | BindingFlags.Static).SetValue(null, new HashSet<string>());
+    PackData.Import(to, new LotPackCopy());
+    Check("putting down a copy with no data clears the lot's", PackData.PacksWithData(to).Count == 0 && LotPackRecord.Missing(to).Count == 0);
+    SetActive(new List<Pack>());
 
     // ---- a copy made another house's ----
     var state = MakeState(4, house: 7);
@@ -240,8 +261,8 @@ static VMMarshal MakeState(int size, short house)
     };
 }
 
-/// <summary>Apartments' choice: the copy carries its data twice over, and is given a 9 on the end when put down.</summary>
-class Halving : ISimitonePack
+/// <summary>Chooses what goes: the copy carries its data twice over, and is given a 9 on the end when put down.</summary>
+class Doubling : ISimitonePack
 {
     public byte[] OnLotExport(string lotPath, byte[] saved) => saved?.Concat(saved).ToArray();
     public byte[] OnLotImport(string lotPath, byte[] data) => data?.Concat(new byte[] { 9 }).ToArray();
@@ -257,4 +278,10 @@ class Broken : ISimitonePack
 class Nothing : ISimitonePack
 {
     public byte[] OnLotExport(string lotPath, byte[] saved) => null;
+}
+
+/// <summary>Has a method of the name, but not of the hook's shape.</summary>
+class WrongShape : ISimitonePack
+{
+    public byte[] OnLotExport(string lotPath) => new byte[0];
 }

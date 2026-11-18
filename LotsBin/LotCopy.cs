@@ -40,7 +40,7 @@ namespace LotsBin
     /// The Sims are taken off the copy in a VM of its own, with no world and nothing running, by the engine's own
     /// means: what each Sim is holding goes with them, and then VM.Reset takes off every Sim, as it does when a lot's
     /// saved state is loaded. The household's money and family go too. What the packs keep for the lot goes with the
-    /// copy through PackManager.ExportLot and ImportLot, and each pack decides what of its own goes.
+    /// copy (PackData), and each pack decides what of its own goes.
     /// </summary>
     public static class LotCopy
     {
@@ -81,7 +81,7 @@ namespace LotsBin
                 Size = size,
                 Value = simi.ObjectsValue + simi.ArchitectureValue,
             };
-            var packs = PackManager.ExportLot(lotPath);
+            var packs = PackData.Export(lotPath);
             var result = Bin.Add(info, ToBytes(lot), packs);
             LotsBinPack.Log("House " + house + " of " + info.FromNeighbourhood + " went into the bin as " + result.Folder
                 + ", with data of " + (packs.Data.Count == 0 ? "no packs" : string.Join(", ", packs.Data.Keys)) + ".");
@@ -270,7 +270,7 @@ namespace LotsBin
 
             var kept = Bin.KeepReplaced(lotPath, NeighbourhoodName(neigh), house);
             File.WriteAllBytes(lotPath, bytes);
-            PackManager.ImportLot(lotPath, Bin.ReadPacks(lot));
+            PackData.Import(lotPath, Bin.ReadPacks(lot));
             LotsBinPack.Log(lot.Folder + " was put down as house " + house + " of " + NeighbourhoodName(neigh)
                 + (kept == null ? "." : "; what was there is kept in " + kept + "."));
         }

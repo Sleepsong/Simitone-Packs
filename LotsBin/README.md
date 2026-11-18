@@ -33,7 +33,7 @@ It goes:
 
 - Everything that was built and bought: walls, floors, the shape of the ground, pools, roofs, every
   object as it was (dirty dishes included), and what is up for sale.
-- What packs added to the lot, through Simitone's pack data calls: painted ground (Terrain Paint),
+- What packs added to the lot (their `LotPackData`): painted ground (Terrain Paint),
   drawn roofs (Roof Tool), foundations (Foundations), styles (Create a Style), and an apartment
   building's apartments (Apartments). A pack decides what of its own goes. Apartments sends the
   apartments, all vacant. Open for Business sends none of the business's books.
@@ -95,17 +95,39 @@ ground, pools, roofs, objects' state, a lot's size and The Sims' own lot informa
   saves a lot under, and 11, which it loads one as), the ground of where it is, and the price of the
   land. It is written as the house's file, and the packs' data follows.
 
-The packs' data goes through `PackManager.ExportLot` and `ImportLot`, which Simitone added for this.
-Each pack's `ISimitonePack.OnLotExport` decides what of its data for the lot goes with a copy, and
-`OnLotImport` what to keep when the copy is put down. Both pass the data through unchanged unless a
-pack says otherwise, which suits data about what was built. A pack whose code is not running sends
-its data unchanged. See Simitone's `PACKS.md`.
+`PackData.cs` moves the packs' data. It finds every pack's file for the lot where Simitone's
+`LotPackData` keeps them, and reads and writes the lot's line in `LotPackRecord`'s `lotpacks.json`,
+the same way Simitone does (as the Apartments pack does for its own file). Simitone's code only reads
+and writes one pack's file at a time, so the rest is done here. The tests check both against
+Simitone's own code.
 
 One Harmony patch (a postfix on `UIHouseSelectPanel`'s constructor) gives the two buttons their jobs.
 If a later Simitone gives them jobs of its own, the pack leaves them alone and says so in its log.
 
-The pack needs a Simitone with `PackManager.ExportLot`. On an older one its code does not start, and
-the Packs screen says why.
+Everything is in this pack. It changes nothing in Simitone or FreeSO, and needs only what Simitone's
+`addon-packs` build has had since packs could keep data for a lot (`LotPackData`).
+
+## For pack authors: what of your data goes with a copy
+
+A pack that keeps data for a lot with `LotPackData` can say what of it goes with a copy. Give your
+`ISimitonePack` class either or both of these public methods. The Lots Bin finds them by name and
+shape; they are not part of Simitone's interface, so a pack with them runs on any Simitone:
+
+```csharp
+// a copy of the lot, as last saved, is going in the bin. saved is what you last wrote for it (or null).
+// return what the copy carries, or null for nothing
+public byte[] OnLotExport(string lotPath, byte[] saved) => saved;
+
+// a copy has been put down as this lot (not loaded). data is what OnLotExport gave (or null).
+// return what to keep for the lot, or null for nothing
+public byte[] OnLotImport(string lotPath, byte[] data) => data;
+```
+
+Without them your data goes as it is, which is right for data about what was built. Leave out what
+belongs to the household: who lives there, money, what they have done (see Apartments and Open for
+Business). Whatever your pack had for the lot a copy is put down as is removed first. The data of a
+pack that is switched off goes unchanged. If one of these methods throws, the data goes as it was,
+and the error is in `LotsBin.log`.
 
 ## Tests
 

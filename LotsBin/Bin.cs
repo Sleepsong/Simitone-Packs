@@ -198,7 +198,7 @@ namespace LotsBin
             for (int i = 2; Directory.Exists(folder); i++) folder = stem + "-" + i;
             Directory.CreateDirectory(folder);
             File.Copy(lotPath, Path.Combine(folder, Path.GetFileName(lotPath)));
-            foreach (var pack in LotPackData.PacksWithData(lotPath))
+            foreach (var pack in PackData.PacksWithData(lotPath))
             {
                 var data = LotPackData.Read(pack, lotPath);
                 if (data == null || !PackIdIsSafe(pack)) continue;

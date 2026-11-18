@@ -206,7 +206,7 @@ namespace LotsBin
                 AddLabel(fitText, TextSize, (fit.Item1 == null && !fit.Item2) ? style.DialogText : style.BtnActive, new Vector2(textX, y), textWidth, 4);
                 y += Math.Min(4, LinesOf(fitText, textWidth)) * 24 + 10;
 
-                var missing = LotPackRecord.Missing(info.SavedWith);
+                var missing = PackData.Missing(info.SavedWith);
                 if (missing.Count > 0)
                 {
                     var text = "Saved with packs that are switched off now: " + string.Join(", ", missing) + ". What they added does not work until they are on again.";
