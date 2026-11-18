@@ -64,7 +64,8 @@ namespace CutContent
         private class Visit
         {
             public int Arrived = -1, Casing, Attempts, DoneAt = -1;
-            public bool Done, LeaveSent;
+            public bool Done, LeaveSent, Quick;
+            public Plan Last = (Plan)(-1);
         }
         private static readonly ConditionalWeakTable<VMAvatar, Visit> Visits = new ConditionalWeakTable<VMAvatar, Visit>();
 
@@ -156,32 +157,74 @@ namespace CutContent
 
         // ---- bringing him ----
 
-        /// <summary>Brings him to the lot now: made off the lot, then put beside its pedestrian portal (or a household Sim).</summary>
-        public static string Come(VM vm)
+        /// <summary>
+        /// Brings him to the lot now: made off the lot, then put beside its pedestrian portal (or a household Sim). Says what
+        /// stopped him, if anything did, and logs each stage. Brought by the command ("quick"), he looks about for only a few
+        /// minutes before he goes for someone.
+        /// </summary>
+        public static string Come(VM vm, bool quick = false)
         {
-            if (Made == null) return "He isn't here: " + Status + ".";
-            if (vm.Context.ObjectQueries.Avatars.Any(IsPickpocket)) return "He is already on this lot.";
-            var group = vm.Context.CreateObjectInstance(Guid, LotTilePos.OUT_OF_WORLD, Direction.NORTH);
-            var me = group?.Objects.OfType<VMAvatar>().FirstOrDefault();
-            if (me == null) return "He could not be made on this lot.";
-            Visits.Add(me, new Visit());
-
-            bool OnLot(VMEntity e) => e.Position.x != LotTilePos.OUT_OF_WORLD.x;
-            string Label(VMEntity e) => e.Object?.OBJ?.ChunkLabel ?? "";
-            var family = vm.TS1State?.CurrentFamily;
-            var reference = vm.Entities.FirstOrDefault(e => !(e is VMAvatar) && OnLot(e) && Regex.IsMatch(Label(e), @"ped ?portal", RegexOptions.IgnoreCase))
-                ?? vm.Entities.FirstOrDefault(e => !(e is VMAvatar) && OnLot(e) && Regex.IsMatch(Label(e), "portal", RegexOptions.IgnoreCase) && !Regex.IsMatch(Label(e), @"car|phone|magic", RegexOptions.IgnoreCase))
-                ?? Household(vm, me).FirstOrDefault();
-            if (reference == null || !VMFindLocationFor.FindLocationFor(me, reference, vm.Context, VMPlaceRequestFlags.Default))
+            var stage = "starting";
+            try
             {
-                me.Delete(true, vm.Context);
-                return "There was no room for him to arrive.";
+                if (Made == null) return "He isn't here: " + Status + ".";
+                var already = vm.Context.ObjectQueries.Avatars.Where(IsPickpocket).OfType<VMAvatar>().ToList();
+                if (already.Count > 0) return $"He is already on this lot, at {Where(already[0])}. " + Doing(vm, already[0]);
+
+                stage = "making him";
+                CutContentPack.Log("pickpocket: coming");
+                var group = vm.Context.CreateObjectInstance(Guid, LotTilePos.OUT_OF_WORLD, Direction.NORTH);
+                var me = group?.Objects.OfType<VMAvatar>().FirstOrDefault();
+                if (me == null) return $"He could not be made on this lot (the game gave back {(group == null ? "nothing" : group.Objects.Count + " objects, none a person")}).";
+                Visits.Add(me, new Visit { Quick = quick });
+
+                stage = "finding where he arrives";
+                bool OnLot(VMEntity e) => e.Position.x != LotTilePos.OUT_OF_WORLD.x;
+                var reference = vm.Entities.FirstOrDefault(e => !(e is VMAvatar) && OnLot(e) && Regex.IsMatch(Label(e), @"ped ?portal", RegexOptions.IgnoreCase))
+                    ?? vm.Entities.FirstOrDefault(e => !(e is VMAvatar) && OnLot(e) && Regex.IsMatch(Label(e), "portal", RegexOptions.IgnoreCase) && !Regex.IsMatch(Label(e), @"car|phone|magic", RegexOptions.IgnoreCase))
+                    ?? Household(vm, me).FirstOrDefault();
+                if (reference == null) { me.Delete(true, vm.Context); return "There was nowhere for him to arrive: no pedestrian portal and no household Sim on the lot."; }
+                stage = $"placing him near \"{Label(reference)}\"";
+                if (!VMFindLocationFor.FindLocationFor(me, reference, vm.Context, VMPlaceRequestFlags.Default))
+                {
+                    me.Delete(true, vm.Context);
+                    return $"There was no room for him near \"{Label(reference)}\".";
+                }
+                stage = "dressing him";
+                var area = Dress(vm, me);
+                Came++;
+                var text = $"A pickpocket has arrived at {Where(me)}, dressed as a tourist for the {area}, near \"{Label(reference)}\". " +
+                    (quick ? "He'll look about for a few minutes, then go for one of your Sims." : "He'll look about for a while first.");
+                CutContentPack.Log("pickpocket: " + text);
+                return text;
             }
-            var area = Dress(vm, me);
-            Came++;
-            var text = $"A pickpocket has arrived, dressed as a tourist for the {area}, near \"{Label(reference)}\".";
-            CutContentPack.Log("pickpocket: " + text);
-            return text;
+            catch (Exception e)
+            {
+                CutContentPack.Log($"pickpocket: failed while {stage}: {e}");
+                return $"He couldn't come: something failed while {stage}: {e.Message}";
+            }
+        }
+
+        private static string Label(VMEntity e) => e.Object?.OBJ?.ChunkLabel ?? "";
+        private static string Where(VMEntity e) => $"tile {e.Position.TileX},{e.Position.TileY}, level {e.Position.Level}";
+
+        /// <summary>What he is doing, for the command's list.</summary>
+        private static string Doing(VM vm, VMAvatar me)
+        {
+            if (!Visits.TryGetValue(me, out var visit)) return "He was saved with the lot, and is being sent away.";
+            if (visit.Arrived < 0) return "He has only just arrived.";
+            var since = Since(visit.Arrived, Now(vm));
+            if (visit.Done) return "He is leaving.";
+            if (since < visit.Casing) return $"He is looking about: {visit.Casing - since} more minutes before he goes for someone.";
+            return $"He is going for one of your Sims (try {visit.Attempts} of 4).";
+        }
+
+        /// <summary>A line for the command's list: whether he is on this lot, where, and what he is doing.</summary>
+        public static string Here(VM vm)
+        {
+            if (vm == null) return "No lot is loaded.";
+            var me = vm.Context.ObjectQueries.Avatars.Where(IsPickpocket).OfType<VMAvatar>().FirstOrDefault();
+            return me == null ? "He is not on this lot." : $"He is on this lot, at {Where(me)}. " + Doing(vm, me);
         }
 
         /// <summary>The disguise for this part of the island: sand is the beach, snow the lodge, the rest the forest.</summary>
@@ -284,7 +327,7 @@ namespace CutContent
                     var vm = context.VM;
                     var visit = Visits.GetOrCreateValue(me);
                     var now = Now(vm);
-                    if (visit.Arrived < 0) { visit.Arrived = now; visit.Casing = 30 + Dice.Next(61); }
+                    if (visit.Arrived < 0) { visit.Arrived = now; visit.Casing = visit.Quick ? 2 + Dice.Next(4) : 30 + Dice.Next(61); }
 
                     if (visit.Done)
                     {
@@ -315,6 +358,13 @@ namespace CutContent
                     else visit.Done = true; //he never got close: he gives up
                 }
                 catch (Exception e) { CutContentPack.Log("pickpocket: " + e.Message); }
+                try
+                {
+                    var v = Visits.GetOrCreateValue((VMAvatar)context.Caller);
+                    if (v.Last != plan) CutContentPack.Log($"pickpocket: {plan}{(plan == Plan.Steal || plan == Plan.Wander ? " " + Label(context.StackObject) + (context.StackObject is VMAvatar a ? " " + a.Name : "") : "")}");
+                    v.Last = plan;
+                }
+                catch { }
                 context.Thread.TempRegisters[0] = (short)plan;
                 return VMPrimitiveExitCode.GOTO_TRUE;
             }

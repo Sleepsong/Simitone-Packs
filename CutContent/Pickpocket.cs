@@ -60,7 +60,7 @@ namespace CutContent
             if (first == "come" || first == "leave")
             {
                 if (screen?.vm == null) { CutContentPack.Show("Pickpocket", "Load a lot first."); return true; }
-                CutContentPack.Show("Pickpocket", first == "come" ? PickpocketNpc.Come(screen.vm) : PickpocketNpc.SendAway(screen.vm));
+                CutContentPack.Show("Pickpocket", first == "come" ? PickpocketNpc.Come(screen.vm, quick: true) : PickpocketNpc.SendAway(screen.vm));
                 return true;
             }
             if (args.Length == 0)
@@ -70,6 +70,7 @@ namespace CutContent
                 list.Add("Or try any mesh: \"cutcontent pickpocket body MESH TEXTURE\" or \"cutcontent pickpocket head MESH TEXTURE\".");
                 list.Add("");
                 list.Add("The pickpocket himself: " + PickpocketNpc.Status + $". This session: {PickpocketNpc.Came} visits, {PickpocketNpc.Picked} pockets picked, {PickpocketNpc.CaughtCount} times caught.");
+                list.Add(PickpocketNpc.Here(screen?.vm));
                 list.Add("\"cutcontent pickpocket come\" brings him to this lot now; \"cutcontent pickpocket leave\" sends him off.");
                 CutContentPack.Show("Pickpocket", string.Join("\n", list));
                 return true;
