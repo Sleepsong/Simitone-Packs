@@ -366,21 +366,28 @@ namespace CreateAStyle
             if (data != null) Loaded.Add(vm, data);
         }
 
-        private static readonly MethodInfo LotChangedCall = typeof(PackManager).GetMethod("LotChanged", new[] { typeof(VM), typeof(string) });
-
         /// <summary>
         /// Say the style brush has changed the lot, so that the Undo pack keeps the change: styles are not made with the
-        /// engine's own commands, which it sees by itself. Nothing on a Simitone without PackManager.LotChanged.
+        /// engine's own commands, which it sees by itself. The Undo pack's convention, with nothing in Simitone: every
+        /// pack in use whose code has a public OnLotChanged(VM, string) is told. Without such a pack, nothing happens.
         /// </summary>
         public static void SayChanged(VM vm, string what)
         {
-            try
+            foreach (var pack in PackManager.Active)
             {
-                LotChangedCall?.Invoke(null, new object[] { vm, what });
-            }
-            catch (TargetInvocationException e)
-            {
-                Console.WriteLine("Create a Style: telling the packs of a change failed: " + e.InnerException?.Message);
+                foreach (var code in pack.Code.ToList())
+                {
+                    var told = code.GetType().GetMethod("OnLotChanged", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(VM), typeof(string) }, null);
+                    if (told == null) continue;
+                    try
+                    {
+                        told.Invoke(code, new object[] { vm, what });
+                    }
+                    catch (TargetInvocationException e)
+                    {
+                        Console.WriteLine("Create a Style: telling " + pack.Id + " of a change failed: " + e.InnerException?.Message);
+                    }
+                }
             }
         }
 

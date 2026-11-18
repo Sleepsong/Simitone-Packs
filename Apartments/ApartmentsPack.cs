@@ -153,20 +153,26 @@ namespace Apartments
             });
         }
 
-        private static readonly MethodInfo LotChangedCall = typeof(PackManager).GetMethod("LotChanged", new[] { typeof(VM), typeof(string) });
-
         /// <summary>
-        /// Change the apartments from build mode, and if they did change, say so (PackManager.LotChanged), so that the
-        /// Undo pack keeps it as a change of its own. Nothing is said on a Simitone without LotChanged.
+        /// Change the apartments from build mode, and if they did change, say so, so that the Undo pack keeps it as a
+        /// change of its own. The Undo pack's convention, with nothing in Simitone: every pack in use whose code has a
+        /// public OnLotChanged(VM, string) is told. Without such a pack, nothing is said.
         /// </summary>
         public static void Changing(VM vm, string what, Action edit)
         {
-            var before = (LotChangedCall == null) ? null : Neighbours.Snapshot(vm);
+            var before = Neighbours.Snapshot(vm);
             edit();
-            if (LotChangedCall == null || vm == null) return;
+            if (vm == null) return;
             var after = Neighbours.Snapshot(vm);
             if ((before == null) ? after == null : (after != null && before.SequenceEqual(after))) return;
-            Guard("telling the packs the apartments changed", () => LotChangedCall.Invoke(null, new object[] { vm, what }));
+            foreach (var pack in PackManager.Active)
+            {
+                foreach (var code in pack.Code.ToList())
+                {
+                    var told = code.GetType().GetMethod("OnLotChanged", BindingFlags.Public | BindingFlags.Instance, null, new[] { typeof(VM), typeof(string) }, null);
+                    if (told != null) Guard("telling " + pack.Id + " the apartments changed", () => told.Invoke(code, new object[] { vm, what }));
+                }
+            }
         }
 
         /// <summary>

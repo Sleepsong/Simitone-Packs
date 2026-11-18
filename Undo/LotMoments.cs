@@ -7,9 +7,9 @@ http://mozilla.org/MPL/2.0/.
 using FSO.SimAntics;
 using FSO.SimAntics.Marshals;
 using HarmonyLib;
-using Simitone.Client.Packs;
 using Simitone.Client.UI.Screens;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 
@@ -20,8 +20,8 @@ namespace Undo
     {
         /// <summary>The VM's state (VM.Save), written as Simitone writes a lot's save (VMMarshal.SerializeInto, compressed).</summary>
         public byte[] State;
-        /// <summary>What each pack had for the lot (PackManager.SnapshotLot).</summary>
-        public LotPackSnapshot Packs;
+        /// <summary>What each pack had for the lot (PackParts).</summary>
+        public PackParts.Parts Packs;
 
         public long Size => (State?.Length ?? 0) + (Packs?.Size ?? 0);
     }
@@ -36,7 +36,7 @@ namespace Undo
     ///
     /// VM.Load makes everything again, the VM's context and the blueprint the world draws included. Some of what they
     /// held is not the lot's but the session's, and is carried across here: the cheats switched on, the weather, which
-    /// Sim is selected. Everything the packs keep is theirs to put back (PackManager.RestoreLot).
+    /// Sim is selected. Everything the packs keep is theirs to put back (PackParts).
     /// </summary>
     public static class LotMoments
     {
@@ -46,7 +46,7 @@ namespace Undo
             using (var mem = new MemoryStream())
             {
                 marshal.SerializeInto(new BinaryWriter(mem));
-                return new LotMoment() { State = mem.ToArray(), Packs = PackManager.SnapshotLot(vm) };
+                return new LotMoment() { State = mem.ToArray(), Packs = PackParts.Snapshot(vm) };
             }
         }
 
@@ -73,8 +73,11 @@ namespace Undo
             if (SnowField == null || SnowField.FieldType != typeof(bool)) throw new Exception("TS1GameScreen.TerrainSnowApplied was not found: this pack was made for a different version of Simitone");
         }
 
-        /// <summary>Put the lot being played back to a moment. The lot's own state is read first: if it cannot be, nothing changes.</summary>
-        public static void Restore(VM vm, LotMoment moment, TS1GameScreen screen)
+        /// <summary>
+        /// Put the lot being played back to a moment. The lot's own state is read first: if it cannot be, nothing changes.
+        /// Returns the names of the packs that could not put their part back.
+        /// </summary>
+        public static List<string> Restore(VM vm, LotMoment moment, TS1GameScreen screen)
         {
             var marshal = new VMMarshal();
             using (var reader = new BinaryReader(new MemoryStream(moment.State))) marshal.Deserialize(reader);
@@ -100,7 +103,7 @@ namespace Undo
                 if (sim is VMAvatar) lot.ActiveEntity = sim;
             }
 
-            PackManager.RestoreLot(vm, moment.Packs);
+            return PackParts.Restore(vm, moment.Packs);
         }
     }
 }

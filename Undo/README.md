@@ -2,12 +2,12 @@
 
 Undo and redo in build and buy mode, as in The Sims 2. Simitone has none outside its object editor.
 
-**Not yet played.** It builds, its patches fit the engine, and its history, its money and Simitone's
-calls for the packs' part of a lot are checked by its tests. Nothing has been undone in a game yet,
+**Not yet played.** It builds, its patches fit the engine, and its history, its money and how it
+asks the other packs for their part of a lot are checked by its tests. Nothing has been undone in a game yet,
 because that needs a copy of The Sims. **Back up your `UserData` folders before trying it.**
 
-It needs a Simitone whose packs can be put back with a lot (`PackManager.SnapshotLot`). On an older
-one its code does not start, and the Packs screen says why.
+It is a pack and nothing else: Simitone itself is not changed. It works with the `addon-packs` build
+of Simitone as it is.
 
 ## Using it
 
@@ -51,11 +51,33 @@ on the ground of a moment before, a style on the object that has since taken ano
 the lot is put back by loading it again, so a pack that held on to the lot's terrain or objects would
 lose what it had altogether.
 
-So Simitone now asks every pack for its part of the lot each time the lot is kept
-(`ISimitonePack.OnLotSnapshot`), and hands it back when the lot is put back (`OnLotRestore`). See
-Simitone's `PACKS.md`. **A pack that keeps something for a lot (it implements `OnLotLoaded` or
-`OnLotSaved`) and does neither turns undo off**: while it is on, undo and redo are refused, and say
-which pack. So does a pack that took part and whose code has since been stopped. This is deliberate:
+So each time the lot is kept, Undo asks every other pack for its part of the lot, and hands it back
+when the lot is put back. Simitone has no call for this, and Undo changes nothing in Simitone, so it
+is a convention between packs. Simitone already lets pack code see the packs in use and their running
+code (`PackManager.Active`, `Pack.Code`); Undo looks there for these public methods on a pack's
+`ISimitonePack` classes, by name:
+
+```csharp
+public byte[] OnLotSnapshot(VM vm)            // what the pack has for the lot now (often what OnLotSaved writes), or null
+public void OnLotRestore(VM vm, byte[] data)  // the lot has been put back to the moment of that snapshot
+public void OnLotChanged(VM vm, string what)  // Undo's own: a pack's build tool changed the lot (below)
+```
+
+`OnLotRestore` is called after the lot's own state is loaded again, before it ticks: everything on it
+is a new object with its old number, and the terrain and architecture are new. Replace what the pack
+has for the lot with `data` (null if it had nothing), and let go of what it held from before. A pack
+that keeps nothing but holds on to objects or Sims needs only `OnLotRestore`, to find them again by
+number. Keep `OnLotSnapshot` quick: it is called after every change.
+
+A pack whose build tool changes the lot without the engine's own commands says so by calling
+`OnLotChanged(vm, "a few words")` on the code of every pack in use that has it. Create a Style's
+`SayChanged` is the dozen lines it takes, and does nothing when Undo is not installed. Changes made
+through `VMNetArchitectureCmd` (including command types of a pack's own) and the engine's buy, sell
+and move commands need nothing: Undo sees those itself.
+
+**A pack that keeps something for a lot (it implements `OnLotLoaded` or `OnLotSaved`) and has neither
+method turns undo off**: while it is on, undo and redo are refused, and say which pack. So does a pack
+that took part and whose code has since been stopped, and one whose method fails. This is deliberate:
 an undo that leaves a pack out of step can be saved, and then cannot be taken back.
 
 Every code pack in this repository works with it, which the tests check:
@@ -94,6 +116,9 @@ the lot's speed to -1 while either is open), so nothing on the lot moves between
 next but the change. Every Sim is put back exactly as they were. `VM.Load` makes the VM's context and
 the world's blueprint again; the cheats, the weather and the selected Sim are carried across, and the
 game screen is told the new ground has no snow on it yet. Then each pack is handed its part.
+
+`PackParts.cs` finds the other packs' methods and calls them, and works out which packs would be left
+out of step.
 
 `UndoPack.cs` watches for changes, with postfixes on the engine's build and buy commands
 (`VMNetArchitectureCmd`, `VMNetBuyObjectCmd`, `VMNetDeleteObjectCmd`, `VMNetMoveObjectCmd`,

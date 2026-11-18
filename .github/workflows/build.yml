@@ -92,8 +92,6 @@ jobs:
     - name: Test Life Stages' patches and rules
       run: dotnet run --project LifeStages/tests -c Release
 
-    # Undo needs Simitone's calls for putting a lot back (PackManager.SnapshotLot), on the Simitone branch
-    # ccr-ca684fdd-yft7sx until that is merged: run this workflow with simitone_ref set to it until then
     - name: Build Undo and Redo
       run: dotnet build Undo/Undo.csproj -c Release
 

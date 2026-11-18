@@ -39,13 +39,16 @@ namespace Undo
     /// After each change the lot is kept as it is (LotMoments: the engine's own saved state, and the packs' data for
     /// it), and undo puts back the one before. A change is what the engine's build and buy commands do (walls, floors,
     /// wallpaper, the ground, pools, roofs, buying, selling and moving), and what packs say they did
-    /// (PackManager.LotChanged). The money a change took from the family, or gave it, is what the budget moved by
+    /// (OnLotChanged, below). The money a change took from the family, or gave it, is what the budget moved by
     /// between one moment and the next; undo gives it back or takes it back, and redo the other way. The history
     /// begins when build or buy mode is opened and ends when it is closed: the game is paused all that time, so putting
     /// the lot back puts back nothing the Sims did.
     ///
     /// A pack that keeps something for a lot and cannot be put back with it would no longer agree with the lot after
-    /// an undo (PackManager.NotTakingPart). While one is running, undo and redo are refused, and say which pack.
+    /// an undo (PackParts.NotTakingPart). While one is running, undo and redo are refused, and say which pack.
+    ///
+    /// Nothing in Simitone is changed for any of this: what the packs do with each other is a convention between
+    /// them, kept by this pack (PackParts, and OnLotChanged here).
     /// </summary>
     public class UndoPack : ISimitonePack
     {
@@ -57,19 +60,21 @@ namespace Undo
 
         public void OnLoad(Pack pack)
         {
-            //putting a lot back needs Simitone's calls for the packs' part of it. without them packs would be left behind
-            if (typeof(PackManager).GetMethod("SnapshotLot", new[] { typeof(VM) }) == null
-                || typeof(PackManager).GetMethod("RestoreLot", new[] { typeof(VM), typeof(LotPackSnapshot) }) == null
-                || typeof(PackManager).GetMethod("NotTakingPart", Type.EmptyTypes) == null)
-                throw new Exception("this pack needs a newer Simitone, one whose packs can be put back with a lot (PackManager.SnapshotLot)");
             LotMoments.CheckEngine();
+            //every pack's code is loaded by now: see what each does with lots, before any of it can be stopped
+            PackParts.Look();
             Apply(new Harmony(HarmonyId));
             PackManager.RegisterCommand("undo", args => Command(args, true));
             PackManager.RegisterCommand("redo", args => Command(args, false));
             try { File.Delete(LogPath); } catch { }
         }
 
-        /// <summary>A pack changed the lot with a tool of its own.</summary>
+        /// <summary>
+        /// A pack changed the lot with a tool of its own, without the engine's commands, and said so. Not one of
+        /// ISimitonePack's calls: a pack says so by calling, on the code of every pack in use (PackManager.Active, then
+        /// Pack.Code), a public method of this name taking a VM and a string, if it has one. See Create a Style's
+        /// SayChanged for the few lines it takes.
+        /// </summary>
         public void OnLotChanged(VM vm, string what)
         {
             Changed(vm, string.IsNullOrWhiteSpace(what) ? "Build" : what.Trim());
@@ -199,7 +204,7 @@ namespace Undo
             public int? BudgetThen;
             /// <summary>An undo (true) or redo (false) asked for while a change was still being made, to do once it is.</summary>
             public bool? Waiting;
-            /// <summary>The packs that kept undo off when build mode was opened (PackManager.NotTakingPart). Nothing is kept while there are any.</summary>
+            /// <summary>The packs that kept undo off when build mode was opened (PackParts.NotTakingPart). Nothing is kept while there are any.</summary>
             public List<string> Blocked = new List<string>();
 
             public LotUndo(VM vm) { Vm = new WeakReference<VM>(vm); }
@@ -279,11 +284,11 @@ namespace Undo
             {
                 lot.Building = true;
                 lot.What = null;
-                lot.Blocked = PackManager.NotTakingPart();
+                lot.Blocked = PackParts.NotTakingPart();
                 if (lot.Blocked.Count > 0)
                 {
                     //nothing could be undone: keep nothing
-                    Log("Build mode opened. Undo is off: these packs keep their own part of a lot and cannot put it back: " + string.Join(", ", lot.Blocked));
+                    Log("Build mode opened. Undo is off: " + string.Join("; ", lot.Blocked.Select(PackParts.Why)));
                 }
                 else
                 {
@@ -329,12 +334,12 @@ namespace Undo
         private static string Step(TS1GameScreen screen, VM vm, LotUndo lot, bool undo)
         {
             var history = lot.History;
-            var notTakingPart = PackManager.NotTakingPart();
+            var notTakingPart = PackParts.NotTakingPart();
             if (notTakingPart.Count > 0)
             {
                 var why = "These packs keep their own part of a lot and cannot put it back, so undoing would leave the lot and them out of step:\n\n"
                     + string.Join("\n", notTakingPart) + "\n\nUndo and redo are off while they are on.";
-                Log("Refused, packs that do not take part: " + string.Join(", ", notTakingPart));
+                Log("Refused: " + string.Join("; ", notTakingPart.Select(PackParts.Why)));
                 Tell(undo ? "Cannot Undo" : "Cannot Redo", why);
                 lot.History.Clear(); //(a pack's code stopped since build mode was opened: nothing kept can be put back)
                 return why;
@@ -364,9 +369,10 @@ namespace Undo
             }
 
             var target = undo ? history.Undone() : history.Redone();
+            List<string> packsFailed;
             try
             {
-                LotMoments.Restore(vm, target.State, screen);
+                packsFailed = LotMoments.Restore(vm, target.State, screen);
             }
             catch (Exception e)
             {
@@ -379,6 +385,13 @@ namespace Undo
                 return "Something went wrong.";
             }
 
+            if (packsFailed.Count > 0)
+            {
+                //the lot is put back, but these packs may not agree with it. nothing more is undone this session
+                history.Clear();
+                Tell(undo ? "Undo" : "Redo", "The lot was put back, but these packs could not put their part of it back, and may no longer agree with it:\n\n"
+                    + string.Join("\n", packsFailed) + "\n\nUndo is off from now on. If anything of theirs looks wrong, leave the lot without saving. What happened is in Undo.log in the user directory.");
+            }
             if (budget != null) LotMoments.SetBudget(vm, Ledger.After(budget.Value, step.Cost, undo));
             lot.BudgetThen = LotMoments.Budget(vm);
             lot.What = null;

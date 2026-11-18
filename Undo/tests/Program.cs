@@ -5,9 +5,10 @@ http://mozilla.org/MPL/2.0/.
 */
 
 // Checks for the Undo pack that need no copy of The Sims: that its patches fit the engine it is built against, the
-// history of a lot's moments and the money of undoing (History.cs), Simitone's calls for the packs' part of a lot
-// (PackManager.SnapshotLot, RestoreLot, NotTakingPart and LotChanged, with packs made up here), and that every code pack
-// in this repository takes part, so that undo is not refused with any of them on.
+// history of a lot's moments and the money of undoing (History.cs), the packs' part of a lot (PackParts.cs, with packs
+// made up here), that a pack's own build tool can say it changed the lot (Create a Style's SayChanged reaching a pack
+// with OnLotChanged), and that every code pack in this repository takes part, so that undo is not refused with any of
+// them on. Nothing here needs a change to Simitone.
 // What they cannot check is the game itself: nothing here loads a lot, so keeping one and putting it back is not run.
 // Run with: dotnet run --project Undo/tests
 using System;
@@ -36,7 +37,7 @@ void SetActive(List<Pack> packs)
 try
 {
     // ---- the patches fit this engine, and this Simitone has the calls the pack needs ----
-    try { new UndoPack().OnLoad(null); Check("OnLoad: Simitone has SnapshotLot and RestoreLot, and the patches apply", true); }
+    try { new UndoPack().OnLoad(null); Check("OnLoad: the patches apply", true); }
     catch (Exception e) { Check("OnLoad: " + e.Message, false); }
     var patched = Harmony.GetAllPatchedMethods().Select(m => m.DeclaringType.Name + "." + m.Name).ToList();
     foreach (var name in new[] { "VM.Tick", "VMNetArchitectureCmd.Verify", "VMNetArchitectureCmd.Execute", "VMNetBuyObjectCmd.Verify",
@@ -111,7 +112,7 @@ try
     Check("taking up a floor", UndoPack.Describe(new List<VMArchitectureCommand> { Cmd(VMArchitectureCommandType.FLOOR_FILL, 0) }) == "Take up the floor");
     Check("a command type of a pack's own", UndoPack.Describe(new List<VMArchitectureCommand> { Cmd((VMArchitectureCommandType)200) }) == "Build");
 
-    // ---- Simitone's calls for the packs' part of a lot, with packs made up here ----
+    // ---- the packs' part of a lot, with packs made up here ----
     Pack Running(string id, string name, ISimitonePack code) => new Pack() { Id = id, Code = new List<ISimitonePack>() { code }, Manifest = new PackManifest() { Id = id, Name = name } };
     var keeper = new Keeper() { Data = new byte[] { 1, 2, 3 } };
     var keeps = new List<Pack>
@@ -121,33 +122,41 @@ try
         Running("made.restoreonly", "Restore Only", new RestoreOnly()),
     };
     SetActive(keeps);
-    Check("packs that take part, or keep nothing for a lot, keep undo on", PackManager.NotTakingPart().Count == 0);
-    var snapshot = PackManager.SnapshotLot(null);
+    PackParts.Forget();
+    Check("packs that take part, or keep nothing for a lot, keep undo on", PackParts.NotTakingPart().Count == 0);
+    var snapshot = PackParts.Snapshot(null);
     Check("a pack's data is kept", snapshot.Size == 3);
     keeper.Data[0] = 9; //the pack changes its own array afterwards
     keeper.Data = null;
-    PackManager.RestoreLot(null, snapshot);
+    Check("putting the parts back fails for none", PackParts.Restore(null, snapshot).Count == 0);
     Check("a pack is given back what it had, as it was then", keeper.Restored != null && keeper.Restored.SequenceEqual(new byte[] { 1, 2, 3 }));
     keeper.Restored[1] = 7;
-    PackManager.RestoreLot(null, snapshot);
-    Check("a snapshot can be restored again, each time a copy", keeper.Restored.SequenceEqual(new byte[] { 1, 2, 3 }));
+    PackParts.Restore(null, snapshot);
+    Check("the parts can be put back again, each time a copy", keeper.Restored.SequenceEqual(new byte[] { 1, 2, 3 }));
     var restoreOnly = (RestoreOnly)keeps[2].Code[0];
     Check("a pack that had nothing is told, with null", restoreOnly.Times == 2 && restoreOnly.Last == null);
-    PackManager.LotChanged(null, "Paint a style");
-    Check("every pack is told of a change a pack made", keeper.Changes.SequenceEqual(new[] { "Paint a style" }));
-    keeper.ChangeAgain = true;
-    PackManager.LotChanged(null, "first");
-    Check("a change said while telling of another is part of it", keeper.Changes.Count == 2);
+    CreateAStyle.CreateAStylePack.SayChanged(null, "Style the sofa");
+    Check("a pack's build tool tells every pack with OnLotChanged", keeper.Changes.SequenceEqual(new[] { "Style the sofa" }));
 
     var saver = Running("made.saver", "Saver", new SavesOnly());
     var loader = Running("made.loader", "Loader", new LoadsOnly());
-    var broken = Running("made.broken", "Broken", new BrokenSnapshot());
-    SetActive(new List<Pack> { keeps[0], saver, loader, broken });
-    Check("packs that keep something for a lot and cannot put it back are named", PackManager.NotTakingPart().SequenceEqual(new[] { "Saver", "Loader" }));
-    PackManager.SnapshotLot(null);
-    Check("a pack whose snapshot fails is stopped", broken.Code.Count == 0 && (broken.CodeError ?? "").Contains("broken on purpose"));
-    Check("...and named from then on: its patches may still hold what it had", PackManager.NotTakingPart().Contains("Broken"));
+    var brokenSnapshot = Running("made.brokensnapshot", "Broken Snapshot", new BrokenSnapshot());
+    var brokenRestore = Running("made.brokenrestore", "Broken Restore", new BrokenRestore());
+    var stoppedLater = Running("made.stopped", "Stopped", new RestoreOnly());
+    SetActive(new List<Pack> { keeps[0], saver, loader, brokenSnapshot, brokenRestore, stoppedLater });
+    PackParts.Forget();
+    Check("packs that keep something for a lot and cannot put it back are named", PackParts.NotTakingPart().SequenceEqual(new[] { "Saver", "Loader" }));
+    PackParts.Snapshot(null);
+    Check("a pack whose snapshot fails is named from then on", PackParts.NotTakingPart().Contains("Broken Snapshot"));
+    Check("...and is not stopped: that is Simitone's to do", brokenSnapshot.Code.Count == 1);
+    Check("a pack whose restore fails is said to have failed", PackParts.Restore(null, new PackParts.Parts()).SequenceEqual(new[] { "Broken Restore" }));
+    Check("...and is named from then on", PackParts.NotTakingPart().Contains("Broken Restore"));
+    stoppedLater.Code = new List<ISimitonePack>();
+    stoppedLater.CodeError = "Its code failed and was stopped: elsewhere";
+    Check("a pack that took part and has since been stopped is named: its patches may still hold what it had", PackParts.NotTakingPart().Contains("Stopped"));
+    Check("the log says why", PackParts.Why("Saver").Contains("neither OnLotSnapshot nor OnLotRestore") && PackParts.Why("Stopped").Contains("stopped"));
     SetActive(new List<Pack>());
+    PackParts.Forget();
 
     // ---- every code pack in this repository takes part ----
     var names = new[] { "Apartments", "BuildCheats", "CreateAStyle", "CutContent", "DiagonalDoors", "Driveways", "FamilyTree", "Foundations",
@@ -169,7 +178,7 @@ try
         }
     }
     SetActive(real);
-    var refused = PackManager.NotTakingPart();
+    var refused = PackParts.NotTakingPart();
     Check("with every pack here on, undo is on" + (refused.Count > 0 ? " (refused by " + string.Join(", ", refused) + ")" : ""), refused.Count == 0 && real.Count == names.Length);
     SetActive(new List<Pack>());
 }
@@ -186,15 +195,10 @@ class Keeper : ISimitonePack
     public byte[] Data;
     public byte[] Restored;
     public List<string> Changes = new List<string>();
-    public bool ChangeAgain;
     public byte[] OnLotSnapshot(VM vm) => Data;
     public void OnLotRestore(VM vm, byte[] data) { Restored = data; }
     public void OnLotSaved(VM vm, string lotPath) { }
-    public void OnLotChanged(VM vm, string what)
-    {
-        Changes.Add(what);
-        if (ChangeAgain) PackManager.LotChanged(vm, "inside");
-    }
+    public void OnLotChanged(VM vm, string what) { Changes.Add(what); }
 }
 
 class NoLots : ISimitonePack
@@ -223,4 +227,9 @@ class LoadsOnly : ISimitonePack
 class BrokenSnapshot : ISimitonePack
 {
     public byte[] OnLotSnapshot(VM vm) => throw new Exception("broken on purpose");
+}
+
+class BrokenRestore : ISimitonePack
+{
+    public void OnLotRestore(VM vm, byte[] data) => throw new Exception("broken on purpose");
 }
