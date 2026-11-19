@@ -12,6 +12,7 @@ using FSO.Common.Utils;
 using FSO.LotView.Model;
 using FSO.SimAntics.Entities;
 using FSO.SimAntics.Model;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using FSO.LotView;
@@ -39,15 +40,13 @@ namespace Driveways
     {
         public void OnLoad(Pack pack)
         {
+            // What the pack cannot do without comes first, and stops the pack if it is missing. Everything optional comes
+            // after, each looked for and attached on its own, so nothing about one (not even being looked for, in a
+            // Simitone that has two methods of that name) can stop the rest. The ones that did not attach are named in
+            // the "driveways" report.
             var harmony = new Harmony("pack." + pack.Id);
-            if (!string.IsNullOrEmpty(pack.Id)) VMDrive.PackId = pack.Id;
             var tick = AccessTools.Method(typeof(VM), "Tick") ?? throw new Exception("VM.Tick was not found: this pack was made for a different version of Simitone");
-            harmony.Patch(tick, prefix: new HarmonyMethod(typeof(DrivewaysPack), nameof(BeforeTick)), postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterTick)));
-            //a drive under way is kept with the lot when the game takes a copy of it (to save it, or while the family is on a
-            //community lot), and put back when the lot is. optional: without them a lot loads with its cars parked
-            TryPatch(harmony, AccessTools.Method(typeof(VM), "Save"), postfix: nameof(AfterCopy));
-            TryPatch(harmony, AccessTools.Method(typeof(VM), "Load", new[] { typeof(FSO.SimAntics.Marshals.VMMarshal) }), postfix: nameof(AfterLoad));
-            TryPatch(harmony, AccessTools.Method(typeof(TS1GameScreen), "Save"), postfix: nameof(AfterSave));
+            harmony.Patch(tick, postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterTick)));
             //a driveway being put down snaps to the road
             var move = AccessTools.Method(typeof(VMMultitileGroup), "ChangePosition") ?? throw new Exception("VMMultitileGroup.ChangePosition was not found: this pack was made for a different version of Simitone");
             harmony.Patch(move, prefix: new HarmonyMethod(typeof(DrivewaysPack), nameof(BeforeMove)), postfix: new HarmonyMethod(typeof(DrivewaysPack), nameof(AfterMove)));
@@ -60,14 +59,34 @@ namespace Driveways
             //a driveway that has been put down is hidden, its floor being what is seen: so the game is helped to find it
             //under the cursor in buy mode, and told again to hide it when it shows it after a move. both optional:
             //without them a driveway can still be bought, and sold from the lot's list of objects
-            TryPatch(harmony, AccessTools.Method(typeof(World), "GetObjectIDAtScreenPos"), postfix: nameof(AfterPick));
-            TryPatch(harmony, AccessTools.Method(typeof(UIObjectHolder), "ClearSelected"), prefix: nameof(BeforeLetGo), postfix: nameof(AfterLetGo));
-            //in 3D a driving car turns smoothly: its tiles' models are turned to their exact angle. optional: without it, it snaps as in 2D.
-            //(the 3D model's matrix is patched, not the small RadianDirection getter it reads: that one is likely inlined into it)
-            TryPatch(harmony, AccessTools.PropertyGetter(typeof(FSO.LotView.Components.ObjectComponent), "World3D"), postfix: nameof(AfterWorld3D));
             VMDrive.OnMessage = ShowMessage;
             Settings.Load();
             PackManager.RegisterCommand("driveways", Command);
+
+            TryPatch(harmony, "finding a driveway under the cursor", () => AccessTools.Method(typeof(World), "GetObjectIDAtScreenPos"), postfix: nameof(AfterPick));
+            TryPatch(harmony, "keeping a moved driveway hidden", () => AccessTools.Method(typeof(UIObjectHolder), "ClearSelected"), prefix: nameof(BeforeLetGo), postfix: nameof(AfterLetGo));
+            //in 3D a driving car turns smoothly: its tiles' models are turned to their exact angle. optional: without it, it snaps as in 2D.
+            //(the 3D model's matrix is patched, not the small RadianDirection getter it reads: that one is likely inlined into it)
+            TryPatch(harmony, "smooth turns in 3D", () => AccessTools.PropertyGetter(typeof(FSO.LotView.Components.ObjectComponent), "World3D"), postfix: nameof(AfterWorld3D));
+
+            //a drive under way is kept with the lot when the game takes a copy of it (to save it, or while the family is on a
+            //community lot), and put back when the lot is, before anything runs. optional: without them a lot loads with its
+            //cars parked. (without the first, a drive is still put back, by its own script)
+            try { if (!string.IsNullOrEmpty(pack.Id)) VMDrive.PackId = pack.Id; } catch (Exception) { }
+            TryPatch(harmony, "putting saved drives back before a loaded lot runs", () => tick, prefix: nameof(BeforeTick));
+            TryPatch(harmony, "keeping drives with a copy of the lot", () => Single(typeof(VM), "Save", m => m.ReturnType.Name == "VMMarshal"), postfix: nameof(AfterCopy));
+            TryPatch(harmony, "putting drives back with a lot", () => Single(typeof(VM), "Load", m => m.GetParameters().Length == 1 && m.GetParameters()[0].ParameterType.Name == "VMMarshal"), postfix: nameof(AfterLoad));
+            TryPatch(harmony, "keeping drives with a saved lot", () => Single(typeof(TS1GameScreen), "Save", m => m.GetParameters().Length == 0), postfix: nameof(AfterSave));
+        }
+
+        /// <summary>The optional patches that could not be attached, by what they are for.</summary>
+        public static readonly List<string> NotAttached = new List<string>();
+
+        /// <summary>The one method of this name the type declares that fits, or null if there is none, or more than one.</summary>
+        private static System.Reflection.MethodInfo Single(Type type, string name, Func<System.Reflection.MethodInfo, bool> fits)
+        {
+            var found = AccessTools.GetDeclaredMethods(type).Where(m => m.Name == name && fits(m)).ToList();
+            return found.Count == 1 ? found[0] : null;
         }
 
         /// <summary>
@@ -159,12 +178,13 @@ namespace Driveways
         {
             var vm = (GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm;
             if (vm == null) { Show("Driveways", "Open a lot first: this says what the pack makes of the lot being played."); return true; }
-            var message = VMDrive.Describe(vm);
+            var missing = NotAttached.Count == 0 ? "" : "\n\nNot working with this Simitone: " + string.Join("; ", NotAttached) + ".";
+            var message = VMDrive.Describe(vm) + missing;
             try
             {
                 //the same with maps of the lot, in a file that can be sent on
                 var file = System.IO.Path.Combine(FSOEnvironment.UserDir, "driveways-report.txt");
-                File.WriteAllText(file, VMDrive.DescribeWithMaps(vm));
+                File.WriteAllText(file, VMDrive.DescribeWithMaps(vm) + missing);
                 message += "\n\nWritten in full to " + file;
             }
             catch (Exception) { }
@@ -182,16 +202,18 @@ namespace Driveways
             });
         }
 
-        private static void TryPatch(Harmony harmony, System.Reflection.MethodInfo method, string prefix = null, string postfix = null)
+        /// <summary>Attach an optional patch. Whatever goes wrong, finding the method included, is noted and nothing more.</summary>
+        private static void TryPatch(Harmony harmony, string what, Func<System.Reflection.MethodBase> find, string prefix = null, string postfix = null)
         {
-            if (method == null) return;
             try
             {
+                var method = find();
+                if (method == null) { NotAttached.Add(what + " (not found in this Simitone)"); return; }
                 harmony.Patch(method,
                     prefix: prefix == null ? null : new HarmonyMethod(typeof(DrivewaysPack), prefix),
                     postfix: postfix == null ? null : new HarmonyMethod(typeof(DrivewaysPack), postfix));
             }
-            catch (Exception) { }
+            catch (Exception e) { NotAttached.Add(what + " (" + e.GetType().Name + ": " + e.Message + ")"); }
         }
 
         /// <summary>

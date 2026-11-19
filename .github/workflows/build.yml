@@ -83,6 +83,9 @@ jobs:
     - name: Test Family Tree's patches and rules
       run: dotnet run --project FamilyTree/tests -c Release
 
+    - name: Check Driveways starts against the engine
+      run: dotnet run --project Driveways/startup -c Release
+
     - name: Check the Driveways objects can be regenerated
       run: dotnet run --project Driveways/generator -c Release -- "$RUNNER_TEMP/driveways"
 

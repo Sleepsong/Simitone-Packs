@@ -6,7 +6,7 @@
     <RootNamespace>Driveways</RootNamespace>
     <DebugType>none</DebugType>
     <!-- the generator and the tests are projects of their own, in folders under this one -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);generator/**;tests/**;pack/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);generator/**;tests/**;startup/**;pack/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

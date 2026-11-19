@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- starts the pack against the real engine, as the game does: no copy of The Sims needed, and the game is not started -->
+    <ProjectReference Include="$(SimitonePath)\Client\Simitone\Simitone.Client\Simitone.Client.csproj" />
+    <ProjectReference Include="..\Driveways.csproj" />
+  </ItemGroup>
+
+</Project>

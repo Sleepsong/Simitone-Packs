@@ -106,7 +106,20 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 | `driveways door` | Sims get in by the car's other side, if getting in looks wrong. It is remembered |
 | `driveways help` | What the commands are |
 
+## If the cars and driveways are grey blocks
+
+If the cars and the driveway look like grey blocks, and cannot be put down or used, the pack's objects
+are there but its code is not running. Open **Options > Packs**: under Driveways, in red, the game says
+why (for instance, that its code has not been approved: switch the pack off and on again, and restart).
+
 ## Changes
+
+- **0.18.1**: the pack starts whatever Simitone it is given. 0.18 looked for the game's save and load as
+  the pack started, before the patches that draw the cars and put them down, and a Simitone with two
+  methods of either name would have stopped the pack there, leaving grey blocks that could not be
+  placed or used. Those patches now come last, each on its own, and one that cannot be attached only
+  loses what it is for (it is named in the `driveways` report). The build now starts the pack against
+  the engine and fails if it does not start, or if any patch does not attach.
 
 - **0.18**: cars stop for Sims, and drives are saved.
   - A car stops for anyone in its way, on the driveway or the pavement, as it pulls out or comes
@@ -274,6 +287,7 @@ Open the console with Ctrl+Shift+C. The files are written to Simitone's user dir
 | `VMDrive.cs` | A new SimAntics primitive, number 200. The objects' scripts are one or two instructions that call it: to set an object up, to say whether the car is parked, and to drive. Also where a driveway and a car may be put, and what each is drawn with: the floor for the driveway, and the game's cars' tiles for the cars |
 | `Route.cs` | Where things go: finding the road, the car's way out and back and how fast, where a driveway snaps to, and where a car fits on one. Plain numbers, nothing from the engine |
 | `tests/` | Checks `Route.cs`, and that `Saved.cs` reads back what it writes |
+| `startup/` | Starts the pack as Simitone does, against the engine it is built for: it must start, attach every patch and register its primitive |
 | `DrivewaysPack.cs` | Adds the primitive and the console commands, and Harmony patches: on the game's tick, so a car is never left hidden if its drive is cut short, and a lot loaded mid-drive gets its drives back before anything runs; when the game takes a copy of the lot, saves it, or loads it, to keep the drives with it; round an object being moved or deleted, to snap a driveway to the road, keep cars on driveways, and lay and take up the driveway's floor; when an object's picture is set, to give the driveway's preview and the cars theirs; when the game looks for an object under the cursor, so a driveway that is down can be clicked; and when the player lets go of something, so a driveway that has been moved stays hidden |
 | `Shared.cs` | The ids and sizes the object file and the code must agree on, and the cars: which of the game's each is drawn with. Compiled into both |
 
