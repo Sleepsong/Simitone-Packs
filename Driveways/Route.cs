@@ -492,6 +492,55 @@ namespace Driveways
             return plan;
         }
 
+        /// <summary>
+        /// A car visiting a lot, parked at the kerb of its road: lengthways along the road in the lane on the lot's side,
+        /// standing on whole tiles, its middle as near along (a place along the road) as it can be with all of it a tile
+        /// in from the ends of the lot. lotSide is -1 when the lot is at lower rows (or columns) than the road, +1 when
+        /// higher. Back is the way it comes in, along the road from off the lot, slowing to a stop; Out the way it leaves,
+        /// on along the road and off the lot. Traffic keeps the lot on its right, as on the way out of a driveway.
+        /// </summary>
+        public static DrivePlan AtKerb(Road road, int lotSide, float along, int carWidth, int carLength, int lotWidth, int lotHeight, bool noseAtBack = false)
+        {
+            var plan = new DrivePlan();
+            int lotAlong = road.AlongX ? lotWidth : lotHeight;
+            if (road.Last - road.First + 1 < carWidth || lotAlong < carLength + 2) { plan.Problem = RouteProblem.NoRoad; return plan; }
+
+            //against the road's edge on the lot's side, on whole tiles
+            float lane = lotSide < 0 ? road.First + carWidth / 2f : road.Last + 1 - carWidth / 2f;
+            //on whole tiles along the road too, a tile in from each end of the lot
+            float half = carLength / 2f;
+            float start = (float)Math.Round(along - half);
+            start = Math.Max(1, Math.Min(lotAlong - 1 - carLength, start));
+            float centre = start + half;
+
+            float toRoad = -lotSide;
+            (float X, float Y) across = road.AlongX ? (0f, toRoad) : (toRoad, 0f);
+            (float X, float Y) travel = (-across.Y, across.X);
+            int heading = (HeadingOf(travel) + (noseAtBack ? 2 : 0)) % 4;
+            float travelSign = road.AlongX ? travel.X : travel.Y;
+
+            float margin = carLength / 2f + 1;
+            float exitAt = travelSign > 0 ? lotAlong + margin : -margin;
+            float enterAt = travelSign > 0 ? -margin : lotAlong + margin;
+            float x = road.AlongX ? centre : lane, y = road.AlongX ? lane : centre;
+            plan.HomeX = x; plan.HomeY = y; plan.HomeHeading = heading;
+
+            float runIn = Math.Abs(centre - enterAt);
+            plan.Back = new Path();
+            plan.Back.Legs.Add(new Leg
+            {
+                X = x - travel.X * runIn, Y = y - travel.Y * runIn, DX = travel.X, DY = travel.Y, Length = runIn, Heading = heading,
+                StartSpeed = RoadSpeed, TopSpeed = RoadSpeed, EndSpeed = 0
+            });
+            plan.Out = new Path();
+            plan.Out.Legs.Add(new Leg
+            {
+                X = x, Y = y, DX = travel.X, DY = travel.Y, Length = Math.Abs(exitAt - centre), Heading = heading,
+                StartSpeed = 0, TopSpeed = RoadSpeed, EndSpeed = RoadSpeed
+            });
+            return plan;
+        }
+
         private static int HeadingOf((float X, float Y) v)
         {
             if (v.Y < -0.5f) return 0;
@@ -507,16 +556,20 @@ namespace Driveways
         /// <summary>The parts of town zoned lot by lot (the neighbourhood and Old Town, by their number in LotLocations.iff).</summary>
         public static bool IsZonedArea(int area) => area == 1 || area == 4;
 
+        /// <summary>Old Town's community lots, as the game knows them (it takes the household along to these).</summary>
+        public static bool IsOldTownCommunityLot(int house) => house == 58 || house == 61 || (house >= 70 && house <= 75);
+
         /// <summary>
         /// Whether a lot is somewhere the car can take a Sim: a community lot. Not a lot zoned as a house (zone 0;
         /// 1 is the community), wherever it is; not one a family lives in; and in a part of town zoned lot by lot, not
-        /// one with no zoning at all. Elsewhere (Downtown, Studio Town, Magic Town) a lot with no zoning is one of the
-        /// town's, as the game counts it.
+        /// one with no zoning at all, unless it is one of Old Town's community lots. Elsewhere (Downtown, Studio Town,
+        /// Magic Town) a lot with no zoning is one of the town's, as the game counts it.
         /// </summary>
-        public static bool IsCommunityLot(int area, bool zoned, int zone, bool familyLivesThere)
+        public static bool IsCommunityLot(int area, int house, bool zoned, int zone, bool familyLivesThere)
         {
             if (familyLivesThere) return false;
             if (zoned) return zone == 1;
+            if (IsOldTownCommunityLot(house)) return true;
             return !IsZonedArea(area);
         }
     }

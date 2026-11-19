@@ -96,5 +96,9 @@ namespace Driveways
         public const byte ModeToggleAuto = 13;
         /// <summary>Operand byte 0: show the Sim running this (hidden while they were in the car), to get out where they can be seen.</summary>
         public const byte ModeShow = 14;
+        /// <summary>Operand byte 0: drive the caller home from another lot in the car (the stack object) they came in.</summary>
+        public const byte ModeDriveHome = 15;
+        /// <summary>Operand byte 0: whether the car is one a Sim came to this lot in, parked at the kerb, that the caller can drive home in.</summary>
+        public const byte ModeCanDriveHome = 16;
     }
 }

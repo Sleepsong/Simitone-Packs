@@ -59,14 +59,20 @@ and a message says so.
 
 The car's **Drive to...** menu lists the community lots in your game, by part of town: Downtown, Old
 Town, Studio Town, Magic Town, and lots in the neighbourhood zoned for the community. Choose one, and
-the Sim drives off; once the car has left the lot, the game takes them there as its taxi would. What
-they find there, and getting home, are the game's own: they come home the way the game brings them,
-and the car is on the driveway, as the house was left.
+the Sim drives off; once the car has left the lot, the game takes them there as its taxi would.
 
-Only the Sim who drives goes. Only community lots are on the list: not houses (in Old Town, or lots
-zoned as houses anywhere, or any a family lives in), and not the vacation island. Cancelling while the car is
-still on the lot brings it straight back. If the game does not change lots, the car comes home and a
-message says so.
+On the community lot their car drives in along the road and pulls up at the kerb nearest where the
+game puts them, and they get out of it. The car waits there while they are on the lot. To go home,
+click it and choose **Drive Home**: they get in, it drives off along the road, and at home it turns
+in onto the driveway and they get out. Going home the game's way (its taxi) still works too; the car
+is then on the driveway when they get there.
+
+A car at the kerb is not the household's to move or sell, and offers nothing but Drive Home. Only
+the Sim who drives rides in it: to Downtown and the other towns they go alone, and to Old Town the
+household comes along, as the game has it. Only community lots are on the list: not houses (in Old
+Town, or lots zoned as houses anywhere, or any a family lives in), and not the vacation island.
+Cancelling while the car is still on the lot brings it straight back. If the game does not change
+lots, the car comes home and a message says so.
 
 ### Going for a drive
 
@@ -118,6 +124,14 @@ why (for instance, that its code has not been approved: switch the pack off and 
 Before 0.18.2, "Primitive opcode 200 is already used" meant Cut Content was on: update Driveways.
 
 ## Changes
+
+- **0.20**: arriving by car, and driving home.
+  - Driving to a community lot, the Sim no longer just appears there. Their car drives in along the
+    lot's road and pulls up at the kerb nearest where the game puts them, and they get out at its
+    door. It waits there, and offers **Drive Home**: they drive off in it, and at home their car
+    turns in from the road onto the driveway with them, and they get out.
+  - Old Town's community lots (the ones the game knows: 58, 61 and 70 to 75) are on the Drive to...
+    menu even if the zoning list does not have them, so 0.19's change cannot leave Old Town empty.
 
 - **0.19**: getting in where the game's carpool has Sims get in, and no houses on the Drive to... menu.
   - A Sim now goes to the spot the carpool sends Sims to before getting in (the game's global
@@ -273,10 +287,10 @@ Before 0.18.2, "Primitive opcode 200 is already used" meant Cut Content was on: 
 
 - **The carpool is still there, out of sight.** It is what takes a Sim to work and brings them back,
   so its horn can still be heard, morning and evening.
-- **Driving to a community lot: they arrive and come home the game's way.** They do not drive up to
-  the community lot, and they come home without the car; it is parked at home all along. Only the
-  Sim who drives goes, without the household or a date. Studio Town and Magic Town have their own
-  ways of arriving, and have not been tried.
+- **On a community lot the car is at the kerb, not in a car park.** It pulls up in the lane on the
+  lot's side of the road, as near as it can to where the game puts the Sim. A lot with no road the
+  pack can find has no car: they arrive as the game has them. Studio Town and Magic Town have their
+  own ways of arriving, and have not been tried.
 - **A drive is saved beside the save, not in it.** Copy a neighbourhood to another computer without
   `LocalHouse/PackData`, and a lot saved mid-drive loads with the car parked, and a Sim at work
   comes home by carpool. A save made by an older version of the pack does the same.

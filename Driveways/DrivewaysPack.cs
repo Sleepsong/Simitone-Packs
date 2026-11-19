@@ -379,6 +379,7 @@ namespace Driveways
             try { VMDrive.RepairOldObjects(__instance); } catch (Exception) { }
             try { VMDrive.EndStaleTrips(__instance); } catch (Exception) { }
             try { VMDrive.TickCommutes(__instance); } catch (Exception) { }
+            try { VMDrive.TickArrivals(__instance); } catch (Exception) { }
         }
 
         private static void ShowMessage(VM fromVM, string message)

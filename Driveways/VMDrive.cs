@@ -100,7 +100,13 @@ namespace Driveways
                 case Shared.ModeIsParked:
                     {
                         var car = CarOf(context.StackObject);
-                        return (car != null && IsParked(context.VM, car)) ? VMPrimitiveExitCode.GOTO_TRUE : VMPrimitiveExitCode.GOTO_FALSE;
+                        return (car != null && !IsVisiting(car) && IsParked(context.VM, car)) ? VMPrimitiveExitCode.GOTO_TRUE : VMPrimitiveExitCode.GOTO_FALSE;
+                    }
+                case Shared.ModeCanDriveHome:
+                    {
+                        var car = CarOf(context.StackObject);
+                        return (car != null && context.Caller is VMAvatar driver && IsVisiting(car) && IsParked(context.VM, car) && CanDriveHome(context.VM, driver))
+                            ? VMPrimitiveExitCode.GOTO_TRUE : VMPrimitiveExitCode.GOTO_FALSE;
                     }
                 case Shared.ModeCanDriveToWork:
                     {
@@ -108,7 +114,7 @@ namespace Driveways
                         {
                             var car = CarOf(context.StackObject);
                             var sim = context.Caller as VMAvatar;
-                            if (car == null || sim == null || !IsParked(context.VM, car)) return VMPrimitiveExitCode.GOTO_FALSE;
+                            if (car == null || sim == null || IsVisiting(car) || !IsParked(context.VM, car)) return VMPrimitiveExitCode.GOTO_FALSE;
                             //(each on its own: whatever goes wrong working out the hours must not hide the carpool's own offer)
                             bool early = false;
                             try { early = WorkWindow(context.VM, sim) != null; } catch (Exception) { }
@@ -134,7 +140,7 @@ namespace Driveways
                 case Shared.ModeCanToggleAuto:
                     {
                         var car = CarOf(context.StackObject);
-                        if (car == null || !(context.Caller is VMAvatar)) return VMPrimitiveExitCode.GOTO_FALSE;
+                        if (car == null || !(context.Caller is VMAvatar) || IsVisiting(car)) return VMPrimitiveExitCode.GOTO_FALSE;
                         if (context.Thread.IsCheck && context.Thread.ActionStrings != null)
                             context.Thread.ActionStrings.Add(new VMPieMenuInteraction { Name = IsAuto(car) ? "Stop Always Driving to Work" : "Always Drive to Work" });
                         return VMPrimitiveExitCode.GOTO_TRUE;
@@ -167,7 +173,7 @@ namespace Driveways
                     {
                         var car = CarOf(context.StackObject);
                         var sim = context.Caller as VMAvatar;
-                        if (car == null || sim == null || !IsParked(context.VM, car)) return VMPrimitiveExitCode.GOTO_FALSE;
+                        if (car == null || sim == null || IsVisiting(car) || !IsParked(context.VM, car)) return VMPrimitiveExitCode.GOTO_FALSE;
                         var places = Destinations(context.VM);
                         if (places.Count == 0) return VMPrimitiveExitCode.GOTO_FALSE;
                         //building the menu: one entry for each lot, in a menu for each part of town, as the game's own
@@ -181,9 +187,11 @@ namespace Driveways
                 case Shared.ModeDrive:
                 case Shared.ModeDriveToWork:
                 case Shared.ModeDriveToLot:
+                case Shared.ModeDriveHome:
                     try
                     {
-                        var lot = (operand.Mode == Shared.ModeDriveToLot && context.Args != null && context.Args.Length > 0) ? context.Args[0] : (short)0;
+                        var lot = (operand.Mode == Shared.ModeDriveToLot && context.Args != null && context.Args.Length > 0) ? context.Args[0]
+                            : operand.Mode == Shared.ModeDriveHome ? HomeLot : (short)0;
                         return Drive(context, operand.Mode == Shared.ModeDriveToWork, lot);
                     }
                     catch (Exception)
@@ -236,9 +244,11 @@ namespace Driveways
         {
             if (Repaired.TryGetValue(vm, out _)) return;
             Repaired.Add(vm, new object());
+            RemoveLeftoverVisitors(vm);
             foreach (var obj in vm.Entities)
             {
                 if (!(obj is VMGameObject) || !(IsDriveway(obj) || IsCarGUID(GUIDOf(obj)) || GUIDOf(obj) == Shared.OldCarGUID)) continue;
+                if (obj.MultitileGroup != null && IsVisiting(obj.MultitileGroup)) continue;
                 var flags = (VMMovementFlags)obj.GetValue(VMStackObjectVariable.MovementFlags);
                 if ((flags & Movable) != Movable) obj.SetValue(VMStackObjectVariable.MovementFlags, (short)(flags | Movable));
             }
@@ -368,7 +378,7 @@ namespace Driveways
                     OnMessage?.Invoke(vm, Explain(plan.Problem));
                     return VMPrimitiveExitCode.GOTO_FALSE;
                 }
-                if (toLot != 0 && !Destinations(vm).Any(d => d.House == toLot))
+                if (toLot > 0 && !Destinations(vm).Any(d => d.House == toLot))
                 {
                     OnMessage?.Invoke(vm, "The car cannot take them there.");
                     return VMPrimitiveExitCode.GOTO_FALSE;
@@ -596,7 +606,7 @@ namespace Driveways
                         //neighbourhood and Old Town are zoned lot by lot, so there a lot not zoned for the community is a house
                         var zoned = hood.ZoningDictionary.TryGetValue((short)num, out var zone);
                         var lived = hood.FamilyForHouse != null && hood.FamilyForHouse.ContainsKey((short)num);
-                        if (!Driveways.Destinations.IsCommunityLot(mode, zoned, zone, lived)) continue;
+                        if (!Driveways.Destinations.IsCommunityLot(mode, num, zoned, zone, lived)) continue;
                         if (!File.Exists(hood.GetHousePath(num))) continue;
                         string name = null;
                         try { name = hood.GetHouseNameDesc(num)?.Item1?.Trim(); } catch (Exception) { }
@@ -623,10 +633,12 @@ namespace Driveways
             CommutesOf(vm).Add(new Commute
             {
                 Car = trip.Car, Plan = trip.Plan, SimGUID = sim.Object.OBJ.GUID, SimName = sim.Name, State = CommuteState.Departing,
-                Destination = Destinations(vm).FirstOrDefault(d => d.House == trip.ToLot)?.Name
+                Destination = trip.ToLot == HomeLot ? "home" : Destinations(vm).FirstOrDefault(d => d.House == trip.ToLot)?.Name
             });
             //(the lot is about to go: let go of the car's tiles)
             foreach (var part in trip.Car.Objects) if (part.WorldUI is ObjectComponent picture) ClearFreeAngle(picture);
+            //so the car can be at the kerb when they get there, and on the driveway when they drive home again
+            try { Leaving(vm, trip, sim); } catch (Exception) { }
             vm.SetGlobalValue(34, 0);
             context.Thread.TempRegisters[0] = trip.ToLot;
             new FSO.SimAntics.Primitives.VMGenericTS1Call().Execute(context,
@@ -895,9 +907,11 @@ namespace Driveways
                     case CommuteState.Departing:
                         //the game changes lots at once, and this lot stops. still here two seconds later: it did not go
                         if (++commute.Ticks <= 60) break;
+                        Arriving = null; //(they are not going anywhere)
                         if (sim != null) Show(sim, true);
                         StartHome(commute, CommuteState.Home);
-                        OnMessage?.Invoke(vm, $"The game did not take {commute.SimName} to {commute.Destination ?? "the lot"}, so they have come home.");
+                        OnMessage?.Invoke(vm, commute.Destination == "home" ? $"The game did not take {commute.SimName} home, so the car has come back."
+                            : $"The game did not take {commute.SimName} to {commute.Destination ?? "the lot"}, so they have come home.");
                         break;
 
                     case CommuteState.Arrived:
@@ -1471,6 +1485,7 @@ namespace Driveways
         {
             if ((flags & VMPlaceRequestFlags.UserBuildableLimit) == 0 || pos == LotTilePos.OUT_OF_WORLD || group.Objects.Count == 0) return true;
             if (!IsCarGUID(GUIDOf(group.Objects[0]))) return true;
+            if (IsVisiting(group)) return false; //(a car that came to this lot with a Sim stays at the kerb)
             var vm = context.VM;
             if (vm == null || !vm.TS1) return true;
             if (pos.Level != 1) return false;
@@ -1660,6 +1675,7 @@ namespace Driveways
 
         private static DrivePlan PlanFor(VM vm, VMMultitileGroup car)
         {
+            if (IsVisiting(car)) return KerbPlanFor(vm, car);
             var context = vm.Context;
             var arch = context.Architecture;
             var lead = car.BaseObject;

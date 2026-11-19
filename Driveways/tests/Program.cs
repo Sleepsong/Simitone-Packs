@@ -376,13 +376,49 @@ const int DW = 5, DL = 9; //the driveway, in tiles
 // ---- which lots the car drives to ----
 
 {
-    Check(Destinations.IsCommunityLot(4, true, 1, false), "lots: an Old Town lot zoned for the community is a destination");
-    Check(!Destinations.IsCommunityLot(4, true, 0, false), "lots: an Old Town house is not (the game shows an empty lot)");
-    Check(!Destinations.IsCommunityLot(4, false, 0, false), "lots: nor an Old Town lot with no zoning");
-    Check(!Destinations.IsCommunityLot(1, false, 0, false) && Destinations.IsCommunityLot(1, true, 1, false), "lots: in the neighbourhood, only lots zoned for the community");
-    Check(Destinations.IsCommunityLot(2, false, 0, false) && Destinations.IsCommunityLot(5, false, 0, false), "lots: Downtown and Studio Town lots, which have no zoning, are");
-    Check(!Destinations.IsCommunityLot(8, true, 0, false), "lots: a lot zoned as a house is not, anywhere");
-    Check(!Destinations.IsCommunityLot(2, false, 0, true) && !Destinations.IsCommunityLot(4, true, 1, true), "lots: nor one a family lives in");
+    Check(Destinations.IsCommunityLot(4, 66, true, 1, false), "lots: an Old Town lot zoned for the community is a destination");
+    Check(Destinations.IsCommunityLot(4, 58, false, 0, false) && Destinations.IsCommunityLot(4, 72, false, 0, false), "lots: so are Old Town's community lots the game knows, zoned or not");
+    Check(!Destinations.IsCommunityLot(4, 66, true, 0, false), "lots: an Old Town house is not (the game shows an empty lot)");
+    Check(!Destinations.IsCommunityLot(4, 66, false, 0, false), "lots: nor another Old Town lot with no zoning");
+    Check(!Destinations.IsCommunityLot(4, 72, true, 0, false), "lots: one zoned as a house is a house, whatever its number");
+    Check(!Destinations.IsCommunityLot(1, 5, false, 0, false) && Destinations.IsCommunityLot(1, 5, true, 1, false), "lots: in the neighbourhood, only lots zoned for the community");
+    Check(Destinations.IsCommunityLot(2, 22, false, 0, false) && Destinations.IsCommunityLot(5, 83, false, 0, false), "lots: Downtown and Studio Town lots, which have no zoning, are");
+    Check(!Destinations.IsCommunityLot(8, 93, true, 0, false), "lots: a lot zoned as a house is not, anywhere");
+    Check(!Destinations.IsCommunityLot(2, 22, false, 0, true) && !Destinations.IsCommunityLot(4, 66, true, 1, true), "lots: nor one a family lives in");
+}
+
+// ---- parked at the kerb of another lot ----
+
+{
+    //a road along the south of the lot, rows 57 to 61; the lot is to its north
+    var south = new Road { AlongX = true, First = 57, Last = 61 };
+    var kerb = DrivePlan.AtKerb(south, -1, 30.2f, 3, 6, Lot, Lot);
+    Check(kerb.Problem == RouteProblem.None, "kerb: a car can park at the kerb of a road");
+    var kLead = DrivePlan.LeadFromCentre(kerb.HomeX, kerb.HomeY, kerb.HomeHeading, 3, 6);
+    Check(Near(kLead.X % 1, 0.5f) && Near(kLead.Y % 1, 0.5f), "kerb: it stands on whole tiles");
+    Check(Near(kerb.HomeY, 58.5f) && kerb.HomeHeading % 2 == 1, "kerb: in the lane on the lot's side, lengthways along the road");
+    Check(Math.Abs(kerb.HomeX - 30.2f) <= 0.5f, "kerb: as near where it was asked for as whole tiles allow");
+    var arrive = kerb.Back.PoseAt(0); var stop = kerb.Back.PoseAt(kerb.Back.Length); var leave = kerb.Out.PoseAt(kerb.Out.Length);
+    Check((arrive.X < -3 || arrive.X > Lot + 3) && (leave.X < -3 || leave.X > Lot + 3), "kerb: it comes in from off the lot and leaves off it");
+    Check(Near(stop.X, kerb.HomeX) && Near(stop.Y, kerb.HomeY) && Near(arrive.Y, kerb.HomeY), "kerb: it drives in along its lane and stops where it parks");
+    Check(kerb.Back.SpeedAt(kerb.Back.Length - 0.01f) < 0.05f, "kerb: slowing down as it pulls up");
+    Check((arrive.X < 0) != (leave.X < 0), "kerb: it leaves the way it was going");
+    //traffic keeps the lot on its right: going west along a road south of the lot
+    Check(kerb.HomeHeading == 3, "kerb: traffic keeps the lot on its right");
+    //a road along the north edge, with the lot to its south; and one along the west edge
+    var north = DrivePlan.AtKerb(new Road { AlongX = true, First = 2, Last = 6 }, 1, 20, 3, 6, Lot, Lot);
+    Check(Near(north.HomeY, 5.5f) && north.HomeHeading == 1, "kerb: on a road at the north of the lot, the lane on its south side, going east");
+    var west = DrivePlan.AtKerb(new Road { AlongX = false, First = 2, Last = 6 }, 1, 40, 3, 6, Lot, Lot);
+    Check(Near(west.HomeX, 5.5f) && west.HomeHeading % 2 == 0, "kerb: on a road at the west, lengthways north and south");
+    //asked for near an end of the lot: kept on it, a tile in
+    var end = DrivePlan.AtKerb(south, -1, 0, 3, 6, Lot, Lot);
+    var endLead = DrivePlan.LeadFromCentre(end.HomeX, end.HomeY, end.HomeHeading, 3, 6);
+    Check(end.HomeX - 3 >= 1 - 0.001f && DrivePlan.AtKerb(south, -1, Lot, 3, 6, Lot, Lot).HomeX + 3 <= Lot - 1 + 0.001f, "kerb: near the end of the lot, all of it stays a tile in from the edge");
+    //parking again where it is gives the same place (a visiting car's plan is worked out from where it stands)
+    var again = DrivePlan.AtKerb(south, -1, kerb.HomeX, 3, 6, Lot, Lot);
+    Check(Near(again.HomeX, kerb.HomeX) && Near(again.HomeY, kerb.HomeY) && again.HomeHeading == kerb.HomeHeading, "kerb: worked out again from where it stands, it is the same");
+    Check(DrivePlan.AtKerb(new Road { AlongX = true, First = 57, Last = 58 }, -1, 30, 3, 6, Lot, Lot).Problem != RouteProblem.None, "kerb: a road narrower than the car has no kerb for it");
+    Check(DrivePlan.AtKerb(south, -1, 30, 3, 6, Lot, Lot, true).HomeHeading == 1, "kerb: a car drawn nose at the back is turned round");
 }
 
 // ---- a drive kept beside the save (Saved.cs) ----
