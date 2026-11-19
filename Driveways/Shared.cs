@@ -56,8 +56,12 @@ namespace Driveways
         /// <summary>
         /// The SimAntics primitive this pack adds. The objects' scripts are one or two instructions long and call it
         /// for everything, with the first byte of the operand saying what to do.
+        ///
+        /// Near the top of the range, out of the way: other packs take free numbers as they start, counting up from 200
+        /// (Cut Content does). If it is taken all the same, the pack takes another free number and changes its scripts to
+        /// call that one (DrivewaysPack.OnContentReady). It was 200 until 0.18, which Cut Content takes.
         /// </summary>
-        public const ushort Opcode = 200;
+        public const ushort Opcode = 250;
 
         /// <summary>Operand byte 0: take the Sim running this (the caller) for a drive in the car (the stack object).</summary>
         public const byte ModeDrive = 0;

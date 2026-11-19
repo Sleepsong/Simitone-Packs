@@ -93,6 +93,20 @@ a larger feature with its own build tool, drawing and saved data, Roof Tool for 
 over part of what the engine does, and Driveways for objects whose scripts call a primitive the pack
 adds.
 
+### Primitive numbers
+
+Two packs cannot add a primitive under the same number: the second is refused, and its code is
+stopped. The packs here keep out of each other's way like this:
+
+| Pack | Number | |
+|---|---|---|
+| Cut Content | the first free ones from 200 up | picked as it starts; its scripts are made then too, so any number will do |
+| Driveways | 250, else the highest free one | fixed in its object file; if 250 is taken, it takes another and changes its scripts to match |
+
+A new pack whose scripts are made as it starts should count up from 200, like Cut Content. One whose
+scripts are in a file should take a number near the top that no other pack here uses, add it to this
+table, and do what Driveways does if it is taken all the same.
+
 ## License
 
 Mozilla Public License 2.0, the same as Simitone and FreeSO. See [LICENSE.md](LICENSE.md).

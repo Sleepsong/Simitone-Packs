@@ -178,7 +178,8 @@ namespace Driveways
         {
             var vm = (GameFacade.Screens.CurrentUIScreen as TS1GameScreen)?.vm;
             if (vm == null) { Show("Driveways", "Open a lot first: this says what the pack makes of the lot being played."); return true; }
-            var missing = NotAttached.Count == 0 ? "" : "\n\nNot working with this Simitone: " + string.Join("; ", NotAttached) + ".";
+            var missing = (NotAttached.Count == 0 ? "" : "\n\nNot working with this Simitone: " + string.Join("; ", NotAttached) + ".")
+                + (PrimitiveNote == null ? "" : "\n\n" + PrimitiveNote);
             var message = VMDrive.Describe(vm) + missing;
             try
             {
@@ -192,14 +193,43 @@ namespace Driveways
             return true;
         }
 
+        /// <summary>
+        /// Add the pack's primitive. Under the number the object file's scripts call if it is free; if another pack has it
+        /// (one that takes numbers as it starts, and started first), under another free number, and the object file's
+        /// scripts are changed in memory to call that one. Either way the objects work.
+        /// </summary>
         public void OnContentReady()
         {
+            var opcode = FreeOpcode(Shared.Opcode);
             PackManager.RegisterPrimitive(new VMPrimitiveRegistration(new VMDrive())
             {
-                Opcode = Shared.Opcode,
+                Opcode = opcode,
                 Name = "driveways_drive",
                 OperandModel = typeof(VMDriveOperand)
             });
+            Primitive = opcode;
+            PrimitiveNote = null;
+            if (opcode != Shared.Opcode)
+            {
+                var taken = VMContext.Primitives[Shared.Opcode]?.Name ?? "another pack";
+                var changed = VMDrive.Renumber(Shared.Opcode, opcode);
+                PrimitiveNote = $"The pack's primitive is number {opcode}: {Shared.Opcode}, the one its objects call, is \"{taken}\". " +
+                    $"{changed} of the objects' script steps were changed to call {opcode}.";
+            }
+        }
+
+        /// <summary>The number the pack's primitive was added under, and why it is not the usual one if it is not.</summary>
+        public static ushort Primitive;
+        public static string PrimitiveNote;
+
+        /// <summary>This number if it is free, else the highest free one at or above 200, else any free one above the game's.</summary>
+        private static ushort FreeOpcode(ushort wanted)
+        {
+            var all = VMContext.Primitives;
+            if (all[wanted] == null) return wanted;
+            for (int op = all.Length - 1; op >= 200; op--) if (all[op] == null) return (ushort)op;
+            for (int op = 199; op >= 128; op--) if (all[op] == null) return (ushort)op;
+            throw new Exception("there is no free primitive number for the pack: other packs have taken them all");
         }
 
         /// <summary>Attach an optional patch. Whatever goes wrong, finding the method included, is noted and nothing more.</summary>

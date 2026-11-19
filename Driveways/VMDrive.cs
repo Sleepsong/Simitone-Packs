@@ -239,6 +239,55 @@ namespace Driveways
             }
         }
 
+        /// <summary>
+        /// The pack's primitive was added under another number than the object file's scripts call (another pack had
+        /// that one): change every step of the file's scripts that calls the old number to call the new one, in memory,
+        /// and turn any script the engine has already made runnable into a routine again. Returns how many steps changed.
+        /// </summary>
+        public static int Renumber(ushort from, ushort to)
+        {
+            int changed = 0;
+            try
+            {
+                var objects = FSO.Content.Content.Get()?.WorldObjects;
+                if (objects == null) return 0;
+                var guids = new List<uint> { Shared.DrivewayGUID, Shared.OldTileGUID, Shared.OldCarGUID };
+                guids.AddRange(Shared.Cars.Select(c => c.GUID));
+                guids.AddRange(Shared.OldDriveways.Select(d => d.GUID));
+                var done = new HashSet<FSO.Files.Formats.IFF.IffFile>();
+                foreach (var guid in guids)
+                {
+                    FSO.Content.GameObjectResource res = null;
+                    try { res = objects.Get(guid)?.Resource; } catch (Exception) { }
+                    var iff = res?.MainIff;
+                    if (iff == null || !done.Add(iff)) continue; //(all the pack's objects are in one file)
+                    changed += Renumber(iff, from, to, res);
+                }
+            }
+            catch (Exception) { }
+            return changed;
+        }
+
+        /// <summary>The same for one object file: and if it has been made runnable (res), its changed scripts again.</summary>
+        public static int Renumber(FSO.Files.Formats.IFF.IffFile iff, ushort from, ushort to, FSO.Content.GameIffResource res = null)
+        {
+            int changed = 0;
+            foreach (var bhav in iff.List<FSO.Files.Formats.IFF.Chunks.BHAV>() ?? new List<FSO.Files.Formats.IFF.Chunks.BHAV>())
+            {
+                bool any = false;
+                foreach (var step in bhav.Instructions)
+                {
+                    if (step.Opcode != from) continue;
+                    step.Opcode = to;
+                    any = true;
+                    changed++;
+                }
+                if (any && res?.RoutineCache != null && FSO.Content.GameIffResource.BHAVAssembler != null)
+                    res.RoutineCache[bhav.ChunkID] = FSO.Content.GameIffResource.BHAVAssembler(bhav, res);
+            }
+            return changed;
+        }
+
         private static uint GUIDOf(VMEntity obj) => (obj.MasterDefinition ?? obj.Object.OBJ).GUID;
 
         private static VMMultitileGroup CarOf(VMEntity obj)
