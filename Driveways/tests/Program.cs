@@ -419,6 +419,23 @@ const int DW = 5, DL = 9; //the driveway, in tiles
     Check(Near(again.HomeX, kerb.HomeX) && Near(again.HomeY, kerb.HomeY) && again.HomeHeading == kerb.HomeHeading, "kerb: worked out again from where it stands, it is the same");
     Check(DrivePlan.AtKerb(new Road { AlongX = true, First = 57, Last = 58 }, -1, 30, 3, 6, Lot, Lot).Problem != RouteProblem.None, "kerb: a road narrower than the car has no kerb for it");
     Check(DrivePlan.AtKerb(south, -1, 30, 3, 6, Lot, Lot, true).HomeHeading == 1, "kerb: a car drawn nose at the back is turned round");
+
+    //the far kerb: against the road's other edge, going the other way (the near lane is where the game's own vehicles stop)
+    var far = DrivePlan.AtKerb(south, 1, 30, 3, 6, Lot, Lot);
+    Check(Near(far.HomeY, 60.5f) && far.HomeHeading == 1, "kerb: at the far kerb, in the far lane, going the other way");
+
+    //a corner lot, as in the game: the road along the south (rows 57 to 61) meets one along the west (columns 2 to 6)
+    bool CornerRoad(int x, int y) => (y >= 57 && y <= 61) || (x >= 2 && x <= 6);
+    Check(!DrivePlan.KerbIsClear(DrivePlan.AtKerb(south, 1, 6, 3, 6, Lot, Lot), south, CornerRoad, 3, 6, Lot, Lot), "kerb: not across the junction");
+    Check(!DrivePlan.KerbIsClear(DrivePlan.AtKerb(south, 1, 11, 3, 6, Lot, Lot), south, CornerRoad, 3, 6, Lot, Lot), "kerb: nor just beside it, on its crossing");
+    Check(DrivePlan.KerbIsClear(DrivePlan.AtKerb(south, 1, 30, 3, 6, Lot, Lot), south, CornerRoad, 3, 6, Lot, Lot), "kerb: a straight stretch of road is clear");
+    Check(!DrivePlan.KerbIsClear(DrivePlan.AtKerb(south, 1, 30, 3, 6, Lot, Lot), south, (x, y) => CornerRoad(x, y) && !(x == 31 && y == 60), 3, 6, Lot, Lot), "kerb: not where a tile under it is not road");
+    var nearCorner = DrivePlan.KerbsNear(south, 1, 4, CornerRoad, 3, 6, Lot, Lot);
+    Check(nearCorner.Count > 0 && nearCorner[0].HomeX - 3 >= 6 + 1 + 3 - 0.001f, "kerb: a Sim arriving by the junction has their car pulled up just past it");
+    Check(nearCorner.Count > 0 && nearCorner[0].HomeX - 3 < 6 + 1 + 3 + 4 + 0.001f, "kerb: as near the Sim as that allows");
+    var middle = DrivePlan.KerbsNear(south, 1, 30, CornerRoad, 3, 6, Lot, Lot);
+    Check(middle.Count > 0 && Math.Abs(middle[0].HomeX - 30) <= 0.5f, "kerb: one arriving mid-road has it right there");
+    Check(DrivePlan.KerbsNear(south, 1, 30, (x, y) => false, 3, 6, Lot, Lot).Count == 0, "kerb: with no road, nowhere");
 }
 
 // ---- a drive kept beside the save (Saved.cs) ----

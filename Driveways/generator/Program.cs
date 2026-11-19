@@ -344,10 +344,11 @@ iff.AddChunk(new TTAB()
     {
         new TTABInteraction { ActionFunction = GoForADrive, TestFunction = IsParked, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 0 },
         new TTABInteraction { ActionFunction = DriveToWork, TestFunction = CanDriveToWork, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 1 },
-        new TTABInteraction { ActionFunction = RideHome, TestFunction = CanRideHome, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 2 },
+        //(Ride Home and Drive Home are also offered to a Sim the game counts as a visitor, as it can count one visiting a community lot)
+        new TTABInteraction { ActionFunction = RideHome, TestFunction = CanRideHome, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild | TTABFlags.AllowVisitors, TTAIndex = 2 },
         new TTABInteraction { ActionFunction = DriveToLot, TestFunction = CanDriveToLot, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 3 },
         new TTABInteraction { ActionFunction = ToggleAuto, TestFunction = CanToggleAuto, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 4 },
-        new TTABInteraction { ActionFunction = DriveHome, TestFunction = CanDriveHome, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild, TTAIndex = 5 }
+        new TTABInteraction { ActionFunction = DriveHome, TestFunction = CanDriveHome, MotiveEntries = new TTABMotiveEntry[0], Flags = TTABFlags.TS1NoChild | TTABFlags.AllowVisitors, TTAIndex = 5 }
     }
 });
 var menuStrings = new TTAs() { ChunkID = CarMenu, ChunkLabel = "Car", ChunkProcessed = true };
@@ -398,7 +399,8 @@ if (oldTile.BHAV_Init != InitDriveway || oldTile.FunctionFlags != 0 || oldTile.M
 var menu = check.Get<TTAB>(CarMenu);
 var label = check.Get<TTAs>(CarMenu).GetString(0);
 var label2 = check.Get<TTAs>(CarMenu).GetString(1);
-if (menu.Interactions.Length != 6 || menu.Interactions[5].ActionFunction != DriveHome || menu.Interactions[5].TestFunction != CanDriveHome || check.Get<TTAs>(CarMenu).GetString(5) != "Drive Home"
+if (menu.Interactions.Length != 6 || (menu.Interactions[5].Flags & TTABFlags.AllowVisitors) == 0 || (menu.Interactions[2].Flags & TTABFlags.AllowVisitors) == 0 || (menu.Interactions[0].Flags & TTABFlags.AllowVisitors) != 0
+    || menu.Interactions[5].ActionFunction != DriveHome || menu.Interactions[5].TestFunction != CanDriveHome || check.Get<TTAs>(CarMenu).GetString(5) != "Drive Home"
     || menu.Interactions[4].ActionFunction != ToggleAuto || menu.Interactions[4].TestFunction != CanToggleAuto || menu.Interactions[3].ActionFunction != DriveToLot || menu.Interactions[3].TestFunction != CanDriveToLot || check.Get<TTAs>(CarMenu).GetString(3) != "Drive to..." || menu.Interactions[2].ActionFunction != RideHome || menu.Interactions[2].TestFunction != CanRideHome || check.Get<TTAs>(CarMenu).GetString(2) != "Ride Home" || menu.Interactions[0].ActionFunction != GoForADrive || menu.Interactions[0].TestFunction != IsParked || label != "Go for a Drive"
     || menu.Interactions[1].ActionFunction != DriveToWork || menu.Interactions[1].TestFunction != CanDriveToWork || menu.Interactions[1].TTAIndex != 1 || label2 != "Drive to Work") throw new Exception("The cars' menu did not survive");
 foreach (var (id, mode) in new[] { (InitDriveway, Shared.ModeInitDriveway), (InitCar, Shared.ModeInitCar), (IsParked, Shared.ModeIsParked), (CanDriveToWork, Shared.ModeCanDriveToWork), (CanRideHome, Shared.ModeCanRideHome), (CanDriveToLot, Shared.ModeCanDriveToLot), (CanToggleAuto, Shared.ModeCanToggleAuto), (ToggleAuto, Shared.ModeToggleAuto), (CanDriveHome, Shared.ModeCanDriveHome) })

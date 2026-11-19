@@ -5,6 +5,7 @@ http://mozilla.org/MPL/2.0/.
 */
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 
 namespace Driveways
@@ -493,14 +494,15 @@ namespace Driveways
         }
 
         /// <summary>
-        /// A car visiting a lot, parked at the kerb of its road: lengthways along the road in the lane on the lot's side,
+        /// A car visiting a lot, parked at a kerb of its road: lengthways along the road against one of its edges,
         /// standing on whole tiles, its middle as near along (a place along the road) as it can be with all of it a tile
-        /// in from the ends of the lot. lotSide is -1 when the lot is at lower rows (or columns) than the road, +1 when
-        /// higher. Back is the way it comes in, along the road from off the lot, slowing to a stop; Out the way it leaves,
-        /// on along the road and off the lot. Traffic keeps the lot on its right, as on the way out of a driveway.
+        /// in from the ends of the lot. kerbSide is the edge: -1 the one at lower rows (or columns), +1 the one at higher.
+        /// Back is the way it comes in, along the road from off the lot, slowing to a stop; Out the way it leaves, on
+        /// along the road and off the lot. Traffic keeps the kerb on its right, as on the way out of a driveway.
         /// </summary>
-        public static DrivePlan AtKerb(Road road, int lotSide, float along, int carWidth, int carLength, int lotWidth, int lotHeight, bool noseAtBack = false)
+        public static DrivePlan AtKerb(Road road, int kerbSide, float along, int carWidth, int carLength, int lotWidth, int lotHeight, bool noseAtBack = false)
         {
+            int lotSide = kerbSide;
             var plan = new DrivePlan();
             int lotAlong = road.AlongX ? lotWidth : lotHeight;
             if (road.Last - road.First + 1 < carWidth || lotAlong < carLength + 2) { plan.Problem = RouteProblem.NoRoad; return plan; }
@@ -539,6 +541,52 @@ namespace Driveways
                 StartSpeed = 0, TopSpeed = RoadSpeed, EndSpeed = RoadSpeed
             });
             return plan;
+        }
+
+        /// <summary>
+        /// Whether a car parked at the kerb (plan, from AtKerb) stands wholly on the road, and on a straight stretch of it:
+        /// no other road crosses it within keepAway tiles of either end (a crossing road's tiles reach the rows either
+        /// side of this one, where its pavement and verge are), so it is clear of junctions and their crossings.
+        /// </summary>
+        public static bool KerbIsClear(DrivePlan plan, Road road, Func<int, int, bool> isRoad, int carWidth, int carLength, int lotWidth, int lotHeight, int keepAway = 3)
+        {
+            if (plan == null || plan.Problem != RouteProblem.None) return false;
+            float along = road.AlongX ? plan.HomeX : plan.HomeY, across = road.AlongX ? plan.HomeY : plan.HomeX;
+            int alongFirst = (int)Math.Floor(along - carLength / 2f + 0.001f), alongLast = (int)Math.Ceiling(along + carLength / 2f - 0.001f) - 1;
+            int acrossFirst = (int)Math.Floor(across - carWidth / 2f + 0.001f), acrossLast = (int)Math.Ceiling(across + carWidth / 2f - 0.001f) - 1;
+            int lotAlong = road.AlongX ? lotWidth : lotHeight, lotAcross = road.AlongX ? lotHeight : lotWidth;
+            bool Road(int a, int b) => road.AlongX ? isRoad(a, b) : isRoad(b, a);
+            for (int a = alongFirst; a <= alongLast; a++)
+                for (int b = acrossFirst; b <= acrossLast; b++)
+                    if (!Road(a, b)) return false;
+            foreach (var beside in new[] { road.First - 1, road.Last + 1 })
+            {
+                if (beside < 0 || beside >= lotAcross) continue;
+                for (int a = Math.Max(0, alongFirst - keepAway); a <= Math.Min(lotAlong - 1, alongLast + keepAway); a++)
+                    if (Road(a, beside)) return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Where a visiting car can park at a kerb, nearest along first: every place in steps of step tiles either way,
+        /// on a straight stretch of the road (KerbIsClear), each different.
+        /// </summary>
+        public static List<DrivePlan> KerbsNear(Road road, int kerbSide, float along, Func<int, int, bool> isRoad, int carWidth, int carLength, int lotWidth, int lotHeight, bool noseAtBack = false, int step = 4)
+        {
+            var result = new List<DrivePlan>();
+            int lotAlong = road.AlongX ? lotWidth : lotHeight;
+            for (int i = 0; i * step <= lotAlong; i++)
+            {
+                foreach (var offset in i == 0 ? new[] { 0 } : new[] { i * step, -i * step })
+                {
+                    var plan = AtKerb(road, kerbSide, along + offset, carWidth, carLength, lotWidth, lotHeight, noseAtBack);
+                    if (plan.Problem != RouteProblem.None) return result;
+                    if (result.Any(p => Math.Abs(p.HomeX - plan.HomeX) < 0.01f && Math.Abs(p.HomeY - plan.HomeY) < 0.01f)) continue;
+                    if (KerbIsClear(plan, road, isRoad, carWidth, carLength, lotWidth, lotHeight)) result.Add(plan);
+                }
+            }
+            return result;
         }
 
         private static int HeadingOf((float X, float Y) v)

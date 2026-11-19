@@ -1027,7 +1027,8 @@ namespace Driveways
             if (car == null) return null;
             int side = Settings.DoorOnRight ? Shared.CarWidth - 1 : 0;
             var doors = CarLook.DoorsOf(GUIDOf(car.BaseObject));
-            var places = doors.Where(d => d.X == side).ToList();
+            //(a car at the kerb of another lot: whichever door is nearest, the side towards the lot)
+            var places = IsVisiting(car) ? doors.ToList() : doors.Where(d => d.X == side).ToList();
             if (places.Count == 0) places = doors.ToList();
             if (places.Count == 0) places.Add((side, DoorRow));
             var tiles = places.Select(p => car.Objects.FirstOrDefault(o => !o.Dead && o.Object.OBJ.SubIndex == (short)((p.X << 8) | p.Y))).Where(o => o != null).ToList();

@@ -17,8 +17,9 @@ namespace Driveways
     //
     // A Sim who drives to a community lot is taken there by the game, which makes them on the new lot out of the world and
     // then puts them in it, where that lot puts arrivals. When they appear, the pack puts their car (the same model) at
-    // the kerb of that lot's road nearest them, hides them, and has the car drive in along the road and pull up, as their
-    // car brings them home from work; then they get out at its door. The car stays at the kerb while they are there. It
+    // the far kerb of that lot's road (the near one is where the game's own vehicles pull up), on a straight stretch near
+    // them, hides them, and has the car drive in along the road and pull up, as their car brings them home from work;
+    // then they get out at its door, on the side towards the lot. The car stays at the kerb while they are there. It
     // offers Drive Home: they get in, it drives off along the road, and the game takes them home, where their own car drives
     // in from the road and onto its driveway, and they get out of it.
     //
@@ -154,11 +155,12 @@ namespace Driveways
             DrivePlan placed = null;
             try
             {
-                //the kerb nearest them, or a little along it if something is in the way there
-                foreach (var offset in new[] { 0, 7, -7, 14, -14, 21, -21 })
+                //at the far kerb, out of the way of the game's own vehicles, which pull up on the lot's side; on a straight
+                //stretch of road, clear of junctions; as near them as that allows, and further along if something is there
+                Func<int, int, bool> isRoad = (x, y) => x >= 0 && y >= 0 && x < arch.Width && y < arch.Height && RoadFloors.Contains(arch.GetFloor((short)x, (short)y, 1).Pattern);
+                var kerbs = DrivePlan.KerbsNear(road.Value, -lotSide, along, isRoad, Shared.CarWidth, Shared.CarLength, arch.Width, arch.Height, Settings.ReverseCars);
+                foreach (var plan in kerbs.Take(12))
                 {
-                    var plan = DrivePlan.AtKerb(road.Value, lotSide, along + offset, Shared.CarWidth, Shared.CarLength, arch.Width, arch.Height, Settings.ReverseCars);
-                    if (plan.Problem != RouteProblem.None) break;
                     var lead = DrivePlan.LeadFromCentre(plan.HomeX, plan.HomeY, plan.HomeHeading, Shared.CarWidth, Shared.CarLength);
                     var pos = LotTilePos.FromBigTile((short)Math.Floor(lead.X), (short)Math.Floor(lead.Y), 1);
                     var dir = Directions[plan.HomeHeading];

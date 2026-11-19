@@ -61,8 +61,9 @@ The car's **Drive to...** menu lists the community lots in your game, by part of
 Town, Studio Town, Magic Town, and lots in the neighbourhood zoned for the community. Choose one, and
 the Sim drives off; once the car has left the lot, the game takes them there as its taxi would.
 
-On the community lot their car drives in along the road and pulls up at the kerb nearest where the
-game puts them, and they get out of it. The car waits there while they are on the lot. To go home,
+On the community lot their car drives in along the road and pulls up at the far kerb, across the road
+from the lot, on a straight stretch near where the game puts them (the near kerb is where the game's
+own vehicles stop), and they get out of it. The car waits there while they are on the lot. To go home,
 click it and choose **Drive Home**: they get in, it drives off along the road, and at home it turns
 in onto the driveway and they get out. Going home the game's way (its taxi) still works too; the car
 is then on the driveway when they get there.
@@ -124,6 +125,15 @@ why (for instance, that its code has not been approved: switch the pack off and 
 Before 0.18.2, "Primitive opcode 200 is already used" meant Cut Content was on: update Driveways.
 
 ## Changes
+
+- **0.21**: the car at a community lot is out of the way, and can be used.
+  - It pulls up at the far kerb, across the road, going the other way, instead of in the lane on the
+    lot's side, where the game's own vehicles (the trolley, the taxi) stop and it was in their way.
+    And on a straight stretch of road: never across a junction or its crossing, which is where it
+    ended up on a corner lot.
+  - Drive Home and Ride Home are offered to a Sim the game counts as a visitor, as it can count one
+    visiting a community lot; the car's menu was empty for them.
+  - A Sim uses whichever of its doors is nearest, the side towards the lot.
 
 - **0.20**: arriving by car, and driving home.
   - Driving to a community lot, the Sim no longer just appears there. Their car drives in along the
@@ -287,13 +297,15 @@ Before 0.18.2, "Primitive opcode 200 is already used" meant Cut Content was on: 
 
 - **The carpool is still there, out of sight.** It is what takes a Sim to work and brings them back,
   so its horn can still be heard, morning and evening.
-- **On a community lot the car is at the kerb, not in a car park.** It pulls up in the lane on the
-  lot's side of the road, as near as it can to where the game puts the Sim. A lot with no road the
+- **On a community lot the car is at the kerb, not in a car park.** It pulls up at the far kerb, clear
+  of junctions, as near as it can to where the game puts the Sim. A lot with no road the
   pack can find has no car: they arrive as the game has them. Studio Town and Magic Town have their
   own ways of arriving, and have not been tried.
 - **A drive is saved beside the save, not in it.** Copy a neighbourhood to another computer without
   `LocalHouse/PackData`, and a lot saved mid-drive loads with the car parked, and a Sim at work
   comes home by carpool. A save made by an older version of the pack does the same.
+- **Car doors do not open.** The game has one picture of each tile of each of these cars (only the
+  Magic Wagon has more), and no open door to show.
 - **Which side is the driver's is a guess.** Sims use the doors on the car's left, which may be the
   passenger's; `driveways door` has them use the right. A car whose game car is not in your game has
   no doors marked, and uses the third row.
