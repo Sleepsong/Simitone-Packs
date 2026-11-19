@@ -24,10 +24,13 @@ The objects are in buy mode under **Decorative > Other**.
 
 ### Getting in and out
 
-For every drive the Sim walks to the car's door, the driver's on its left, and gets in, with the game's
-own animation for getting into its cars. Coming back, they get out the same way. The car sounds as the
-game's own car of that model does driving off, as it pulls out and as it comes back. If getting in
-looks wrong, `driveways door` has Sims use the car's other side.
+For every drive the Sim gets in as the game's carpool has them get in: they go to the car's door, to
+the spot the game's cars send a Sim to (its global routing slot 4), and play the game's own animation
+for that side of the car. The doors are the ones the game's car the model is drawn as marks; a Sim uses
+one on the car's left, the nearer if there are two. Coming back, they get out the same way, the
+animation backwards; back from work, the car parks and they get out at the door too. The car sounds as
+the game's own car of that model does driving off, as it pulls out and as it comes back.
+`driveways door` has Sims use the doors on the car's right instead.
 
 ### Driving to work
 
@@ -60,7 +63,8 @@ the Sim drives off; once the car has left the lot, the game takes them there as 
 they find there, and getting home, are the game's own: they come home the way the game brings them,
 and the car is on the driveway, as the house was left.
 
-Only the Sim who drives goes. The vacation island is not on the list. Cancelling while the car is
+Only the Sim who drives goes. Only community lots are on the list: not houses (in Old Town, or lots
+zoned as houses anywhere, or any a family lives in), and not the vacation island. Cancelling while the car is
 still on the lot brings it straight back. If the game does not change lots, the car comes home and a
 message says so.
 
@@ -114,6 +118,18 @@ why (for instance, that its code has not been approved: switch the pack off and 
 Before 0.18.2, "Primitive opcode 200 is already used" meant Cut Content was on: update Driveways.
 
 ## Changes
+
+- **0.19**: getting in where the game's carpool has Sims get in, and no houses on the Drive to... menu.
+  - A Sim now goes to the spot the carpool sends Sims to before getting in (the game's global
+    routing slot 4, beside the door), instead of the tile next to the car, so the animation starts
+    where it should. The doors are the tiles the game's own car marks as its doors, not a guess, and
+    the animation is the one the carpool plays for that side (it was the other side's before). Back
+    from work, a Sim gets out at the door the same way, rather than appearing beside the car.
+  - Drive to... no longer lists houses. Driving to one (in Old Town, say) left the game on an empty
+    lot. A lot is listed only if it is zoned for the community (in the neighbourhood and Old Town,
+    which are zoned lot by lot), or is one of Downtown's, Studio Town's or Magic Town's, and no
+    family lives there.
+  - The `driveways` report says where each car's doors are.
 
 - **0.18.2**: Driveways works alongside Cut Content. Both packs added a primitive under the number 200:
   Cut Content takes the first free numbers from 200 up as it starts, and when it started first the game
@@ -264,8 +280,9 @@ Before 0.18.2, "Primitive opcode 200 is already used" meant Cut Content was on: 
 - **A drive is saved beside the save, not in it.** Copy a neighbourhood to another computer without
   `LocalHouse/PackData`, and a lot saved mid-drive loads with the car parked, and a Sim at work
   comes home by carpool. A save made by an older version of the pack does the same.
-- **Which side of the car to get in by is a guess.** The game's animations are made for its carpool;
-  if a Sim gets in facing the wrong way or beside the door, `driveways door` tries the other side.
+- **Which side is the driver's is a guess.** Sims use the doors on the car's left, which may be the
+  passenger's; `driveways door` has them use the right. A car whose game car is not in your game has
+  no doors marked, and uses the third row.
 - **The engine sound is the game's carpool's.** It is the sound for driving away, played as the car
   pulls out and as it comes back; there is none while it waits or drives on the driveway.
 - **Only what is drawn moves.** For the game's rules the car never leaves its parking place, and the Sim

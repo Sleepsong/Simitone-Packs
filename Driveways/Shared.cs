@@ -94,5 +94,7 @@ namespace Driveways
         public const byte ModeCanToggleAuto = 12;
         /// <summary>Operand byte 0: switch "Always Drive to Work" on or off for the car.</summary>
         public const byte ModeToggleAuto = 13;
+        /// <summary>Operand byte 0: show the Sim running this (hidden while they were in the car), to get out where they can be seen.</summary>
+        public const byte ModeShow = 14;
     }
 }

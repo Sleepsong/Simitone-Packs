@@ -373,6 +373,18 @@ const int DW = 5, DL = 9; //the driveway, in tiles
     Check(CarSnap.Fit(X0, Y0, X0 + 1, Y1, 36, 25, 1, 3, 6) == null, "car: a driveway shorter than the car does not take it");
 }
 
+// ---- which lots the car drives to ----
+
+{
+    Check(Destinations.IsCommunityLot(4, true, 1, false), "lots: an Old Town lot zoned for the community is a destination");
+    Check(!Destinations.IsCommunityLot(4, true, 0, false), "lots: an Old Town house is not (the game shows an empty lot)");
+    Check(!Destinations.IsCommunityLot(4, false, 0, false), "lots: nor an Old Town lot with no zoning");
+    Check(!Destinations.IsCommunityLot(1, false, 0, false) && Destinations.IsCommunityLot(1, true, 1, false), "lots: in the neighbourhood, only lots zoned for the community");
+    Check(Destinations.IsCommunityLot(2, false, 0, false) && Destinations.IsCommunityLot(5, false, 0, false), "lots: Downtown and Studio Town lots, which have no zoning, are");
+    Check(!Destinations.IsCommunityLot(8, true, 0, false), "lots: a lot zoned as a house is not, anywhere");
+    Check(!Destinations.IsCommunityLot(2, false, 0, true) && !Destinations.IsCommunityLot(4, true, 1, true), "lots: nor one a family lives in");
+}
+
 // ---- a drive kept beside the save (Saved.cs) ----
 
 {

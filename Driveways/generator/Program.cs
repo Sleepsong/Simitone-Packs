@@ -216,34 +216,42 @@ BHAVInstruction Walk(sbyte location, sbyte direction, byte ifTrue, byte ifFalse)
 //Animate Sim (44): an animation from this object's table 129 (a2o), played to its end, forwards or backwards. it says false
 //at each event in the animation, and is run again to carry on, as the game's own scripts do
 BHAVInstruction Animate(byte animation, bool backwards, byte next, byte self) => Prim(44, next, self, animation, 0, 0, 0, 0, (byte)(backwards ? 2 : 0));
-const byte GetInWithCarOnLeft = 1, GetInWithCarOnRight = 2; //(A2O-car-getinl, A2O-car-getinr)
+const byte GetInLeft = 1, GetInRight = 2; //(A2O-car-getinl, A2O-car-getinr)
+//Go To Routing Slot (45): to the game's global routing slot 4 of the stack object, as the carpool sends a Sim to its door.
+//the slot says where a Sim stands to get in at that door, and which way they face, for the animations to start from
+BHAVInstruction ToTheDoor(byte ifTrue, byte ifFalse) => Prim(45, ifTrue, ifFalse, 4, 0, 2 /* global */, 0, 0);
 
-// A drive: get ready (or say why not), walk to the door, get in, drive, and get out again if back by the car.
-// The door is the driver's, on the car's left, unless the player has chosen its right ("driveways door").
-// The Sim faces the way the car does, so the car is on their right on its left side.
+// A drive, as the game's carpool has a Sim get in: get ready (or say why not; the stack object becomes the door), go to the
+// door's routing slot, get in with the animation for that side (A2O-car-getinl on the car's left, -getinr on its right,
+// as the carpool chooses them), drive, and get out again, the same animation backwards, if back by the car.
+// (instruction 7 is where it was before 0.19, for a lot saved mid-drive)
 void AddDrive(ushort id, string name, byte mode) => iff.AddChunk(new BHAV() { ChunkID = id, ChunkLabel = name, ChunkProcessed = true, Args = 4, Locals = 1, Instructions = new[] {
     /* 0 */ Mode(Shared.ModePrepare, 1, 255, mode),
-    /* 1 */ Mode(Shared.ModeIsLeftDoor, 2, 4),
-    /* 2 */ Walk(6 /* to the left of */, 0 /* the same way */, 3, 6),
-    /* 3 */ Animate(GetInWithCarOnRight, false, 7, 3),
-    /* 4 */ Walk(2 /* to the right of */, 0, 5, 6),
-    /* 5 */ Animate(GetInWithCarOnLeft, false, 7, 5),
-    /* 6 */ Walk(-1 /* anywhere near */, -2 /* facing it */, 7, 255),
+    /* 1 */ ToTheDoor(2, 6),
+    /* 2 */ Mode(Shared.ModeIsLeftDoor, 3, 4),
+    /* 3 */ Animate(GetInLeft, false, 7, 3),
+    /* 4 */ Animate(GetInRight, false, 7, 4),
+    /* 5 */ Mode(Shared.ModeIsLeftDoor, 3, 4), //(not reached)
+    /* 6 */ Walk(-1 /* anywhere near */, -2 /* facing it */, 2, 255), //(the slot cannot be reached: as the carpool does)
     /* 7 */ Mode(mode, 8, 254), //(runs every tick until the drive is over: true when the Sim is back by the car, false when they have gone)
     /* 8 */ Mode(Shared.ModeIsLeftDoor, 9, 10),
-    /* 9 */ Animate(GetInWithCarOnRight, true, 254, 9),
-    /* 10 */ Animate(GetInWithCarOnLeft, true, 254, 10) } });
+    /* 9 */ Animate(GetInLeft, true, 254, 9),
+    /* 10 */ Animate(GetInRight, true, 254, 10) } });
 
 AddDrive(GoForADrive, "Go for a Drive", Shared.ModeDrive);
 AddScript(CanDriveToWork, "Drive to Work - Test", 0, Call(Shared.ModeCanDriveToWork));
 AddDrive(DriveToWork, "Drive to Work", Shared.ModeDriveToWork);
 AddScript(CanRideHome, "Ride Home - Test", 0, Call(Shared.ModeCanRideHome));
 //(given to a Sim by the pack's code when they are back from work: it holds them while their car brings them in, then they get out)
+//once the car has parked the Sim is beside its door, still hidden, and the door is the stack object: they go to its slot, are
+//shown, and get out
 AddScript(RideHome, "Ride Home", 0,
-    Mode(Shared.ModeRideHome, 1, 254),
-    Mode(Shared.ModeIsLeftDoor, 2, 3),
-    Animate(GetInWithCarOnRight, true, 254, 2),
-    Animate(GetInWithCarOnLeft, true, 254, 3));
+    /* 0 */ Mode(Shared.ModeRideHome, 1, 254),
+    /* 1 */ ToTheDoor(2, 2),
+    /* 2 */ Mode(Shared.ModeShow, 3, 3),
+    /* 3 */ Mode(Shared.ModeIsLeftDoor, 4, 5),
+    /* 4 */ Animate(GetInLeft, true, 254, 4),
+    /* 5 */ Animate(GetInRight, true, 254, 5));
 //the test adds a menu entry for each community lot, "Drive to.../Downtown/The Bar", whose Param0 is the lot's number
 AddScript(CanDriveToLot, "Drive to a Lot - Test", 0, Call(Shared.ModeCanDriveToLot));
 AddDrive(DriveToLot, "Drive to a Lot", Shared.ModeDriveToLot);
@@ -396,12 +404,16 @@ foreach (var (id, mode) in new[] { (GoForADrive, Shared.ModeDrive), (DriveToWork
 {
     var script = check.Get<BHAV>(id);
     var ins = script.Instructions;
+    //(to the door's slot as the carpool goes, global slot 4; getinl on the left and getinr on the right, forwards then backwards)
     if (script.Args != 4 || script.Locals != 1 || ins.Length != 11 || ins[0].Opcode != Shared.Opcode || ins[0].Operand[0] != Shared.ModePrepare || ins[0].Operand[1] != mode
-        || ins[2].Opcode != 27 || ins[3].Opcode != 44 || ins[7].Opcode != Shared.Opcode || ins[7].Operand[0] != mode || ins[9].Opcode != 44 || ins[9].Operand[5] != 2)
+        || ins[1].Opcode != 45 || ins[1].Operand[0] != 4 || ins[1].Operand[2] != 2 || ins[1].FalsePointer != 6 || ins[6].Opcode != 27
+        || ins[2].Operand[0] != Shared.ModeIsLeftDoor || ins[2].TruePointer != 3 || ins[3].Opcode != 44 || ins[3].Operand[0] != GetInLeft || ins[3].Operand[5] != 0 || ins[4].Operand[0] != GetInRight
+        || ins[7].Opcode != Shared.Opcode || ins[7].Operand[0] != mode || ins[9].Opcode != 44 || ins[9].Operand[0] != GetInLeft || ins[9].Operand[5] != 2 || ins[10].Operand[0] != GetInRight)
         throw new Exception("Script " + id + " did not survive");
 }
-var ride = check.Get<BHAV>(RideHome);
-if (ride.Instructions.Length != 4 || ride.Instructions[0].Operand[0] != Shared.ModeRideHome || ride.Instructions[2].Opcode != 44) throw new Exception("The ride home script did not survive");
+var ride = check.Get<BHAV>(RideHome).Instructions;
+if (ride.Length != 6 || ride[0].Operand[0] != Shared.ModeRideHome || ride[1].Opcode != 45 || ride[1].Operand[0] != 4 || ride[2].Operand[0] != Shared.ModeShow
+    || ride[4].Opcode != 44 || ride[4].Operand[0] != GetInLeft || ride[4].Operand[5] != 2 || ride[5].Operand[0] != GetInRight) throw new Exception("The ride home script did not survive");
 var anims = check.Get<STR>(129);
 if (anims == null || anims.GetString(1) != "A2O-car-getinl" || anims.GetString(2) != "A2O-car-getinr") throw new Exception("The animation names did not survive");
 Console.WriteLine($"Menu: {string.Join(", ", Enumerable.Range(0, 5).Select(i => "\"" + check.Get<TTAs>(CarMenu).GetString(i) + "\""))}; animations {anims.GetString(1)}, {anims.GetString(2)}");

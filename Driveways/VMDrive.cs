@@ -120,7 +120,17 @@ namespace Driveways
                     try { return Prepare(context, operand.Arg) ? VMPrimitiveExitCode.GOTO_TRUE : VMPrimitiveExitCode.GOTO_FALSE; }
                     catch (Exception) { return VMPrimitiveExitCode.GOTO_FALSE; }
                 case Shared.ModeIsLeftDoor:
-                    return Settings.DoorOnRight ? VMPrimitiveExitCode.GOTO_FALSE : VMPrimitiveExitCode.GOTO_TRUE;
+                    {
+                        //the door being used is the stack object (Prepare and Ride Home make it so): on the car's left if
+                        //in its first column. the game's carpool chooses its animation the same way
+                        var door = context.StackObject;
+                        if (door != null && CarOf(door) != null && door.Object.OBJ.SubIndex != -1)
+                            return (((ushort)door.Object.OBJ.SubIndex >> 8) == 0) ? VMPrimitiveExitCode.GOTO_TRUE : VMPrimitiveExitCode.GOTO_FALSE;
+                        return Settings.DoorOnRight ? VMPrimitiveExitCode.GOTO_FALSE : VMPrimitiveExitCode.GOTO_TRUE;
+                    }
+                case Shared.ModeShow:
+                    if (context.Caller is VMAvatar shown) Show(shown, true);
+                    return VMPrimitiveExitCode.GOTO_TRUE;
                 case Shared.ModeCanToggleAuto:
                     {
                         var car = CarOf(context.StackObject);
@@ -555,8 +565,9 @@ namespace Driveways
 
         /// <summary>
         /// The parts of town with community lots, by their number in LotLocations.iff (as the neighbourhood screen numbers
-        /// them). The vacation island (3) is left out: a family goes there for days, not for a drive. In the main
-        /// neighbourhood (1) only lots zoned for the community count.
+        /// them). The vacation island (3) is left out: a family goes there for days, not for a drive. Houses are left out
+        /// everywhere: the game cannot take a Sim visiting to one (it shows an empty lot). In the main neighbourhood (1)
+        /// and Old Town (4), which are zoned lot by lot, only lots zoned for the community count.
         /// </summary>
         private static readonly (int Mode, string Area)[] Areas = { (1, "Around Town"), (2, "Downtown"), (4, "Old Town"), (5, "Studio Town"), (8, "Magic Town") };
 
@@ -581,7 +592,11 @@ namespace Driveways
                     {
                         var parts = (locations.GetString(i) ?? "").Split(',');
                         if (!int.TryParse(parts[0].Trim(), out var num) || num <= 0 || num == 99 || num == here || !seen.Add(num)) continue;
-                        if (mode == 1 && (!hood.ZoningDictionary.TryGetValue((short)num, out var zone) || zone != 1)) continue;
+                        //a house is not a destination, wherever it is: a lot zoned as one, or one a family lives in. the
+                        //neighbourhood and Old Town are zoned lot by lot, so there a lot not zoned for the community is a house
+                        var zoned = hood.ZoningDictionary.TryGetValue((short)num, out var zone);
+                        var lived = hood.FamilyForHouse != null && hood.FamilyForHouse.ContainsKey((short)num);
+                        if (!Driveways.Destinations.IsCommunityLot(mode, zoned, zone, lived)) continue;
                         if (!File.Exists(hood.GetHousePath(num))) continue;
                         string name = null;
                         try { name = hood.GetHouseNameDesc(num)?.Item1?.Trim(); } catch (Exception) { }
@@ -929,24 +944,28 @@ namespace Driveways
                 Show(sim, true);
                 return VMPrimitiveExitCode.GOTO_FALSE;
             }
-            LetOut(vm, sim, commute);
+            //beside the door, still hidden: the script takes them to the door's place, shows them, and they get out
+            LetOut(vm, sim, commute, false);
             commutes.Remove(commute);
+            var door = DoorTile(commute.Car, sim);
+            if (door != null) context.StackObject = door;
             return VMPrimitiveExitCode.GOTO_TRUE;
         }
 
-        /// <summary>Put the Sim beside their car, which has just parked, and show them.</summary>
-        private static void LetOut(VM vm, VMAvatar sim, Commute commute)
+        /// <summary>Put the Sim beside their car, which has just parked, and show them (unless the script will).</summary>
+        private static void LetOut(VM vm, VMAvatar sim, Commute commute, bool show = true)
         {
             var context = vm.Context;
             var car = commute.Car;
             //beside the door, facing the way the car does, to get out as they got in
-            var door = DoorTile(car);
+            var door = DoorTile(car, sim);
             var heading = HeadingOf(car.BaseObject.Direction);
             if (door != null && heading >= 0)
             {
-                var side = DrivePlan.Rotate(Settings.DoorOnRight ? 1 : -1, 0, heading);
+                var left = ((ushort)door.Object.OBJ.SubIndex >> 8) == 0;
+                var side = DrivePlan.Rotate(left ? -1 : 1, 0, heading);
                 var spot = LotTilePos.FromBigTile((short)(door.Position.TileX + (int)Math.Round(side.X)), (short)(door.Position.TileY + (int)Math.Round(side.Y)), 1);
-                if (sim.SetPosition(spot, car.BaseObject.Direction, context).Status == VMPlacementError.Success) { Show(sim, true); return; }
+                if (sim.SetPosition(spot, car.BaseObject.Direction, context).Status == VMPlacementError.Success) { if (show) Show(sim, true); return; }
             }
             var carTiles = new HashSet<(int, int)>(car.Objects.Select(o => ((int)o.Position.TileX, (int)o.Position.TileY)));
             float cx = (float)carTiles.Average(t => t.Item1), cy = (float)carTiles.Average(t => t.Item2);
@@ -980,14 +999,27 @@ namespace Driveways
         // carpool names them; getting out is getting in played backwards). The scripts that do it are in the object
         // file; here is what they ask: whether the drive can go, and where the door is.
 
-        /// <summary>The car's tile by the door the Sims use: the front seat, on its left (the driver's) or its right.</summary>
+        /// <summary>The door's row when the game's car the model is drawn as is not there to say.</summary>
         private const int DoorRow = 2;
 
-        private static VMEntity DoorTile(VMMultitileGroup car)
+        /// <summary>
+        /// The car's tile by the door a Sim uses. The game's cars mark theirs: the tiles whose init script is "init route
+        /// piece", which the carpool sends a Sim to (global routing slot 4) and has them get in at. Of the game's car this
+        /// one is drawn as, the door on the side the player chose ("driveways door": the left unless they changed it),
+        /// the nearest the Sim if there are two; on the other side if there is none on that one.
+        /// </summary>
+        private static VMEntity DoorTile(VMMultitileGroup car, VMEntity near = null)
         {
-            int x = Settings.DoorOnRight ? Shared.CarWidth - 1 : 0;
-            var sub = (short)((x << 8) | DoorRow);
-            return car.Objects.FirstOrDefault(o => !o.Dead && o.Object.OBJ.SubIndex == sub);
+            if (car == null) return null;
+            int side = Settings.DoorOnRight ? Shared.CarWidth - 1 : 0;
+            var doors = CarLook.DoorsOf(GUIDOf(car.BaseObject));
+            var places = doors.Where(d => d.X == side).ToList();
+            if (places.Count == 0) places = doors.ToList();
+            if (places.Count == 0) places.Add((side, DoorRow));
+            var tiles = places.Select(p => car.Objects.FirstOrDefault(o => !o.Dead && o.Object.OBJ.SubIndex == (short)((p.X << 8) | p.Y))).Where(o => o != null).ToList();
+            if (tiles.Count == 0) return null;
+            if (near == null || near.Position == LotTilePos.OUT_OF_WORLD) return tiles[0];
+            return tiles.OrderBy(t => Math.Abs(t.Position.x - near.Position.x) + Math.Abs(t.Position.y - near.Position.y)).First();
         }
 
         /// <summary>
@@ -1018,7 +1050,7 @@ namespace Driveways
                 var lot = (context.Args != null && context.Args.Length > 0) ? context.Args[0] : (short)0;
                 if (!Destinations(vm).Any(d => d.House == lot)) { OnMessage?.Invoke(vm, "The car cannot take them there."); return false; }
             }
-            var door = DoorTile(car);
+            var door = DoorTile(car, sim);
             if (door != null) context.StackObject = door;
             return true;
         }
@@ -2014,8 +2046,43 @@ namespace Driveways
         private static string Outcome = "not looked for yet.";
         //for each car the pack sells (by its GUID): the drawing group for each of its tiles, by the tile's place (x * 256 + y)
         private static Dictionary<uint, Dictionary<int, FSO.Files.Formats.IFF.Chunks.DGRP>> Borrowed = new Dictionary<uint, Dictionary<int, FSO.Files.Formats.IFF.Chunks.DGRP>>();
+        //for each car the pack sells (by its GUID): the places of its doors, as the game's car marks them (see VMDrive.DoorTile)
+        private static Dictionary<uint, List<(int X, int Y)>> Doors = new Dictionary<uint, List<(int X, int Y)>>();
         //(held so the game keeps them loaded)
         private static List<FSO.Content.GameObject> Held = new List<FSO.Content.GameObject>();
+
+        /// <summary>The places (column, row) of a car's doors, as the game's car it is drawn as marks them; none if it is not there.</summary>
+        public static IReadOnlyList<(int X, int Y)> DoorsOf(uint carGUID)
+        {
+            lock (Held)
+            {
+                if (!Looked) Look();
+                return Doors.TryGetValue(carGUID, out var doors) ? doors : new List<(int X, int Y)>();
+            }
+        }
+
+        /// <summary>
+        /// Whether a tile of one of the game's cars is a door: its init script is the cars' "init route piece", which marks
+        /// the tile (its attribute 1 set to 1) for the carpool to send a Sim to.
+        /// </summary>
+        private static bool IsDoor(FSO.Content.GameObject tile)
+        {
+            ushort init;
+            if (tile.OBJ.UsesFnTable == 0) init = tile.OBJ.BHAV_Init;
+            else
+            {
+                var table = tile.Resource.Get<FSO.Files.Formats.IFF.Chunks.OBJf>(tile.OBJ.ChunkID);
+                if (table?.functions == null || table.functions.Length == 0) return false;
+                init = table.functions[0].ActionFunction;
+            }
+            if (init < 4096) return false;
+            var script = (init >= 8192) ? tile.Resource.SemiGlobal?.Get<FSO.Files.Formats.IFF.Chunks.BHAV>(init) : tile.Resource.Get<FSO.Files.Formats.IFF.Chunks.BHAV>(init);
+            if (script == null) return false;
+            if ((script.ChunkLabel ?? "").IndexOf("route piece", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            //(or by what it does: my attribute 1 := 1)
+            return script.Instructions.Any(i => i.Opcode == 2 && i.Operand != null && i.Operand.Length >= 8
+                && i.Operand[0] == 1 && i.Operand[1] == 0 && i.Operand[2] == 1 && i.Operand[3] == 0 && i.Operand[5] == 5 && i.Operand[6] == 0 && i.Operand[7] == 7);
+        }
 
         public static string Describe() => Looked ? Outcome : "not looked for yet (no car has been drawn).";
 
@@ -2063,6 +2130,7 @@ namespace Driveways
                     var places = tiles.Select(t => PlaceOf(t.SubIndex)).ToList();
                     if (places.Count != Shared.CarWidth * Shared.CarLength || places.Max(p => p.X) != Shared.CarWidth - 1 || places.Max(p => p.Y) != Shared.CarLength - 1 || places.Distinct().Count() != places.Count) { missing.Add(model.Name + " (not on " + Shared.CarWidth + " by " + Shared.CarLength + " tiles)"); continue; }
                     var borrowed = new Dictionary<int, FSO.Files.Formats.IFF.Chunks.DGRP>();
+                    var doors = new List<(int X, int Y)>();
                     foreach (var tile in tiles)
                     {
                         var obj = provider.Get((uint)tile.ID);
@@ -2071,10 +2139,12 @@ namespace Driveways
                         var place = PlaceOf(tile.SubIndex);
                         borrowed[place.X * 256 + place.Y] = dgrp;
                         Held.Add(obj);
+                        try { if (IsDoor(obj)) doors.Add(place); } catch (Exception) { }
                     }
                     if (borrowed.Count != places.Count) { missing.Add(model.Name + " (a tile has no picture)"); continue; }
                     Borrowed[model.GUID] = borrowed;
-                    found.Add($"{model.Name} from \"{master.Name}\"");
+                    Doors[model.GUID] = doors.OrderBy(d => d.X).ThenBy(d => d.Y).ToList();
+                    found.Add($"{model.Name} from \"{master.Name}\" (doors " + (doors.Count == 0 ? "not marked: row " + 2 + " is used" : string.Join(" ", Doors[model.GUID].Select(d => $"{d.X},{d.Y}"))) + ")");
                 }
                 Outcome = (found.Count > 0 ? "borrowed from the game's cars: " + string.Join(", ", found) + "." : "none could be borrowed from the game.")
                     + (missing.Count > 0 ? " Not in this game, and drawn as grey blocks: " + string.Join(", ", missing) + "." : "");

@@ -500,4 +500,24 @@ namespace Driveways
             return 3;
         }
     }
+
+    /// <summary>Which lots the car can drive to: plain numbers, nothing from the engine.</summary>
+    public static class Destinations
+    {
+        /// <summary>The parts of town zoned lot by lot (the neighbourhood and Old Town, by their number in LotLocations.iff).</summary>
+        public static bool IsZonedArea(int area) => area == 1 || area == 4;
+
+        /// <summary>
+        /// Whether a lot is somewhere the car can take a Sim: a community lot. Not a lot zoned as a house (zone 0;
+        /// 1 is the community), wherever it is; not one a family lives in; and in a part of town zoned lot by lot, not
+        /// one with no zoning at all. Elsewhere (Downtown, Studio Town, Magic Town) a lot with no zoning is one of the
+        /// town's, as the game counts it.
+        /// </summary>
+        public static bool IsCommunityLot(int area, bool zoned, int zone, bool familyLivesThere)
+        {
+            if (familyLivesThere) return false;
+            if (zoned) return zone == 1;
+            return !IsZonedArea(area);
+        }
+    }
 }
